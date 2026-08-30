@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.16.3](https://github.com/cedya77/aiometadata/compare/v2.16.2...v2.16.3) (2026-08-30)
+
+
+### Bug Fixes
+
+* **cache:** keep warmed catalogs for their full window ([c50e7b0](https://github.com/cedya77/aiometadata/commit/c50e7b00e93816cf4ab625cffd61b1a744476abb))
+* **letterboxd:** restore importing lists and watchlists by URL ([98afaa1](https://github.com/cedya77/aiometadata/commit/98afaa1a73c156df09137746d11584a19e1e2cc9))
+
 ## [2.16.2](https://github.com/cedya77/aiometadata/compare/v2.16.1...v2.16.2) (2026-08-28)
 
 
