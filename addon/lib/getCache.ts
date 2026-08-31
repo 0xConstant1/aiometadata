@@ -43,6 +43,7 @@ function parsePositiveIntEnv(envValue: any, defaultValue: number, minValue: numb
 
 const { withEpoch, withGlobalEpoch }: any = require('./cacheEpoch');
 const { clampTtlToWarmWindow }: any = require('./catalogWarmWindow');
+const { clampMetaTtlToAirWindow }: any = require('./metaAirWindow');
 const {
   isRefreshAheadEnabled,
   isDueForRefresh,
@@ -1852,7 +1853,12 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
      queueComponentCache(componentsToCache, componentCacheKeys.extras, { app_extras: extrasForCache });
    }
 
-  await cacheComponentsPipeline(componentsToCache, ttl, { overwrite });
+  const airWindowTtl = clampMetaTtlToAirWindow(meta, ttl);
+  if (airWindowTtl !== ttl) {
+    cacheLogger.debug(`[Meta] Holding ${metaId} to ${airWindowTtl}s so it lapses after the next episode airs (base ${ttl}s)`);
+  }
+
+  await cacheComponentsPipeline(componentsToCache, airWindowTtl, { overwrite });
 
   try {
     const coldStore = require('./metaColdStore');
