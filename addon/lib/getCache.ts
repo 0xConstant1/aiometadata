@@ -1443,7 +1443,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
 
   const ttlSource = ttlOverrideSources.find(source => source.matches);
   if (ttlSource) {
-    const catCfg = config.catalogs?.find((c: any) => c.id === idOnly);
+    const catCfg = catalogFromConfig || config.catalogs?.find((c: any) => c.id === idOnly);
     const override = Number.isFinite(catCfg?.cacheTTL) && catCfg.cacheTTL >= 0 ? catCfg.cacheTTL : undefined;
     if (override !== undefined) {
       cacheTTL = ttlSource.min ? Math.max(override, ttlSource.min) : override;
