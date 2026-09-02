@@ -3,6 +3,15 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+/**
+ * Past this the trip is taken in one jump. Animating thousands of pixels over a
+ * list that measures rows as they mount is slow, and the shifting cancels the
+ * animation anyway, so the smooth version reads as a stall rather than a scroll.
+ */
+const INSTANT_SCROLL_DISTANCE = 4000;
+/** Frames of no upward progress before the remaining distance is taken at once. */
+const SCROLL_STALL_FRAMES = 3;
+
 interface ScrollToTopButtonProps {
   /** Pixels scrolled before the button appears. */
   threshold?: number;
@@ -43,7 +52,40 @@ export function ScrollToTopButton({
 
   const scrollToTop = () => {
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    if (reduceMotion || window.scrollY > INSTANT_SCROLL_DISTANCE) {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      return;
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // A list that measures its rows as they mount can shift layout mid-animation,
+    // which cancels the scroll partway. Finish the trip the moment it stops
+    // climbing, and hand control back as soon as the reader scrolls.
+    let handedBack = false;
+    let lastY = window.scrollY;
+    let stalledFrames = 0;
+    const release = () => { handedBack = true; };
+    const events = ['wheel', 'touchstart', 'keydown'] as const;
+
+    const cleanup = () => events.forEach(name => window.removeEventListener(name, release));
+    events.forEach(name => window.addEventListener(name, release, { passive: true }));
+
+    const step = () => {
+      if (handedBack || window.scrollY <= 0) {
+        cleanup();
+        return;
+      }
+      stalledFrames = window.scrollY < lastY ? 0 : stalledFrames + 1;
+      lastY = window.scrollY;
+      if (stalledFrames > SCROLL_STALL_FRAMES) {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        cleanup();
+        return;
+      }
+      window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
   };
 
   return (
