@@ -56,6 +56,7 @@ const {
   getRefreshAheadStats,
   resetRefreshAheadStats,
 }: any = require('./cacheRefreshAhead');
+const { sourceRefetchRequested }: any = require('./cacheSourceRefetch');
 
 function META_TTL() { return parseInt(process.env.META_TTL || String(7 * 24 * 60 * 60), 10); }
 function CATALOG_TTL() { return parseInt(process.env.CATALOG_TTL || String(1 * 24 * 60 * 60), 10); }
@@ -647,19 +648,23 @@ async function cacheWrapGlobal(key: string, method: () => Promise<any>, ttl: num
     return method();
   }
 
-  const { upstream = false } = options;
+  const { upstream = false, sourceList = false } = options;
   const epochKey = upstream ? `global:${key}` : withGlobalEpoch(key);
-  return singleFlight(epochKey, () => cacheWrapGlobalInternal(key, method, ttl, options, epochKey));
+  // A refetch must not join a plain read already in flight, or it returns the
+  // cached value it was meant to replace.
+  const refetch = sourceList && sourceRefetchRequested();
+  const flightKey = refetch ? `refetch:${epochKey}` : epochKey;
+  return singleFlight(flightKey, () => cacheWrapGlobalInternal(key, method, ttl, options, epochKey, refetch));
 }
 
-async function cacheWrapGlobalInternal(key: string, method: () => Promise<any>, ttl: number, options: any, versionedKey: string): Promise<any> {
+async function cacheWrapGlobalInternal(key: string, method: () => Promise<any>, ttl: number, options: any, versionedKey: string, refetch: boolean = false): Promise<any> {
   const { enableErrorCaching = false, resultClassifier = classifyResult, maxRetries = SELF_HEALING_CONFIG.maxRetries } = options;
 
   let retries = 0;
 
   while (retries <= maxRetries) {
   try {
-    const cached = await redis.getBuffer(versionedKey);
+    const cached = refetch ? null : await redis.getBuffer(versionedKey);
     if (cached) {
         try {
           const parsed = await decodeCachePayload(cached);

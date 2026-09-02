@@ -88,7 +88,7 @@ async function fetchRegionData(regionSlug: string): Promise<CrawlerData> {
     const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
     logger.debug(`Fetched ${data.charts?.length || 0} charts for ${regionSlug} (date: ${data.date})`);
     return data;
-  }, getFlixPatrolTTL(), { upstream: true });
+  }, getFlixPatrolTTL(), { upstream: true, sourceList: true });
 }
 
 export interface FlixPatrolSections {

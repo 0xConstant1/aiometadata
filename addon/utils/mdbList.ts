@@ -443,7 +443,7 @@ async function fetchMDBListItems(listId: string, apiKey: string, language: strin
         hasMore,
         totalPages
       };
-    }, ttl, { upstream: true });
+    }, ttl, { upstream: true, sourceList: true });
   } catch (err: any) {
     logger.error(`Error retrieving items for list ${listId}, page ${page}:`, err.message);
     return { items: [] };
@@ -742,7 +742,7 @@ async function fetchMDBListExternalItems(
       }
 
       return { items, hasMore };
-    }, ttl, { upstream: true });
+    }, ttl, { upstream: true, sourceList: true });
   } catch (err: any) {
     logger.error(`Error retrieving items from URL ${sanitizeUrlForLogging(url)}, page ${page}:`, err.message);
     return { items: [] };
@@ -1713,7 +1713,7 @@ async function fetchMDBListCatalog(
       logger.error(`[MDBList Catalog] Error fetching ${mediaType} catalog page ${page}: ${err.message}`);
       return { items: [], hasMore: false };
     }
-  }, ttl, { upstream: true });
+  }, ttl, { upstream: true, sourceList: true });
 }
 
 export {

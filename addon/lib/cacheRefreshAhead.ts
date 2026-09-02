@@ -3,6 +3,7 @@ export {};
 const redis: any = require('./redisClient');
 const consola: any = require('consola');
 const { getSetting }: any = require('./settingsService');
+const { runWithSourceRefetch }: any = require('./cacheSourceRefetch');
 
 const logger = consola.withTag('Refresh-Ahead');
 
@@ -88,7 +89,7 @@ function withRebuildTimeout(rebuild: () => Promise<boolean>): Promise<boolean> {
     timer = setTimeout(() => reject(new Error(`rebuild exceeded ${LOCK_SECONDS}s`)), REBUILD_TIMEOUT_MS);
     if (typeof timer?.unref === 'function') timer.unref();
   });
-  return Promise.race([rebuild(), expiry]).finally(() => {
+  return Promise.race([runWithSourceRefetch(rebuild), expiry]).finally(() => {
     if (timer) clearTimeout(timer);
   });
 }
