@@ -116,9 +116,42 @@ const MAL_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const { createResponseCompression } = require('./utils/responseCompression');
 addon.use(createResponseCompression());
 
-// Parse JSON and URL-encoded bodies for API routes
-addon.use(express.json({ limit: '2mb' }));
+// Parse JSON and URL-encoded bodies for API routes.
+// The parser mounts before settings load, so the limit is resolved per request
+// rather than captured here, and a parser is kept per distinct limit.
+const jsonBodyParsers = new Map();
+
+function jsonBodyParserFor(limit) {
+  let parser = jsonBodyParsers.get(limit);
+  if (!parser) {
+    parser = express.json({ limit });
+    jsonBodyParsers.set(limit, parser);
+  }
+  return parser;
+}
+
+addon.use((req, res, next) => {
+  let limit;
+  try {
+    limit = getSetting('MAX_REQUEST_BODY_SIZE');
+  } catch {
+    limit = '';
+  }
+  return jsonBodyParserFor(limit || '8mb')(req, res, next);
+});
 addon.use(express.urlencoded({ extended: true }));
+
+// Express reports an oversized body as an HTML stack, which reaches the setup
+// page as an unreadable failure rather than as the ceiling it is.
+addon.use((err, req, res, next) => {
+  if (err?.type !== 'entity.too.large') return next(err);
+  consola.warn(`[Request] Body over the ${err.limit} byte limit on ${req.method} ${req.path}`);
+  return res.status(413).json({
+    error: 'Configuration is too large to send in one request. An instance administrator can raise Max Request Body Size in the dashboard settings.',
+    limit: err.limit,
+    length: err.length ?? null,
+  });
+});
 
 // Global CORS middleware: ensure every response includes CORS headers
 // This prevents browser blocks when a route returns early or on errors

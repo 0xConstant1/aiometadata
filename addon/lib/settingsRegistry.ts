@@ -1324,6 +1324,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     envOnly: true,
   },
   {
+    key: 'MAX_REQUEST_BODY_SIZE',
+    envVar: 'MAX_REQUEST_BODY_SIZE',
+    label: 'Max Request Body Size',
+    description: 'Largest JSON body an API request may carry, as a byte count or a size string such as 8mb. Saving a configuration sends the whole of it in one request, so an instance whose users build very large catalog or collection sets needs this above the size those reach. Applies to the next request, without a restart.',
+    category: 'Server & Storage',
+    type: 'string',
+    default: '8mb',
+    validate: (v: string) => /^\d+(\.\d+)?\s*(b|kb|mb|gb)?$/i.test(String(v).trim()),
+  },
+  {
     key: 'HOST_NAME',
     envVar: 'HOST_NAME',
     label: 'Host Name',
