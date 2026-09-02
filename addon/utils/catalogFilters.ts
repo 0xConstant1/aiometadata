@@ -59,7 +59,11 @@ function catalogFiltersActive({ config, catalogConfig, cleanId }: Omit<CatalogFi
     : (catalogHideDigital !== undefined ? catalogHideDigital : !!config.hideUnreleasedDigital);
   if (hideUnreleasedDigital) return true;
 
-  if (isSearch ? config.hideUnreleasedShowsSearch : config.hideUnreleasedShows) return true;
+  const catalogHideShows = catalogConfig?.metadata?.hideUnreleasedShows;
+  const hideUnreleasedShows = isSearch
+    ? !!config.hideUnreleasedShowsSearch
+    : (catalogHideShows !== undefined ? catalogHideShows : !!config.hideUnreleasedShows);
+  if (hideUnreleasedShows) return true;
 
   if (!isHideWatchedExcluded(cleanId)) {
     for (const [credential, flag] of WATCHED_FILTERS) {
@@ -94,7 +98,12 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
     }
   }
 
-  if ((isSearch ? config.hideUnreleasedShowsSearch : config.hideUnreleasedShows)) {
+  const catalogHideShows = catalogConfig?.metadata?.hideUnreleasedShows;
+  const hideUnreleasedShows = isSearch
+    ? !!config.hideUnreleasedShowsSearch
+    : (catalogHideShows !== undefined ? catalogHideShows : !!config.hideUnreleasedShows);
+
+  if (hideUnreleasedShows) {
     const now = new Date();
     const before = metas.length;
     metas = metas.filter(meta => {

@@ -370,6 +370,7 @@ const MDBListSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
   const isUpNext = catalog.id === 'mdblist.upnext';
   const isWatchlist = catalog.id.startsWith('mdblist.watchlist');
   const isDiscover = catalog.id.startsWith('mdblist.discover.');
@@ -383,6 +384,7 @@ const MDBListSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
@@ -407,7 +409,8 @@ const MDBListSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
               hideWatchedAnilist: hideAnilistValue,
               hideWatchedMdblist: hideMdblistValue,
               hideWatchedSimkl: hideSimklValue,
-              hideUnreleasedDigital: hideUnreleasedDigitalValue
+              hideUnreleasedDigital: hideUnreleasedDigitalValue,
+              hideUnreleasedShows: hideUnreleasedShowsValue
             }
           }
           : c
@@ -648,6 +651,19 @@ const MDBListSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="text-xs text-muted-foreground mb-4">
           Note: Changes will take effect after you save your configuration in the Configuration Manager.
@@ -672,6 +688,7 @@ const TraktSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
   const [airingSoonDays, setAiringSoonDays] = useState<number>(() => {
     const days = catalog.metadata?.airingSoonDays;
     if (typeof days === 'number' && days >= 1 && days <= 7) {
@@ -691,6 +708,7 @@ const TraktSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => {
       const updatedCatalogs = prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
@@ -709,7 +727,8 @@ const TraktSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
                 hideWatchedAnilist: hideAnilistValue,
                 hideWatchedMdblist: hideMdblistValue,
                 hideWatchedSimkl: hideSimklValue,
-                hideUnreleasedDigital: hideUnreleasedDigitalValue
+                hideUnreleasedDigital: hideUnreleasedDigitalValue,
+                hideUnreleasedShows: hideUnreleasedShowsValue
               }
             }
           : c
@@ -893,6 +912,19 @@ const TraktSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <DialogClose asChild>
@@ -921,6 +953,7 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
   const [airingSoonDays, setAiringSoonDays] = useState<number>(() => {
     const days = catalog.metadata?.airingSoonDays;
     if (typeof days === 'number' && days >= 1 && days <= 7) {
@@ -937,6 +970,7 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => {
       const updatedCatalogs = prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
@@ -957,7 +991,8 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
                 hideWatchedAnilist: hideAnilistValue,
                 hideWatchedMdblist: hideMdblistValue,
                 hideWatchedSimkl: hideSimklValue,
-                hideUnreleasedDigital: hideUnreleasedDigitalValue
+                hideUnreleasedDigital: hideUnreleasedDigitalValue,
+                hideUnreleasedShows: hideUnreleasedShowsValue
               }
             }
           : c
@@ -1138,6 +1173,19 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <DialogClose asChild>
@@ -1180,6 +1228,7 @@ const MovieLensSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const minYearNum = parseInt(minYear, 10);
@@ -1190,6 +1239,7 @@ const MovieLensSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
@@ -1213,6 +1263,7 @@ const MovieLensSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
                 hideWatchedMdblist: hideMdblistValue,
                 hideWatchedSimkl: hideSimklValue,
                 hideUnreleasedDigital: hideUnreleasedDigitalValue,
+                hideUnreleasedShows: hideUnreleasedShowsValue,
               },
             }
           : c
@@ -1371,6 +1422,19 @@ const MovieLensSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -1390,6 +1454,7 @@ const LetterboxdSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catal
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const hideTraktValue = hideWatchedTrakt === 'on' ? true : hideWatchedTrakt === 'off' ? false : undefined;
@@ -1397,11 +1462,12 @@ const LetterboxdSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catal
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), enableRatingPosters, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue } }
+          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), enableRatingPosters, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -1511,6 +1577,19 @@ const LetterboxdSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catal
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end space-x-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -1538,6 +1617,7 @@ const TMDBSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConf
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const hideTraktValue = hideWatchedTrakt === 'on' ? true : hideWatchedTrakt === 'off' ? false : undefined;
@@ -1545,11 +1625,12 @@ const TMDBSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConf
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, sort, sortDirection, ...(supportsMinVotes ? { minVotes } : {}), metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue } }
+          ? { ...c, sort, sortDirection, ...(supportsMinVotes ? { minVotes } : {}), metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -1683,6 +1764,19 @@ const TMDBSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConf
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <DialogClose asChild>
@@ -1704,6 +1798,7 @@ const CustomManifestSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: C
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const hideTraktValue = hideWatchedTrakt === 'on' ? true : hideWatchedTrakt === 'off' ? false : undefined;
@@ -1711,11 +1806,12 @@ const CustomManifestSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: C
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), enableRatingPosters, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue } }
+          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), enableRatingPosters, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -1826,6 +1922,19 @@ const CustomManifestSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: C
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end space-x-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -1846,6 +1955,7 @@ const AniListSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const hideTraktValue = hideWatchedTrakt === 'on' ? true : hideWatchedTrakt === 'off' ? false : undefined;
@@ -1853,11 +1963,12 @@ const AniListSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, sort, sortDirection, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue } }
+          ? { ...c, sort, sortDirection, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -1978,6 +2089,19 @@ const AniListSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="text-xs text-muted-foreground mb-4">
           Note: Changes will take effect after you save your configuration in the Configuration Manager.
@@ -2006,6 +2130,7 @@ const StreamingSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const hideTraktValue = hideWatchedTrakt === 'on' ? true : hideWatchedTrakt === 'off' ? false : undefined;
@@ -2013,11 +2138,12 @@ const StreamingSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, sort, sortDirection, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue } }
+          ? { ...c, sort, sortDirection, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -2131,6 +2257,19 @@ const StreamingSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <DialogClose asChild>
@@ -2153,6 +2292,7 @@ const PMDBSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConf
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const hideTraktValue = hideWatchedTrakt === 'on' ? true : hideWatchedTrakt === 'off' ? false : undefined;
@@ -2160,11 +2300,12 @@ const PMDBSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConf
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTL), metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue } }
+          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTL), metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -2260,6 +2401,19 @@ const PMDBSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConf
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end space-x-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -2277,6 +2431,7 @@ const GenericSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
   const [hideWatchedSimkl, setHideWatchedSimkl] = useState<string>(catalog.metadata?.hideWatchedSimkl === true ? 'on' : catalog.metadata?.hideWatchedSimkl === false ? 'off' : 'global');
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
+  const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
 
   const handleSave = () => {
     const hideTraktValue = hideWatchedTrakt === 'on' ? true : hideWatchedTrakt === 'off' ? false : undefined;
@@ -2284,12 +2439,13 @@ const GenericSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
     const hideMdblistValue = hideWatchedMdblist === 'on' ? true : hideWatchedMdblist === 'off' ? false : undefined;
     const hideSimklValue = hideWatchedSimkl === 'on' ? true : hideWatchedSimkl === 'off' ? false : undefined;
     const hideUnreleasedDigitalValue = hideUnreleasedDigital === 'on' ? true : hideUnreleasedDigital === 'off' ? false : undefined;
+    const hideUnreleasedShowsValue = hideUnreleasedShows === 'on' ? true : hideUnreleasedShows === 'off' ? false : undefined;
     
     setConfig(prev => ({
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue } }
+          ? { ...c, metadata: { ...c.metadata, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -2366,6 +2522,19 @@ const GenericSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
           <div className="space-y-2">
             <Label>Hide Unreleased Movies</Label>
             <Select value={hideUnreleasedDigital} onValueChange={setHideUnreleasedDigital}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Use Global Setting</SelectItem>
+                <SelectItem value="on">Always On</SelectItem>
+                <SelectItem value="off">Always Off</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Hide Unreleased Shows</Label>
+            <Select value={hideUnreleasedShows} onValueChange={setHideUnreleasedShows}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
