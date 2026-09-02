@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.16.4](https://github.com/cedya77/aiometadata/compare/v2.16.3...v2.16.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **cache:** refresh series metadata once an upcoming episode has aired ([a8ffdc6](https://github.com/cedya77/aiometadata/commit/a8ffdc6a93185e402e6b1e79ac709d948672b6be))
+* **catalogs:** allow hiding unreleased shows per catalog ([3dfca7e](https://github.com/cedya77/aiometadata/commit/3dfca7efacd2fc34c77a3d704f353cbe9d543c5b))
+* **catalogs:** render only the catalog rows in view ([ec2662b](https://github.com/cedya77/aiometadata/commit/ec2662b5cf81547967a60a5e3201fcc2978a2ea5))
+* **collections:** rebuild TMDB collection sources on import ([491a5c7](https://github.com/cedya77/aiometadata/commit/491a5c74a0d1e1ca1e5cb0512d40c231122209c1))
+* **config:** keep a large configuration savable ([a133856](https://github.com/cedya77/aiometadata/commit/a13385697de5e01081aef682f03342cdd5f56d40))
+* **meta:** emit director and writer as string arrays per the Stremio spec ([8d90666](https://github.com/cedya77/aiometadata/commit/8d9066631688e704ec88fca63be2e85ba3f970bc))
+* **meta:** read cached credits as arrays ([bafec6e](https://github.com/cedya77/aiometadata/commit/bafec6e86a44455bc9e377baa2c50921c07dee14))
+
 ## [2.16.3](https://github.com/cedya77/aiometadata/compare/v2.16.2...v2.16.3) (2026-08-30)
 
 
