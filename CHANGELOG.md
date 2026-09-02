@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.16.5](https://github.com/cedya77/aiometadata/compare/v2.16.4...v2.16.5) (2026-09-02)
+
+
+### Bug Fixes
+
+* **cache:** match catalog TTL override by id and type ([8ea6b91](https://github.com/cedya77/aiometadata/commit/8ea6b91171826bc754cfe2f5f37af35ec3c97514))
+* **cache:** refresh catalogs from their source instead of cache ([b4616be](https://github.com/cedya77/aiometadata/commit/b4616bef6f168f034007a8defa863f21b2991887))
+* **catalogs:** request media type for split MDBList watchlists ([0b2fbcc](https://github.com/cedya77/aiometadata/commit/0b2fbccdae671fbdbc1da45711b0c7c6939f84e6)), closes [#687](https://github.com/cedya77/aiometadata/issues/687)
+
 ## [2.16.4](https://github.com/cedya77/aiometadata/compare/v2.16.3...v2.16.4) (2026-09-02)
 
 
