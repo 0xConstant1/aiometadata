@@ -953,6 +953,7 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
       // Non-unified watchlist (separate movies/series catalogs)
       listId = 'watchlist';
       unified = false;
+      mediaTypeFilter = id === 'mdblist.watchlist.movies' ? 'movie' : 'show';
     } else if (id.startsWith('mdblist.recommended.')) {
       const parts = id.split('.');
       listId = `recommended/${parts[2]}`;
