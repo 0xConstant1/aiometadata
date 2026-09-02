@@ -303,6 +303,40 @@ function tmdbListBlueprint(raw: Record<string, any>, type: 'movie' | 'series'): 
 }
 
 /**
+ * A TMDB collection is a fixed set of films, so it only exists as a movie
+ * catalog. Nuvio's own ordering value is the API's arbitrary part order, which
+ * has no equivalent here: the catalog reads release order, and only the explicit
+ * reverse is carried across.
+ */
+function tmdbCollectionBlueprint(raw: Record<string, any>, type: 'movie' | 'series'): Reconstruction {
+  if (type !== 'movie') {
+    return { ok: false, reason: 'a TMDB collection source that is not a movie source' };
+  }
+
+  const collectionId = trimmed(raw.tmdbId);
+  if (!collectionId) return { ok: false, reason: 'a TMDB collection source with no collection id' };
+
+  const name = trimmed(raw.title) || trimmed(raw.name) || `TMDB Collection ${collectionId}`;
+  const descending = trimmed(raw.sortBy).toLowerCase() === 'release_date.desc'
+    || trimmed(raw.sortOrder).toLowerCase() === 'desc';
+
+  return ok({
+    id: `tmdb.collection.${collectionId}`,
+    type: 'movie',
+    name,
+    source: 'tmdb',
+    enabled: true,
+    showInHome: false,
+    metadata: {
+      listId: collectionId,
+      listName: name,
+      sortDirection: descending ? 'desc' : 'asc',
+      url: `https://www.themoviedb.org/collection/${collectionId}`,
+    },
+  });
+}
+
+/**
  * Trakt's own sort values, which Nuvio stores verbatim. Anything else is left to
  * the catalog default rather than passed through to the API.
  */
@@ -374,9 +408,7 @@ export function fromNativeSource(raw: unknown): Reconstruction {
     if (!companyId) return { ok: false, reason: 'a TMDB company source with no company id' };
     return ok(discoverBlueprint(raw, type, { with_companies: companyId }));
   }
-  if (sourceType === 'COLLECTION') {
-    return { ok: false, reason: 'a TMDB collection source. AIOMetadata has no catalog type for TMDB collections' };
-  }
+  if (sourceType === 'COLLECTION') return tmdbCollectionBlueprint(raw, type);
 
   return { ok: false, reason: `a TMDB ${sourceType || 'unknown'} source, which has no AIOMetadata equivalent` };
 }
