@@ -21,6 +21,10 @@ const {
   normalizeMetaReleaseAvailability,
   normalizeReleaseAvailabilityInPayload,
 }: any = require('../utils/releaseAvailability');
+const {
+  normalizeMetaCredits,
+  normalizeCreditsInPayload,
+}: any = require('../utils/metaCredits');
 
 function hashConfig(configObj: any): string {
   const str = typeof configObj === 'string' ? configObj : stableStringify(configObj);
@@ -1151,6 +1155,7 @@ function applyTrailerStreamsProjection(meta: any): any {
 
 async function projectMetaForUser(meta: any, config: any): Promise<any> {
   if (!meta) return meta;
+  normalizeMetaCredits(meta);
   applyTrailerStreamsProjection(meta);
   applyCastCountProjection(meta, config);
   applyBlurThumbProjection(meta, config);
@@ -1516,6 +1521,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
         return normalizeReleaseAvailabilityInPayload(await method());
       }, writeTTL, options);
   normalizeReleaseAvailabilityInPayload(result);
+  normalizeCreditsInPayload(result);
 
   if (result?.metas?.length) {
     const displayAgeRating = config.displayAgeRating || false;
