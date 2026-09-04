@@ -30,7 +30,7 @@ import {
 import { getTagColor } from '@/lib/tagColors';
 import { catalogKey, type ManifestCatalog } from '@/lib/collectionBuilder/manifestSources';
 import { aliasHint, TERMS, type Target } from '@/lib/collectionBuilder/terms';
-import { hasNuvioFolderArt, type FolderDraft } from '@shared/types';
+import { hasNuvioFolderArt, type FolderDraft, type SourceDraft } from '@shared/types';
 
 import { ImageUrlField } from './ImageUrlField';
 import { ScopeChip } from './ScopeChip';
@@ -47,6 +47,7 @@ export function FolderCard({
   onRemove,
   onAddSource,
   onReplaceSource,
+  onRenameCatalog,
   tagOptions,
   onAddByTag,
   focusTitle,
@@ -66,6 +67,8 @@ export function FolderCard({
   onRemove: () => void;
   onAddSource: () => void;
   onReplaceSource: (index: number) => void;
+  /** Renames the catalog itself, everywhere it appears. */
+  onRenameCatalog?: (source: SourceDraft, name: string) => void;
   tagOptions: TagOption[];
   onAddByTag: (tag: string) => void;
   focusTitle?: boolean;
@@ -253,6 +256,16 @@ export function FolderCard({
                     else onChange(apply(folder));
                   }}
                   onReplace={() => onReplaceSource(index)}
+                  onRename={
+                    onRenameCatalog
+                      ? name => {
+                          onRenameCatalog(source, name);
+                          update({
+                            sources: folder.sources.map((s, i) => (i === index ? { ...s, name } : s)),
+                          });
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>

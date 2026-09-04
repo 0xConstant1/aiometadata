@@ -1,6 +1,7 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   AlertTriangle,
+  Pencil,
   ChevronDown,
   ChevronsDown,
   ChevronsUp,
@@ -16,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   DropdownMenu,
@@ -123,6 +125,7 @@ export function SourceRow({
   onChange,
   onRemove,
   onReplace,
+  onRename,
   innerRef,
   style,
   leading,
@@ -135,6 +138,13 @@ export function SourceRow({
   onRemove: () => void;
   /** Swap this one for a catalog the user has. */
   onReplace?: () => void;
+  /**
+   * Renames the catalog itself, everywhere it appears, not just this row. Also
+   * offered on a source whose catalog an apply would add, which names it before
+   * it is created. Absent for native sources and for ones pointing at a catalog
+   * that will never exist, since neither has a catalog to name.
+   */
+  onRename?: (name: string) => void;
   innerRef?: (node: HTMLElement | null) => void;
   style?: CSSProperties;
   /** Reorder controls, where the row is one of several in a folder. */
@@ -147,6 +157,25 @@ export function SourceRow({
   const pending = !native && !match && Boolean(pendingKeys?.has(catalogKey(source)));
   const unknown = !native && !match && !pending;
   const label = match?.name || source.name || source.catalogId;
+  const canRename = Boolean(onRename) && !native && (Boolean(match) || pending);
+
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(label);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (renaming) {
+      setDraftName(label);
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [renaming, label]);
+
+  const commitRename = () => {
+    const trimmed = draftName.trim();
+    if (trimmed && trimmed !== label) onRename?.(trimmed);
+    setRenaming(false);
+  };
 
   return (
     <div
@@ -164,9 +193,27 @@ export function SourceRow({
       </div>
 
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="min-w-0 flex-1 truncate text-sm" title={`${source.catalogId} (${source.type})`}>
-          {label}
-        </span>
+        <div className="flex min-w-0 flex-1 flex-col">
+          {renaming ? (
+            <Input
+              ref={inputRef}
+              value={draftName}
+              onChange={event => setDraftName(event.target.value)}
+              onBlur={commitRename}
+              onKeyDown={event => {
+                if (event.key === 'Enter') { event.preventDefault(); commitRename(); }
+                if (event.key === 'Escape') { event.preventDefault(); setRenaming(false); }
+              }}
+              aria-label={`Rename ${label}`}
+              className="h-7 min-w-0 text-sm"
+            />
+          ) : (
+            <span className="truncate text-sm">{label}</span>
+          )}
+          {!native && source.catalogId !== label && (
+            <span className="truncate text-xs text-muted-foreground">{source.catalogId}</span>
+          )}
+        </div>
         {native ? (
           <>
             <Badge variant="outline" className="text-xs font-semibold">{nativeLabel(source)}</Badge>
@@ -217,15 +264,38 @@ export function SourceRow({
         )}
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="col-start-3 row-start-1 h-8 w-8 @md:col-start-4"
-        onClick={onRemove}
-        aria-label={`Remove ${label}`}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      {canRename ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="col-start-3 row-start-1 h-8 w-8 @md:col-start-4"
+              aria-label={`Actions for ${label}`}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={event => { event.preventDefault(); setRenaming(true); }}>
+              <Pencil className="mr-2 h-3.5 w-3.5" /> Rename catalog
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onRemove}>
+              <Trash2 className="mr-2 h-3.5 w-3.5" /> Remove from folder
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="col-start-3 row-start-1 h-8 w-8 @md:col-start-4"
+          onClick={onRemove}
+          aria-label={`Remove ${label}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   );
 }
@@ -249,6 +319,7 @@ export function SortableSourceRow({
   onChange: (next: SourceDraft) => void;
   onRemove: () => void;
   onReplace?: () => void;
+  onRename?: (name: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 

@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ManifestCatalog } from '@/lib/collectionBuilder/manifestSources';
 import { TERMS, type Target } from '@/lib/collectionBuilder/terms';
-import type { ClassicRowDraft } from '@shared/types';
+import type { ClassicRowDraft, SourceDraft } from '@shared/types';
 
 import { ImageUrlField } from './ImageUrlField';
 import { SourceRow } from './SourceRow';
@@ -21,6 +21,7 @@ export function ClassicRowEditor({
   target,
   onChange,
   onAddSource,
+  onRenameCatalog,
   focusTitle,
   onTitleFocused,
   unsupportedNote,
@@ -31,6 +32,8 @@ export function ClassicRowEditor({
   target: Target;
   onChange: (next: ClassicRowDraft) => void;
   onAddSource: () => void;
+  /** Renames the catalog itself, everywhere it appears. */
+  onRenameCatalog?: (source: SourceDraft, name: string) => void;
   focusTitle?: boolean;
   onTitleFocused?: () => void;
   /** Set when this row's catalog carries a type Fusion will not import. */
@@ -100,6 +103,14 @@ export function ClassicRowEditor({
             onChange={next => update({ source: next })}
             onRemove={() => update({ source: null })}
             onReplace={onAddSource}
+            onRename={
+              onRenameCatalog && entry.source
+                ? name => {
+                    onRenameCatalog(entry.source as SourceDraft, name);
+                    update({ source: { ...(entry.source as SourceDraft), name } });
+                  }
+                : undefined
+            }
           />
         ) : (
           <button

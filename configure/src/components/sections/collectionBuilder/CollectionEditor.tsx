@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { type ManifestCatalog } from '@/lib/collectionBuilder/manifestSources';
 import { TERMS, type Target } from '@/lib/collectionBuilder/terms';
-import { hasNuvioCollectionSettings, type CollectionDraft, type FolderDraft } from '@shared/types';
+import { hasNuvioCollectionSettings, type CollectionDraft, type FolderDraft, type SourceDraft } from '@shared/types';
 import { isNativeSource } from '@shared/catalogReconstruction';
 
 import { FolderCard } from './FolderCard';
@@ -25,6 +25,7 @@ export function CollectionEditor({
   onUndoableChange,
   onAddSource,
   onReplaceSource,
+  onRenameCatalog,
   tagOptions,
   onAddByTag,
   nativeCount,
@@ -50,6 +51,8 @@ export function CollectionEditor({
   ) => void;
   onAddSource: (folderId: string) => void;
   onReplaceSource: (folderId: string, index: number) => void;
+  /** Renames the catalog itself, everywhere it appears. */
+  onRenameCatalog?: (source: SourceDraft, name: string) => void;
   tagOptions: TagOption[];
   onAddByTag: (folderId: string, tag: string) => void;
   /** Sources in this collection the app resolves itself and this addon could take over. */
@@ -246,6 +249,7 @@ export function CollectionEditor({
           onRemove={onRemoveFolder}
           onAddSource={() => onAddSource(activeFolder.id)}
           onReplaceSource={index => onReplaceSource(activeFolder.id, index)}
+          onRenameCatalog={onRenameCatalog}
           tagOptions={tagOptions}
           onAddByTag={tag => onAddByTag(activeFolder.id, tag)}
           focusTitle={focusFolderTitle}

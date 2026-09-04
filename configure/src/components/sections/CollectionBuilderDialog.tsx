@@ -711,6 +711,40 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     handlePick(created.map(deriveManifestCatalog));
   };
 
+  /**
+   * Renames the catalog itself rather than this one tile, so it lands in the
+   * config the same way the catalogs list writes it. The manifest is the usual
+   * source of these labels and will not carry the new name until a save, so the
+   * loaded list is patched too; healSourceNames then carries it into the drafts.
+   */
+  const renameCatalog = (source: SourceDraft, name: string) => {
+    const key = catalogKey(source);
+    setConfig(prev => ({
+      ...prev,
+      catalogs: (prev.catalogs || []).map(catalog =>
+        catalogKey(deriveManifestCatalog(catalog)) === key || catalogKey(catalog) === key
+          ? { ...catalog, name }
+          : catalog
+      ),
+    }));
+    setSourceList(prev => ({
+      ...prev,
+      catalogs: prev.catalogs.map(catalog =>
+        catalogKey(catalog) === key ? { ...catalog, name } : catalog
+      ),
+    }));
+    // A staged blueprint outranks the draft's own name when the catalog is built,
+    // so a rename before an apply has to reach it as well.
+    setStagedBlueprints(prev =>
+      prev.map(blueprint =>
+        catalogKey({ id: blueprint.id, type: blueprint.type }) === key
+          ? { ...blueprint, name }
+          : blueprint
+      )
+    );
+    toast.success(`Renamed to "${name}"`);
+  };
+
   const handlePick = (picked: ManifestCatalog[]) => {
     if (!pickerTarget || picked.length === 0) return;
     const sources: SourceDraft[] = picked.map(sourceFromCatalog);
@@ -1733,6 +1767,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       onAddSource={folderId => setPickerTarget({ entryId: selected.id, folderId })}
                       onReplaceSource={(folderId, index) =>
                         setPickerTarget({ entryId: selected.id, folderId, replaceIndex: index })}
+                      onRenameCatalog={renameCatalog}
                       tagOptions={tagOptions}
                       onAddByTag={(folderId, tag) => addSourcesByTag(selected.id, folderId, tag)}
                       nativeCount={countNative(selected)}
@@ -1757,6 +1792,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       target={target}
                       onChange={updateEntry}
                       onAddSource={() => setPickerTarget({ entryId: selected.id, folderId: null })}
+                      onRenameCatalog={renameCatalog}
                       focusTitle={titleFocusId === selected.id}
                       onTitleFocused={clearTitleFocus}
                       unsupportedNote={unsupportedById.get(selected.id) ?? null}
