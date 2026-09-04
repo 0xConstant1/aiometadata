@@ -87,7 +87,8 @@ import {
 } from '@/lib/collectionBuilder/manifestSources';
 import { buildProblemTargets, withStagedCatalogs } from '@/lib/collectionBuilder/problems';
 import { FEATURED_COLLECTIONS, type FeaturedCollection } from '@/lib/collectionBuilder/featured';
-import { FeaturedList } from './collectionBuilder/FeaturedList';
+import { FeaturedDetail } from './collectionBuilder/FeaturedDetail';
+import { FeaturedGallery } from './collectionBuilder/FeaturedGallery';
 import {
   blockingIssues,
   buildIssueCenter,
@@ -215,7 +216,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const [activeTab, setActiveTab] = useState('design');
   // Only consulted below @2xl, where the panes cannot sit side by side.
   const [mobilePane, setMobilePane] = useState<'entries' | 'editor' | 'preview'>('entries');
-  const [featuredOpen, setFeaturedOpen] = useState(false);
+  const [view, setView] = useState<'build' | 'featured'>('build');
   const [featuredError, setFeaturedError] = useState('');
   const [importPreviewIndex, setImportPreviewIndex] = useState(0);
   const [featuredPreview, setFeaturedPreview] = useState<
@@ -289,6 +290,9 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     if (!isOpen) return;
     const saved = clone(config.collections || []) as BuilderEntry[];
     setEntries(saved);
+    // Nothing built yet is the one moment the gallery is worth more than the
+    // builder, so it opens there. Anyone with collections lands on their own.
+    setView(saved.length === 0 && FEATURED_COLLECTIONS.length > 0 ? 'featured' : 'build');
     setBaseline(JSON.stringify(saved));
     setSelectedId(saved[0]?.id ?? null);
     setStagedBlueprints([]);
@@ -912,7 +916,6 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
       const parsed = parseImport(text, { convertNative: false });
       if (!parsed.entries.length) throw new Error('Nothing importable in that file.');
       setFeaturedPreview({ featured, text, entries: parsed.entries, index: 0 });
-      setMobilePane('preview');
     } catch (error) {
       setFeaturedError(error instanceof Error ? error.message : 'Could not read that collection.');
     } finally {
@@ -1264,6 +1267,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     // so it goes back to previewing whatever is selected. On a phone that pane
     // was the whole screen, so land on the list of what just arrived.
     setFeaturedPreview(null);
+    setView('build');
     setMobilePane('entries');
     setConvertNative(false);
     const notes: string[] = [];
@@ -1391,6 +1395,34 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               </Badge>
             </div>
 
+            {FEATURED_COLLECTIONS.length > 0 && (
+              <div className="flex w-full gap-1 rounded-lg border p-1 @2xl:w-fit">
+                {([
+                  ['build', 'Build', Layers],
+                  ['featured', 'Featured', Sparkles],
+                ] as const).map(([id, label, Icon]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setView(id)}
+                    aria-pressed={view === id}
+                    className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-sm transition-colors @2xl:h-8 @2xl:min-h-0 @2xl:flex-none @2xl:justify-start ${
+                      view === id
+                        ? 'bg-accent text-foreground ring-1 ring-border'
+                        : 'text-muted-foreground hover:bg-accent/50'
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 ${id === 'featured' ? 'text-amber-400' : ''}`} />
+                    {label}
+                    {id === 'featured' && (
+                      <span className="text-xs text-muted-foreground">{FEATURED_COLLECTIONS.length}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {view === 'build' && (
             <StatusBar
               rows={statusRows}
               onGoTo={goToProblem}
@@ -1408,7 +1440,8 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 </span>
               }
             />
-            {showManifestField && (
+            )}
+            {view === 'build' && showManifestField && (
               <div className="space-y-2">
                 <Label htmlFor="collection-manifest-url" className="text-sm font-medium">Manifest URL</Label>
                 <Input
@@ -1422,6 +1455,35 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             )}
           </header>
 
+          {view === 'featured' ? (
+          <div className="@container/featured min-h-0 overflow-y-auto px-4 py-4 @2xl:px-5">
+            {featuredPreview ? (
+              <FeaturedDetail
+                featured={featuredPreview.featured}
+                entries={featuredPreview.entries}
+                index={featuredPreview.index}
+                busy={importFetching}
+                onSelect={at => setFeaturedPreview(p => (p ? { ...p, index: at } : p))}
+                onBack={() => setFeaturedPreview(null)}
+                onImport={importFeaturedPreview}
+              >
+                <CollectionPreview
+                  entry={featuredPreview.entries[featuredPreview.index] ?? null}
+                  target={target}
+                  onEditFolder={() => undefined}
+                />
+              </FeaturedDetail>
+            ) : (
+              <FeaturedGallery
+                items={FEATURED_COLLECTIONS}
+                headroom={headroom}
+                busy={importFetching}
+                error={featuredError}
+                onLoad={featured => { void loadFeatured(featured); }}
+              />
+            )}
+          </div>
+          ) : (
           <div className="@container/panes flex min-h-0 flex-col gap-3 overflow-hidden px-5 py-4">
           <div className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border p-1 @2xl:hidden">
             {([
@@ -1465,39 +1527,6 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               <Button size="sm" variant="ghost" className="w-full" onClick={() => setImportOpen(true)}>
                 <Upload className="mr-1.5 h-4 w-4" /> Import JSON
               </Button>
-
-              {FEATURED_COLLECTIONS.length > 0 && (
-                <div className="rounded-md border">
-                  <button
-                    type="button"
-                    onClick={() => setFeaturedOpen(open => !open)}
-                    aria-expanded={featuredOpen}
-                    className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-sm hover:bg-accent/40"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="h-4 w-4 text-amber-400" />
-                      Featured
-                      <span className="text-xs text-muted-foreground">{FEATURED_COLLECTIONS.length}</span>
-                    </span>
-                    <ChevronRight
-                      className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${featuredOpen ? 'rotate-90' : ''}`}
-                    />
-                  </button>
-                  {featuredOpen && (
-                    <div className="border-t p-2">
-                      <FeaturedList
-                        items={FEATURED_COLLECTIONS}
-                        headroom={headroom}
-                        busy={importFetching}
-                        onLoad={featured => { void loadFeatured(featured); }}
-                      />
-                      {featuredError && (
-                        <p className="mt-2 text-xs text-amber-500">{featuredError}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {(entries.length > 6 || railQuery !== '') && (
                 <div className="relative">
@@ -1864,83 +1893,22 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             </div>
 
             <div
-              className={`min-h-0 min-w-0 overflow-y-auto @6xl/panes:block ${
-                featuredPreview ? 'block' : `@2xl:hidden ${mobilePane === 'preview' ? 'block' : 'hidden'}`
+              className={`min-h-0 min-w-0 overflow-y-auto @6xl/panes:block @2xl:hidden ${
+                mobilePane === 'preview' ? 'block' : 'hidden'
               }`}
             >
               <div className="sticky top-0 rounded-lg border p-4">
-                {featuredPreview ? (
-                  <>
-                    <div className="mb-3 space-y-1">
-                      <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="text-sm font-medium">{featuredPreview.featured.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          by {featuredPreview.featured.author}
-                        </span>
-                      </div>
-                      <p className="text-xs text-amber-500">Just looking. Nothing is imported yet.</p>
-                    </div>
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-xs text-muted-foreground">
-                        {featuredPreview.entries[featuredPreview.index]?.title || 'Untitled'}
-                        {featuredPreview.entries.length > 1 &&
-                          ` — ${featuredPreview.index + 1} of ${featuredPreview.entries.length}`}
-                      </span>
-                      {featuredPreview.entries.length > 1 && (
-                        <div className="flex shrink-0 gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            aria-label="Previous"
-                            disabled={featuredPreview.index === 0}
-                            onClick={() => setFeaturedPreview(p => (p ? { ...p, index: p.index - 1 } : p))}
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            aria-label="Next"
-                            disabled={featuredPreview.index >= featuredPreview.entries.length - 1}
-                            onClick={() => setFeaturedPreview(p => (p ? { ...p, index: p.index + 1 } : p))}
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    <CollectionPreview
-                      entry={featuredPreview.entries[featuredPreview.index] ?? null}
-                      target={target}
-                      onEditFolder={() => undefined}
-                    />
-                    <div className="mt-3 flex gap-2">
-                      <Button size="sm" className="flex-1" onClick={importFeaturedPreview}>
-                        Import this
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => { setFeaturedPreview(null); setMobilePane('entries'); }}
-                      >
-                        Dismiss
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span className="mb-3 block text-sm font-medium text-muted-foreground">Live preview</span>
-                    <CollectionPreview
-                      entry={selected}
-                      target={target}
-                      onEditFolder={folderId => selected && goToProblem(selected.id, folderId)}
-                    />
-                  </>
-                )}
+                <span className="mb-3 block text-sm font-medium text-muted-foreground">Live preview</span>
+                <CollectionPreview
+                  entry={selected}
+                  target={target}
+                  onEditFolder={folderId => selected && goToProblem(selected.id, folderId)}
+                />
               </div>
             </div>
           </div>
           </div>
+          )}
 
           <footer className="flex max-h-[18dvh] min-h-0 flex-col gap-3 overflow-y-auto border-t px-5 py-4 @2xl:max-h-[30dvh] @2xl:flex-row @2xl:flex-wrap @2xl:items-center @2xl:justify-end">
             <div className="min-w-0 space-y-1 @2xl:mr-auto">
