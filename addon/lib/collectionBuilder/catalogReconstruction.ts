@@ -557,16 +557,21 @@ export function nativeLabel(source: SourceDraft): string {
   return kind ? `${provider} ${kind}` : provider || 'NATIVE';
 }
 
-function readBlueprint(raw: unknown): CatalogBlueprint | null {
+function readBlueprint(raw: unknown, fallbackName = ''): CatalogBlueprint | null {
   if (!isRecord(raw)) return null;
   if (!trimmed(raw.id) || !trimmed(raw.type) || !trimmed(raw.source)) return null;
 
   // Older files still carry these, and rebuilding one gives the importer a dead catalog.
   if (isUserSpecific(trimmed(raw.id)) || isPrivateList(raw as any)) return null;
 
+  // An exporter with nothing better to write puts the id in the name field, which
+  // would otherwise become the catalog's name on import. The tile carrying it is
+  // the closest thing to a name the file has.
+  const declared = trimmed(raw.name);
+  const id = trimmed(raw.id);
   return {
     ...raw,
-    name: trimmed(raw.name) || trimmed(raw.id),
+    name: (declared && declared !== id ? declared : trimmed(fallbackName)) || declared || id,
     enabled: raw.enabled !== false,
     showInHome: Boolean(raw.showInHome),
   } as CatalogBlueprint;
@@ -574,15 +579,18 @@ function readBlueprint(raw: unknown): CatalogBlueprint | null {
 
 /**
  * Reads back what the writer put on one of our own addon sources: the source's own
- * catalog, then anything that catalog is composed of.
+ * catalog, then anything that catalog is composed of. *fallbackName* is the title
+ * of the tile carrying it, used when the file names a catalog after its own id.
  */
-export function fromEmbedded(raw: unknown): CatalogBlueprint[] {
+export function fromEmbedded(raw: unknown, fallbackName = ''): CatalogBlueprint[] {
   if (!isRecord(raw)) return [];
   const carrier = raw[BLUEPRINT_KEY];
   if (!isRecord(carrier)) return [];
 
   const blueprints: CatalogBlueprint[] = [];
-  const parent = readBlueprint(carrier.catalog);
+  // Only the source's own catalog: what it is composed of has its own names, and
+  // the tile names the whole, not each part.
+  const parent = readBlueprint(carrier.catalog, fallbackName);
   if (parent) blueprints.push(parent);
 
   if (Array.isArray(carrier.requires)) {

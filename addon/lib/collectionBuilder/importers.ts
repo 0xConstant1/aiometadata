@@ -163,12 +163,12 @@ function nuvioSource(
     return null;
   }
 
-  blueprints.push(...fromEmbedded(raw));
+  blueprints.push(...fromEmbedded(raw, folderTitle));
 
   return {
     catalogId,
     type,
-    name: trimmed(raw.catalogName || raw.title || raw.name) || catalogId,
+    name: trimmed(raw.catalogName || raw.title || raw.name) || trimmed(folderTitle) || catalogId,
     genre: trimmed(raw.genre) || null,
   };
 }
@@ -331,12 +331,12 @@ function fusionSource(
     return null;
   }
 
-  blueprints.push(...fromEmbedded(payload));
+  blueprints.push(...fromEmbedded(payload, label));
 
   return {
     catalogId: split.catalogId,
     type: split.type,
-    name: split.catalogId,
+    name: trimmed(label) || split.catalogId,
     genre: trimmed(payload.genre) || split.genre,
   };
 }
