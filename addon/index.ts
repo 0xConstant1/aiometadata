@@ -2881,6 +2881,94 @@ addon.get("/api/mdblist/discover/preview", async (req, res) => {
   }
 });
 
+/**
+ * First page of a catalog, trimmed to what a preview tile needs.
+ *
+ * The collection builder drew grey placeholders because the browser has no way to
+ * read a catalog: the addon routes answer a media client, and the providers behind
+ * them want keys the browser must never hold. This goes through getCatalog, so the
+ * page it returns is the same one the catalog route would serve and lands in the
+ * same cache rather than a second one.
+ */
+async function collectionPreviewHandler(req: any, res: any) {
+  try {
+    const input = { ...(req.query || {}), ...(req.body || {}) };
+    const userUUID = String(input.userUUID || '').trim();
+    const id = String(input.id || '').trim();
+    const type = String(input.type || '').trim();
+    const genre = String(input.genre || '').trim() || null;
+    const limit = Math.min(Math.max(parseInt(String(input.limit || '12'), 10) || 12, 1), 24);
+
+    if (!id || !type) {
+      return res.status(400).json({ error: "id and type are required" });
+    }
+
+    // A configuration that has never been saved has nothing to look up, which is
+    // the normal state for someone still setting one up. The instance's own keys
+    // stand in, so a catalog from a provider the instance can reach still previews.
+    const storedConfig = userUUID ? await loadConfigFromDatabase(userUUID) : null;
+    const config: any = storedConfig
+      ? { ...storedConfig, userUUID }
+      : { apiKeys: {}, catalogs: [], language: 'en-US' };
+
+    // Same resolution the catalog route runs: a display type renames the id with a
+    // suffix, and the type to fetch with is the config's own, not the manifest's.
+    const suffix = id.match(/_(movie|series|anime|all)$/)?.[1];
+    const stripped = id.replace(/_(movie|series|anime|all)$/, '');
+    const byId = (candidateId: string, candidateType?: string) => config.catalogs?.find((c: any) =>
+      c.id === candidateId && (candidateType ? c.type === candidateType : (c.type === type || c.displayType === type)));
+    const catalogConfig = byId(id)
+      || (stripped !== id && suffix ? byId(stripped, suffix) : null)
+      || (stripped !== id ? byId(stripped) : null);
+
+    // A catalog the builder has staged but not applied is not in the saved config,
+    // and that is exactly when a preview is worth most. The caller may hand over the
+    // definition it would create, which is used for this read only and never stored.
+    let effective = catalogConfig;
+    if (!effective && input.catalog && typeof input.catalog === 'object') {
+      const offered: any = input.catalog;
+      if (offered.id === id || offered.id === stripped) {
+        effective = { ...offered, enabled: true };
+        config.catalogs = [...(config.catalogs || []), effective];
+      }
+    }
+    if (!effective) {
+      return res.json({ metas: [], reason: storedConfig ? 'unsaved' : 'no-config' });
+    }
+
+    const result = await getCatalog(
+      effective.type,
+      config.language || 'en-US',
+      1,
+      effective.id,
+      genre,
+      config,
+      userUUID,
+      false
+    );
+
+    const metas = (result?.metas || []).slice(0, limit).map((meta: any) => ({
+      id: meta.id,
+      name: meta.name,
+      poster: meta.poster || null,
+      imdbRating: meta.imdbRating || null,
+    }));
+
+    consola.withTag('CollectionPreview').debug(
+      `${effective.id} (${effective.type}) -> ${metas.length} metas${catalogConfig ? '' : ' [staged]'}`
+    );
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.json({ metas });
+  } catch (error: any) {
+    consola.withTag('CollectionPreview').warn(`Preview failed: ${error.message}`);
+    return res.status(500).json({ error: "Could not read that catalog" });
+  }
+}
+
+addon.get("/api/collections/preview", collectionPreviewHandler);
+// POST carries the definition of a catalog that is staged but not yet saved.
+addon.post("/api/collections/preview", collectionPreviewHandler);
+
 // --- Trakt Proxy Endpoints ---
 // These proxy frontend Trakt calls through the backend rate limiter
 
