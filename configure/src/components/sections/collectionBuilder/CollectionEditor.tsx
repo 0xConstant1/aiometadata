@@ -114,7 +114,7 @@ export function CollectionEditor({
       </div>
 
       {nuvioBoxVisible && (
-      <div className="space-y-3 rounded-lg border border-cyan-800/40 bg-cyan-950/20 p-3">
+      <div className="space-y-3 rounded-xl border border-cyan-400/20 bg-cyan-500/10 p-3">
         <button
           type="button"
           onClick={() => setShowNuvioBox(!showNuvioBox)}
@@ -188,7 +188,7 @@ export function CollectionEditor({
       )}
 
       {nativeCount > 0 && (
-        <div className="flex flex-col gap-2 rounded-md border p-3 @2xl:flex-row @2xl:items-center @2xl:justify-between">
+        <div className="flex flex-col gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 @2xl:flex-row @2xl:items-center @2xl:justify-between">
           <p className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{nativeCount}</span> source
             {nativeCount === 1 ? '' : 's'} in this {terms.collection.toLowerCase()}{' '}
@@ -213,7 +213,7 @@ export function CollectionEditor({
         </div>
       )}
 
-      <div className="flex items-center justify-between border-t pt-3">
+      <div className="flex items-center justify-between border-t border-white/[0.06] pt-3">
         <Label className="text-sm font-medium">{terms.children}</Label>
         <Button variant="outline" size="sm" onClick={onAddFolder}>
           <FolderPlus className="mr-1.5 h-4 w-4" /> {terms.addChild}
@@ -224,7 +224,7 @@ export function CollectionEditor({
         <button
           type="button"
           onClick={onAddFolder}
-          className="w-full rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/40 hover:text-foreground"
+          className="w-full rounded-xl border border-dashed border-white/[0.08] px-3 py-8 text-center text-sm text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground active:bg-white/[0.06]"
         >
           Nothing here yet. Add a folder, then point it at one or more of your catalogs.
         </button>
@@ -256,7 +256,7 @@ export function CollectionEditor({
           onTitleFocused={onFolderTitleFocused}
         />
       ) : (
-        <p className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
+        <p className="rounded-xl border border-dashed border-white/[0.08] px-3 py-8 text-center text-sm text-muted-foreground">
           Pick a {terms.child.toLowerCase()} <span className="@2xl/panes:hidden">in the Entries tab</span><span className="hidden @2xl/panes:inline">on the left</span> to edit it.
         </p>
       )}

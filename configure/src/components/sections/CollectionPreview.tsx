@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 
+import { useConfig } from '@/contexts/ConfigContext';
 import { isNativeSource, nativeOrigin } from '@shared/catalogReconstruction';
 import type {
   BuilderEntry,
   ClassicRowDraft,
+  SourceDraft,
   CollectionDraft,
   FolderDraft,
   FusionAspectRatio,
@@ -38,6 +40,91 @@ const CARD_WIDTH: Record<FusionCardStyle, string> = {
 };
 
 const MAX_PREVIEW_CARDS = 10;
+
+interface PreviewMeta {
+  id: string;
+  name?: string;
+  poster?: string | null;
+}
+
+/** Enough of a catalog for the server to read one page of it. */
+export interface PendingCatalog {
+  id: string;
+  type: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Which config the page is editing. `auth.userUUID` is only set once a config has
+ * been explicitly loaded or saved, so on a configure URL it is usually null even
+ * though the path names the config. The server resolves an alias the same way it
+ * does for the manifest route.
+ */
+function configIdFromUrl(): string | null {
+  try {
+    const parts = window.location.pathname.split('/');
+    const at = parts.findIndex(part => part === 'stremio');
+    const candidate = at !== -1 ? parts[at + 1] : '';
+    return candidate && /^[A-Za-z0-9_-]{3,}$/.test(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The first page of the catalog a row points at, so the preview shows what the row
+ * will actually hold. Falls back to placeholders while loading, for a catalog that
+ * is only staged, and on any failure — the preview is decoration, never a blocker.
+ */
+function useCatalogPeek(
+  source: SourceDraft | null | undefined,
+  userUUID: string | null,
+  want: number,
+  pendingCatalogs?: PendingCatalog[]
+) {
+  const [metas, setMetas] = useState<PreviewMeta[]>([]);
+  const catalogId = source && !isNativeSource(source) ? source.catalogId : null;
+  const type = source?.type ?? null;
+  const genre = source?.genre ?? null;
+
+  // The definition travels with the request rather than being looked up server
+  // side: it may be staged by an import, or belong to a configuration that has
+  // never been saved, and neither is in the database.
+  const { config } = useConfig();
+  const known = catalogId
+    ? (config.catalogs || []).find(catalog => catalog.id === catalogId)
+      || pendingCatalogs?.find(catalog => catalog.id === catalogId)
+    : undefined;
+  const stagedKey = known ? JSON.stringify(known) : '';
+
+  useEffect(() => {
+    if (!catalogId || !type || !stagedKey) {
+      setMetas([]);
+      return;
+    }
+    let cancelled = false;
+    const body: Record<string, unknown> = { id: catalogId, type, limit: want };
+    if (userUUID) body.userUUID = userUUID;
+    if (genre) body.genre = genre;
+    if (stagedKey) body.catalog = JSON.parse(stagedKey);
+
+    fetch('/api/collections/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(response => (response.ok ? response.json() : null))
+      .then(payload => {
+        if (!cancelled) setMetas(Array.isArray(payload?.metas) ? payload.metas : []);
+      })
+      .catch(() => {
+        if (!cancelled) setMetas([]);
+      });
+    return () => { cancelled = true; };
+  }, [catalogId, type, genre, userUUID, want, stagedKey]);
+
+  return metas;
+}
 
 function initialsFor(title: string): string {
   const words = title.trim().split(/\s+/).filter(Boolean);
@@ -368,10 +455,16 @@ function FusionCollectionStage({
   );
 }
 
-function ClassicRowStage({ entry, target }: { entry: ClassicRowDraft; target: Target }) {
+function ClassicRowStage({ entry, target, pendingCatalogs }: {
+  entry: ClassicRowDraft;
+  target: Target;
+  pendingCatalogs?: PendingCatalog[];
+}) {
   const cards = Math.min(Math.max(entry.limit, 1), MAX_PREVIEW_CARDS);
   const extra = Math.max(entry.limit - cards, 0);
   const background = (entry.backgroundImageURL || '').trim();
+  const { auth } = useConfig();
+  const items = useCatalogPeek(entry.source, auth.userUUID || configIdFromUrl(), cards, pendingCatalogs);
 
   return (
     <div className={target === 'nuvio' ? 'space-y-2' : ''}>
@@ -409,6 +502,15 @@ function ClassicRowStage({ entry, target }: { entry: ClassicRowDraft; target: Ta
                   className="relative w-full overflow-hidden rounded-md bg-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
                   style={{ aspectRatio: CARD_ASPECT[entry.aspectRatio] }}
                 >
+                  {items[index]?.poster && (
+                    <img
+                      src={items[index].poster as string}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  )}
                   {entry.badges.ratings && (
                     <span className="absolute bottom-1 left-1 h-3 w-8 rounded-full bg-white/25" />
                   )}
@@ -435,14 +537,17 @@ export function CollectionPreview({
   entry,
   target,
   onEditFolder,
+  pendingCatalogs,
 }: {
   entry: BuilderEntry | null;
   target: Target;
   onEditFolder: (folderId: string) => void;
+  /** Catalogs an apply would create, so a staged row can still be previewed. */
+  pendingCatalogs?: PendingCatalog[];
 }) {
   if (!entry) {
     return (
-      <div className="rounded-md border border-dashed px-3 py-10 text-center text-sm text-muted-foreground">
+      <div className="rounded-xl border border-dashed border-white/[0.08] px-3 py-10 text-center text-sm text-muted-foreground">
         Select something <span className="@2xl/panes:hidden">in the Entries tab</span><span className="hidden @2xl/panes:inline">on the left</span> to preview it.
       </div>
     );
@@ -457,7 +562,7 @@ export function CollectionPreview({
           <FusionCollectionStage entry={entry} onEditFolder={onEditFolder} />
         )
       ) : (
-        <ClassicRowStage entry={entry} target={target} />
+        <ClassicRowStage entry={entry} target={target} pendingCatalogs={pendingCatalogs} />
       )}
       <PreviewCaption />
     </div>

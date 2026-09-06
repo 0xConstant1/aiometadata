@@ -11,14 +11,14 @@ interface FeaturedGalleryProps {
   onLoad: (featured: FeaturedCollection) => void;
 }
 
-const CHIP = 'rounded-full border px-2.5 py-1 text-xs leading-4 whitespace-nowrap';
+const CHIP = 'rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-xs leading-4 whitespace-nowrap';
 
 export function FeaturedGallery({ items, headroom, busy, error, onLoad }: FeaturedGalleryProps) {
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 px-1 pb-6">
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-5 px-1 pb-6">
       <div className="space-y-1">
         <h2 className="flex items-center gap-2 text-base font-semibold">
-          <Sparkles className="h-5 w-5 text-amber-400" />
+          <Sparkles className="h-5 w-5 text-sky-300" />
           Featured collections
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -29,16 +29,18 @@ export function FeaturedGallery({ items, headroom, busy, error, onLoad }: Featur
 
       {error && <p className="text-sm text-amber-500">{error}</p>}
 
-      <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr))]">
+      <div className="grid min-w-0 gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr))]">
         {items.map(featured => {
           const overBudget = featured.catalogs > headroom;
           return (
             <div
               key={featured.id}
-              className="flex flex-col overflow-hidden rounded-xl border transition-colors hover:border-amber-500/40"
+              className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-card/80 transition-colors hover:border-sky-400/30"
             >
-              <div className="flex items-start gap-3 border-b bg-gradient-to-br from-amber-500/10 to-transparent p-4">
-                <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+              <div className="flex items-start gap-3 bg-gradient-to-br from-sky-500/10 to-transparent p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-300 ring-1 ring-sky-400/20">
+                  <Sparkles className="h-5 w-5" />
+                </div>
                 <div className="min-w-0">
                   <p className="truncate font-medium">{featured.name}</p>
                   <a
@@ -56,12 +58,12 @@ export function FeaturedGallery({ items, headroom, busy, error, onLoad }: Featur
                 <p className="text-sm text-muted-foreground">{featured.summary}</p>
 
                 <div className="flex flex-wrap gap-1.5">
-                  <span className={`${CHIP} border-border text-muted-foreground`}>
+                  <span className={`${CHIP} text-muted-foreground`}>
                     {featured.detail.split(',')[0]}
                   </span>
                   <span
                     className={`${CHIP} ${
-                      overBudget ? 'border-amber-600/50 text-amber-500' : 'border-border text-muted-foreground'
+                      overBudget ? 'border-amber-400/30 text-amber-500' : 'text-muted-foreground'
                     }`}
                     title={
                       overBudget
@@ -73,7 +75,7 @@ export function FeaturedGallery({ items, headroom, busy, error, onLoad }: Featur
                   </span>
                   {featured.classicRows ? (
                     <span
-                      className={`${CHIP} border-border text-muted-foreground`}
+                      className={`${CHIP} text-muted-foreground`}
                       title="Nuvio has no equivalent and skips them; Fusion keeps them."
                     >
                       {featured.classicRows} classic rows

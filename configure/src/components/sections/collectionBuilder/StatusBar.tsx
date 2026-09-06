@@ -35,7 +35,7 @@ export function StatusBar({
           type="button"
           onClick={() => setOpen(!open)}
           disabled={rows.length === 0}
-          className={`flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-accent/50 disabled:pointer-events-none ${tone}`}
+          className={`flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white/[0.04] active:bg-white/[0.06] disabled:pointer-events-none ${tone}`}
           aria-expanded={open}
         >
           {blocking > 0 || warnings > 0
@@ -50,7 +50,7 @@ export function StatusBar({
       </div>
 
       {open && rows.length > 0 && (
-        <ul className="max-h-[min(14rem,25dvh)] space-y-1 overflow-y-auto rounded-md border bg-muted/40 p-2 text-xs">
+        <ul className="space-y-1 rounded-xl bg-white/[0.03] p-2 text-xs">
           {rows.map(row => {
             const rowTone = row.severity === 'blocking'
               ? 'text-red-400'
@@ -61,7 +61,7 @@ export function StatusBar({
                   <button
                     type="button"
                     onClick={() => { onGoTo(row.entryId, row.folderId); setOpen(false); }}
-                    className={`w-full rounded px-1.5 py-1 text-left hover:bg-accent/60 hover:text-foreground ${rowTone}`}
+                    className={`w-full rounded px-1.5 py-1 text-left hover:bg-white/[0.06] hover:text-foreground ${rowTone}`}
                   >
                     {row.message}
                   </button>

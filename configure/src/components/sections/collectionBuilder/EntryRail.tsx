@@ -1,3 +1,4 @@
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { AlertTriangle, ChevronRight, GripVertical, Tv, type LucideIcon } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -68,6 +69,37 @@ export function SortableTreeRow({
     zIndex: isDragging ? 50 : 'auto',
   };
 
+  /**
+   * Dragging is on the grip alone, so a press on the row itself is free to open
+   * the same menu the dots do. A right click gets it too, and preventing the
+   * default stops the browser's own callout from covering it on a phone.
+   */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const pressTimer = useRef<number | null>(null);
+  const pressFrom = useRef<{ x: number; y: number } | null>(null);
+
+  const endPress = () => {
+    if (pressTimer.current !== null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+    pressFrom.current = null;
+  };
+
+  const beginPress = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse') return;
+    endPress();
+    pressFrom.current = { x: event.clientX, y: event.clientY };
+    pressTimer.current = window.setTimeout(() => setMenuOpen(true), 450);
+  };
+
+  // A press that turns into a scroll is not a press.
+  const trackPress = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const from = pressFrom.current;
+    if (!from) return;
+    if (Math.abs(event.clientX - from.x) > 10 || Math.abs(event.clientY - from.y) > 10) endPress();
+  };
+
   // Reserved tracks rather than conditional rendering, so revealing a control
   // on hover does not shift the name it sits beside. Where nothing can hover,
   // nothing is hidden.
@@ -78,12 +110,17 @@ export function SortableTreeRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group grid grid-cols-[1.25rem_1.25rem_auto_minmax(0,1fr)_auto_1.25rem] items-center gap-1.5 rounded-md pr-1 text-sm transition-colors ${
-        depth === 0 ? 'h-9 pl-1' : 'h-8 pl-7'
+      onPointerDown={beginPress}
+      onPointerMove={trackPress}
+      onPointerUp={endPress}
+      onPointerCancel={endPress}
+      onContextMenu={event => { event.preventDefault(); setMenuOpen(true); }}
+      className={`group grid select-none grid-cols-[1.25rem_1.25rem_auto_minmax(0,1fr)_auto_1.25rem] items-center gap-1.5 rounded-lg pr-1 text-sm transition-colors ${
+        depth === 0 ? 'min-h-[44px] pl-1 @2xl:h-9 @2xl:min-h-0' : 'min-h-[40px] pl-7 @2xl:h-8 @2xl:min-h-0'
       } ${
         isActive
-          ? 'bg-primary/15 ring-1 ring-primary/50'
-          : isAncestor ? 'bg-accent/40' : 'hover:bg-accent/50'
+          ? 'bg-primary/15'
+          : isAncestor ? 'bg-white/[0.04]' : 'hover:bg-white/[0.04] active:bg-white/[0.06]'
       }`}
     >
       <button
@@ -144,6 +181,8 @@ export function SortableTreeRow({
 
       <div className={reveal}>
         <RowActions
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
           label={title || placeholder}
           canMoveUp={canMoveUp}
           canMoveDown={canMoveDown}

@@ -207,6 +207,19 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const { config, setConfig, auth, maxCatalogs, collectionImportCatalogCap, refreshInstanceLimits } = useConfig();
 
   const [entries, setEntries] = useState<BuilderEntry[]>([]);
+  /**
+   * A new entry being composed. It lives in `entries` so the editor, pickers and
+   * folder controls work on it unchanged, and is kept out of everything derived
+   * until it is added: the rail, the exports, the catalogs an apply would create
+   * and the unsaved-changes check.
+   */
+  const [draftId, setDraftId] = useState<string | null>(null);
+
+  const committedEntries = useMemo(
+    () => (draftId ? entries.filter(entry => entry.id !== draftId) : entries),
+    [entries, draftId]
+  );
+
   /** Entries as they stood when opened or last applied, to spot real edits. */
   const [baseline, setBaseline] = useState('[]');
   const [selection, setSelection] = useState<{ entryId: string; folderId: string | null }>(
@@ -214,6 +227,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   );
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('design');
+  const [exportOpen, setExportOpen] = useState(false);
   // Only consulted below @2xl, where the panes cannot sit side by side.
   const [mobilePane, setMobilePane] = useState<'entries' | 'editor' | 'preview'>('entries');
   const [view, setView] = useState<'build' | 'featured'>('build');
@@ -284,6 +298,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     // This dialog stays mounted when closed, so a preview left open would still
     // be sitting there on the way back in.
     setFeaturedPreview(null);
+    setDraftId(null);
   }, [isOpen, refreshInstanceLimits]);
 
   useEffect(() => {
@@ -346,12 +361,12 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   );
 
   const nuvioResult = useMemo(
-    () => toNuvioCollections(entries, identity, blueprints, { usePlaceholder }),
-    [entries, identity, blueprints, usePlaceholder]
+    () => toNuvioCollections(committedEntries, identity, blueprints, { usePlaceholder }),
+    [committedEntries, identity, blueprints, usePlaceholder]
   );
   const fusionResult = useMemo(
-    () => toFusionWidgets(entries, identity, { usePlaceholder, blueprints }),
-    [entries, identity, usePlaceholder, blueprints]
+    () => toFusionWidgets(committedEntries, identity, { usePlaceholder, blueprints }),
+    [committedEntries, identity, usePlaceholder, blueprints]
   );
 
   const json = useMemo(
@@ -362,8 +377,8 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const notes: ExportNote[] = target === 'nuvio' ? nuvioResult.notes : fusionResult.notes;
 
   const unknownSources = useMemo(
-    () => findUnknownSources(entries, sourceList.catalogs),
-    [entries, sourceList.catalogs]
+    () => findUnknownSources(committedEntries, sourceList.catalogs),
+    [committedEntries, sourceList.catalogs]
   );
   const [confirmApply, setConfirmApply] = useState(false);
   const [pendingMode, setPendingMode] = useState<'apply' | 'save'>('apply');
@@ -381,7 +396,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     wasSaving.current = isSaving;
   }, [isSaving]);
 
-  const builderJson = useMemo(() => JSON.stringify(entries), [entries]);
+  const builderJson = useMemo(() => JSON.stringify(committedEntries), [committedEntries]);
   const savedJson = useMemo(() => JSON.stringify(config.collections || []), [config.collections]);
   const stage = useMemo(
     () => deriveSaveStage({ builderJson, configJson: savedJson, configDirty }),
@@ -412,7 +427,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const selected = entries.find(entry => entry.id === selectedId) || null;
 
   const visibleTree = useMemo(
-    () => filterEntryTree(entries, railQuery).map(({ entry, matchedFolderIds }) => ({
+    () => filterEntryTree(committedEntries, railQuery).map(({ entry, matchedFolderIds }) => ({
       entry,
       // Reorder targets have to come from the full list, or a move made while
       // filtering would land in the wrong slot.
@@ -423,7 +438,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
         : [],
       forceExpand: matchedFolderIds !== null,
     })),
-    [entries, railQuery]
+    [committedEntries, railQuery]
   );
 
   const railItemIds = useMemo(() => {
@@ -450,10 +465,27 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
   const addEntry = (entry: BuilderEntry) => {
     setEntries(prev => [...prev, entry]);
+    setDraftId(entry.id);
     setSelectedId(entry.id);
     setActiveTab('design');
     setTitleFocusId(entry.id);
     setMobilePane('editor');
+  };
+
+  const commitDraft = () => {
+    if (!draftId) return;
+    setDraftId(null);
+    setMobilePane('entries');
+  };
+
+  const discardDraft = () => {
+    if (!draftId) return;
+    const id = draftId;
+    setDraftId(null);
+    setEntries(prev => prev.filter(entry => entry.id !== id));
+    setSelectedId(committedEntries[0]?.id ?? null);
+    setTitleFocusId(null);
+    setMobilePane('entries');
   };
 
   /**
@@ -471,6 +503,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   };
 
   const removeEntry = (id: string) => {
+    if (id === draftId) { discardDraft(); return; }
     const at = entries.findIndex(entry => entry.id === id);
     if (at < 0) return;
     const doomed = entries[at];
@@ -786,14 +819,14 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
   const applyToConfig = (options: { withCatalogs?: boolean; thenSave?: boolean } = {}) => {
     const addCatalogs = options.withCatalogs !== false && pendingCount > 0;
-    const applied = clone(entries);
+    const applied = clone(committedEntries);
 
     setConfig(prev => ({
       ...prev,
       collections: applied,
       ...(addCatalogs && { catalogs: applyCatalogAdditions(prev.catalogs || [], pendingAdditions) }),
     }));
-    setBaseline(JSON.stringify(entries));
+    setBaseline(JSON.stringify(committedEntries));
     if (addCatalogs) setStagedBlueprints([]);
 
     const catalogNote = addCatalogs
@@ -807,7 +840,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     }
 
     toast.success(
-      (entries.length === 1 ? '1 entry applied.' : `${entries.length} entries applied.`) + catalogNote,
+      (applied.length === 1 ? '1 entry applied.' : `${applied.length} entries applied.`) + catalogNote,
       options.thenSave
         ? { description: `Not saved: ${missingKeyNames.join(', ')} still needs filling in on the Configuration tab.` }
         : undefined
@@ -973,9 +1006,9 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
   const importCounts = useMemo(
     () => (importPreview
-      ? countImport(importPreview.entries, entries)
+      ? countImport(importPreview.entries, committedEntries)
       : null),
-    [importPreview, entries]
+    [importPreview, committedEntries]
   );
 
   // Realigned first, so the panel counts what the import will add, not what it spells.
@@ -1056,9 +1089,9 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     [sourceList.catalogs, pendingKeys]
   );
 
-  const issues = useMemo(() => findSourceIssues(entries, issueCatalogs), [entries, issueCatalogs]);
+  const issues = useMemo(() => findSourceIssues(committedEntries, issueCatalogs), [committedEntries, issueCatalogs]);
 
-  const problemTargets = useMemo(() => buildProblemTargets(entries), [entries]);
+  const problemTargets = useMemo(() => buildProblemTargets(committedEntries), [committedEntries]);
 
   const countNative = useCallback((entry: BuilderEntry) => {
     const sources = entry.kind === 'classicRow'
@@ -1167,7 +1200,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     );
   }, [target, nuvioResult, fusionResult]);
 
-  const unsupportedRows = useMemo(() => unsupportedClassicRows(entries), [entries]);
+  const unsupportedRows = useMemo(() => unsupportedClassicRows(committedEntries), [committedEntries]);
 
   const unsupportedById = useMemo(
     () => new Map(unsupportedRows.map(row => [row.id, unsupportedRowMessage(row.type, target)])),
@@ -1175,13 +1208,13 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   );
 
   const strandedNative = useMemo(
-    () => entries.reduce((sum, entry) => sum + countStranded(entry), 0),
-    [entries, countStranded]
+    () => committedEntries.reduce((sum, entry) => sum + countStranded(entry), 0),
+    [committedEntries, countStranded]
   );
 
   const totalNative = useMemo(
-    () => entries.reduce((sum, entry) => sum + countNative(entry), 0),
-    [entries, countNative]
+    () => committedEntries.reduce((sum, entry) => sum + countNative(entry), 0),
+    [committedEntries, countNative]
   );
 
   const strandedTarget = useMemo(() => (target === 'fusion'
@@ -1297,6 +1330,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     setImportOpen(false);
     setImportText('');
     setImportPreview(null);
+    setDraftId(null);
     // The pane was showing the design being considered; it has now been taken,
     // so it goes back to previewing whatever is selected. On a phone that pane
     // was the whole screen, so land on the list of what just arrived.
@@ -1376,12 +1410,146 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
   return (
     <>
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" /> Export &amp; share
+            </DialogTitle>
+            <DialogDescription>
+              Every collection you have built, as {target === 'nuvio' ? 'Nuvio' : 'Fusion'} JSON.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+                  <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-500/10 p-3 text-xs">
+                    <Info className="mt-px h-4 w-4 shrink-0 text-sky-400" />
+                    <div className="space-y-1">
+                      <p className="font-medium text-sky-200">
+                        Saving updates your addon, not {target === 'fusion' ? 'Fusion' : 'Nuvio'}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Nothing is pushed to your app. Import the file or the link below again for these edits to
+                        show up there.
+                      </p>
+                      <p className="text-muted-foreground">
+                        {target === 'fusion'
+                          ? "Fusion adds on import rather than matching what it already has, so re-importing everything gives you duplicate widgets. Delete the widgets you changed first, then tick just those in Fusion's import list. They come back at the end, so you may need to reorder them."
+                          : 'Editing a collection you imported keeps its id, so Nuvio updates the one you already have instead of adding a second copy. Building a new collection from scratch mints a new id and arrives alongside the old one.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${target === 'nuvio' ? NUVIO_CHIP : FUSION_CHIP}`}
+                    >
+                      {target === 'nuvio' ? 'Nuvio collections' : 'Fusion widgets'}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">Target and manifest URL are in the header</span>
+                    <div className="ml-auto flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={handleCopy}>
+                      {copied ? <Check className="mr-1.5 h-4 w-4" /> : <Copy className="mr-1.5 h-4 w-4" />}
+                      Copy
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleDownload}>
+                      <Download className="mr-1.5 h-4 w-4" /> Download
+                    </Button>
+                    </div>
+                  </div>
+
+
+                  <div className="space-y-1.5 rounded-xl border border-primary/25 bg-primary/10 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <LinkIcon className="h-4 w-4 text-primary" />
+                      <Label htmlFor="collection-hosted-url" className="text-xs font-medium">Import by link</Label>
+                      <span className="text-xs text-muted-foreground">
+                        {target === 'fusion'
+                          ? 'Paste this straight into Fusion instead of the JSON'
+                          : 'Serves the same JSON live, if your app can read a URL'}
+                      </span>
+                    </div>
+                    {hostedUrl ? (
+                      <>
+                        <div className="flex gap-2">
+                          <Input id="collection-hosted-url" readOnly value={hostedUrl} className="h-9 font-mono text-xs" onClick={e => (e.target as HTMLInputElement).select()} />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0"
+                            onClick={handleCopyUrl}
+                            aria-label="Copy the import link"
+                          >
+                            {copiedUrl ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        <p className="flex items-start gap-1.5 text-xs text-amber-500">
+                          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                          {stage === 'saved'
+                            ? 'The link serves what is on the server, which is these edits.'
+                            : 'The link serves what is on the server, so save before you re-import it.'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          It rebuilds on every request, so re-importing after saving picks up your edits. Anyone with
+                          the link can read it, same as your manifest URL{usePlaceholder
+                            ? ', and it always carries your real URL rather than the blanked copy'
+                            : ''}.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Save first. The link is served per user, so it needs a saved config to read.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="collection-use-placeholder"
+                        checked={usePlaceholder}
+                        onCheckedChange={setUsePlaceholder}
+                      />
+                      <Label htmlFor="collection-use-placeholder" className="text-xs font-medium">
+                        Make a copy for someone else
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Your addon link contains your user ID, and this file embeds it on every row. Anyone who has it
+                      can read that config. Turn this on to blank it out before posting the file publicly. Whoever
+                      imports it here gets their own link filled in automatically, so they end up with your layout
+                      pointing at their catalogs.
+                    </p>
+                    {usePlaceholder && (
+                      <p className="flex items-start gap-1.5 text-xs text-amber-500">
+                        <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                        This copy is for handing out, not for your own use. It has no addon link in it, so
+                        importing it back here is what puts one in.
+                      </p>
+                    )}
+                  </div>
+
+                  <textarea
+                    readOnly
+                    value={json}
+                    className="h-56 w-full resize-none rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 font-mono text-xs focus:outline-none sm:h-80"
+                    onClick={event => (event.target as HTMLTextAreaElement).select()}
+                  />
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isOpen} onOpenChange={open => !open && requestClose()}>
         <DialogContent
-          className="@container grid h-[100dvh] max-h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-none p-0 sm:h-[92vh] sm:p-0 sm:max-h-[92vh] sm:w-[min(96vw,120rem)] sm:rounded-2xl"
+          className="@container grid h-[100dvh] max-h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none sm:h-[92vh] sm:max-h-[92vh] sm:w-[min(96vw,120rem)] sm:rounded-2xl sm:border sm:p-0 sm:shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
           onInteractOutside={event => event.preventDefault()}
         >
-          <header className="flex max-h-[22dvh] min-h-0 flex-col gap-3 overflow-y-auto border-b px-5 py-4 @2xl:max-h-[40dvh]">
+          <header className="flex min-h-0 flex-col border-b border-white/[0.08]">
+            <div
+              className={`flex shrink-0 flex-col gap-3 px-5 pt-4 ${
+                view === 'build' && mobilePane === 'entries' ? '' : 'pb-4'
+              } ${view === 'build' ? '@2xl:pb-0' : ''}`}
+            >
             <div className="flex flex-wrap items-center gap-3">
               <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
                 <Layers className="h-5 w-5" />
@@ -1390,14 +1558,18 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               <DialogDescription className="sr-only">
                 Arrange your catalogs once, then export as Nuvio collection JSON or Fusion widget JSON.
               </DialogDescription>
-              <div className="flex gap-1 rounded-lg border p-1">
+              <div
+                className={`gap-1 rounded-xl bg-white/[0.02] p-1 @2xl:flex ${
+                  mobilePane === 'entries' ? 'flex' : 'hidden'
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => setTarget('nuvio')}
-                  className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm transition-colors ${
+                  className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm transition-colors ${
                     target === 'nuvio'
-                      ? 'bg-cyan-900/50 text-cyan-200 ring-1 ring-cyan-500/60'
-                      : 'text-muted-foreground hover:bg-accent/50'
+                      ? 'bg-cyan-500/15 text-cyan-200'
+                      : 'text-muted-foreground hover:bg-white/[0.04] active:bg-white/[0.06]'
                   }`}
                 >
                   <Tv className="h-4 w-4" /> Nuvio
@@ -1405,15 +1577,26 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 <button
                   type="button"
                   onClick={() => setTarget('fusion')}
-                  className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm transition-colors ${
+                  className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm transition-colors ${
                     target === 'fusion'
-                      ? 'bg-violet-900/50 text-violet-200 ring-1 ring-violet-500/60'
-                      : 'text-muted-foreground hover:bg-accent/50'
+                      ? 'bg-violet-500/15 text-violet-200'
+                      : 'text-muted-foreground hover:bg-white/[0.04] active:bg-white/[0.06]'
                   }`}
                 >
                   <Rows3 className="h-4 w-4" /> Fusion
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => setExportOpen(true)}
+                aria-label="Export and share"
+                className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm @2xl:px-3 text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground active:bg-white/[0.06] @2xl:flex ${
+                  mobilePane === 'entries' ? 'flex' : 'hidden'
+                }`}
+              >
+                <Upload className="h-4 w-4" />
+                <span className="hidden @2xl:inline">Export &amp; share</span>
+              </button>
               <Badge
                 variant="outline"
                 className={`ml-auto mr-8 h-7 px-2.5 text-xs ${
@@ -1430,7 +1613,11 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             </div>
 
             {FEATURED_COLLECTIONS.length > 0 && (
-              <div className="flex w-full gap-1 rounded-lg border p-1 @2xl:w-fit">
+              <div
+                className={`w-full gap-1 rounded-xl bg-white/[0.02] p-1 @2xl:flex @2xl:w-fit ${
+                  mobilePane === 'entries' ? 'flex' : 'hidden'
+                }`}
+              >
                 {([
                   ['build', 'Build', Layers],
                   ['featured', 'Featured', Sparkles],
@@ -1440,13 +1627,13 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                     type="button"
                     onClick={() => setView(id)}
                     aria-pressed={view === id}
-                    className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-sm transition-colors @2xl:h-8 @2xl:min-h-0 @2xl:flex-none @2xl:justify-start ${
+                    className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm transition-colors @2xl:h-8 @2xl:min-h-0 @2xl:flex-none @2xl:justify-start ${
                       view === id
-                        ? 'bg-accent text-foreground ring-1 ring-border'
-                        : 'text-muted-foreground hover:bg-accent/50'
+                        ? 'bg-white/[0.08] text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-white/[0.04] active:bg-white/[0.06]'
                     }`}
                   >
-                    <Icon className={`h-4 w-4 ${id === 'featured' ? 'text-amber-400' : ''}`} />
+                    <Icon className={`h-4 w-4 ${id === 'featured' ? 'text-sky-300' : ''}`} />
                     {label}
                     {id === 'featured' && (
                       <span className="text-xs text-muted-foreground">{FEATURED_COLLECTIONS.length}</span>
@@ -1456,7 +1643,14 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               </div>
             )}
 
+            </div>
+
             {view === 'build' && (
+            <div
+              className={`max-h-[22dvh] min-h-0 min-w-0 flex-col gap-3 overflow-y-auto px-5 pb-4 pt-3 @2xl:flex @2xl:max-h-[34dvh] ${
+                mobilePane === 'entries' ? 'flex' : 'hidden'
+              }`}
+            >
             <StatusBar
               rows={statusRows}
               onGoTo={goToProblem}
@@ -1474,8 +1668,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 </span>
               }
             />
-            )}
-            {view === 'build' && showManifestField && (
+            {showManifestField && (
               <div className="space-y-2">
                 <Label htmlFor="collection-manifest-url" className="text-sm font-medium">Manifest URL</Label>
                 <Input
@@ -1487,10 +1680,12 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 />
               </div>
             )}
+            </div>
+            )}
           </header>
 
           {view === 'featured' ? (
-          <div className="@container/featured min-h-0 overflow-y-auto px-4 py-4 @2xl:px-5">
+          <div className="@container/featured min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-4 @2xl:px-5">
             {featuredPreview ? (
               <FeaturedDetail
                 featured={featuredPreview.featured}
@@ -1519,7 +1714,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
           </div>
           ) : (
           <div className="@container/panes flex min-h-0 flex-col gap-3 overflow-hidden px-5 py-4">
-          <div className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border p-1 @2xl:hidden">
+          <div className="grid shrink-0 grid-cols-3 gap-1 rounded-xl bg-white/[0.02] p-1 @2xl:hidden">
             {([
               ['entries', 'Entries'],
               ['editor', 'Editor'],
@@ -1530,8 +1725,10 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 type="button"
                 onClick={() => setMobilePane(pane)}
                 aria-pressed={mobilePane === pane}
-                className={`min-h-[44px] rounded-md px-3 text-sm transition-colors ${
-                  mobilePane === pane ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'
+                className={`min-h-[44px] rounded-lg px-3 text-sm transition-colors ${
+                  mobilePane === pane
+                    ? 'bg-white/[0.08] text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-white/[0.04] active:bg-white/[0.06]'
                 }`}
               >
                 {label}
@@ -1539,12 +1736,12 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             ))}
           </div>
           <div className="grid min-h-0 flex-1 gap-4 @2xl:grid-cols-[20rem_minmax(0,1fr)] @6xl:grid-cols-[20rem_minmax(0,1fr)_30rem]">
-            <div className={`min-h-0 flex-col gap-2 overflow-y-auto pr-1 @2xl:flex ${mobilePane === 'entries' ? 'flex' : 'hidden'}`}>
+            <div className={`min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1 @2xl:flex ${mobilePane === 'entries' ? 'flex' : 'hidden'}`}>
               <div className="flex gap-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="flex-1 border-cyan-700/50 hover:bg-cyan-900/30"
+                  className="flex-1 border-0 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 active:bg-cyan-500/25"
                   onClick={() => addEntry(createCollectionDraft())}
                 >
                   <Layers className="mr-1.5 h-4 w-4 text-cyan-400" /> {terms.collection}
@@ -1552,7 +1749,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 <Button
                   size="sm"
                   variant="outline"
-                  className="flex-1 border-violet-700/50 hover:bg-violet-900/30"
+                  className="flex-1 border-0 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20 active:bg-violet-500/25"
                   onClick={() => addEntry(createClassicRowDraft())}
                 >
                   <Rows3 className="mr-1.5 h-4 w-4 text-violet-400" /> {terms.row}
@@ -1562,20 +1759,20 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 <Upload className="mr-1.5 h-4 w-4" /> Import JSON
               </Button>
 
-              {(entries.length > 6 || railQuery !== '') && (
+              {(committedEntries.length > 6 || railQuery !== '') && (
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={railQuery}
                     onChange={event => setRailQuery(event.target.value)}
-                    placeholder={`Filter ${entries.length} entries`}
+                    placeholder={`Filter ${committedEntries.length} entries`}
                     className="h-8 pl-8 text-xs"
                   />
                 </div>
               )}
 
-              {entries.length === 0 && (
-                <div className="space-y-1.5 rounded-md border border-dashed p-2">
+              {committedEntries.length === 0 && (
+                <div className="space-y-1.5 rounded-xl border border-dashed border-white/[0.08] p-2">
                   <p className="px-1 text-center text-xs text-muted-foreground">
                     {starters.length > 0 ? 'Nothing yet. Start from one of these:' : 'Nothing yet.'}
                   </p>
@@ -1589,7 +1786,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                         setSelectedId(built[0]?.id ?? null);
                         toast.success(`Started from "${template.label}"`);
                       }}
-                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:border-primary/50 hover:bg-accent/40"
+                      className="w-full rounded-lg bg-white/[0.03] px-2 py-2 text-left text-xs transition-colors hover:bg-white/[0.06] active:bg-white/[0.08]"
                     >
                       <span className="block font-medium">{template.label}</span>
                       <span className="block text-xs text-muted-foreground">{template.hint}</span>
@@ -1601,7 +1798,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                     className={`w-full rounded-md px-2 text-center text-xs transition-colors ${
                       starters.length > 0
                         ? 'py-1.5 text-muted-foreground hover:text-foreground'
-                        : 'border py-3 font-medium hover:border-primary/50 hover:bg-accent/40'
+                        : 'bg-white/[0.03] py-3 font-medium hover:bg-white/[0.06] active:bg-white/[0.08]'
                     }`}
                   >
                     {starters.length > 0 ? 'or start empty' : 'Start with a collection'}
@@ -1646,7 +1843,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                                 })
                               : undefined}
                             canMoveUp={index > 0}
-                            canMoveDown={index < entries.length - 1}
+                            canMoveDown={index < committedEntries.length - 1}
                             onMoveTo={position => moveEntryTo(index, position)}
                             onDuplicate={() => duplicateEntry(entry.id)}
                             onSelect={() => { setSelection({ entryId: entry.id, folderId: null }); setMobilePane('editor'); }}
@@ -1692,19 +1889,19 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
             <div className={`@container min-h-0 min-w-0 overflow-y-auto @2xl:block ${mobilePane === 'editor' ? 'block' : 'hidden'}`}>
               {selected && (
-                <div className="sticky top-0 z-10 mb-4 flex items-center gap-1.5 border-b bg-card/95 py-2 text-sm backdrop-blur">
+                <div className="sticky top-0 z-10 mb-4 flex items-center gap-1.5 border-b border-white/[0.08] bg-card/95 py-2 text-sm backdrop-blur">
                   <button
                     type="button"
                     onClick={() => setMobilePane('entries')}
                     aria-label="Back to entries"
-                    className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded hover:bg-accent/60 @2xl:hidden"
+                    className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded hover:bg-white/[0.06] active:bg-white/[0.08] @2xl:hidden"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelection({ entryId: selected.id, folderId: null })}
-                    className={`truncate rounded px-1 py-0.5 hover:bg-accent/60 ${
+                    className={`truncate rounded-md px-1.5 py-1 hover:bg-white/[0.06] ${
                       selection.folderId ? 'text-muted-foreground hover:text-foreground' : 'font-medium'
                     }`}
                   >
@@ -1728,15 +1925,14 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 <TabsList>
                   <TabsTrigger value="design">Design</TabsTrigger>
                   <TabsTrigger value="preview">Preview</TabsTrigger>
-                  <TabsTrigger value="json">Export &amp; share</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="design" className="pt-4">
                   <div className="min-w-0">
                   {!selected && (
-                    <div className="rounded-md border border-dashed px-3 py-10 text-center text-sm text-muted-foreground">
+                    <div className="rounded-xl border border-dashed border-white/[0.08] px-3 py-10 text-center text-sm text-muted-foreground">
                       <p>
-                        {entries.length > 0 ? (
+                        {committedEntries.length > 0 ? (
                           <>
                             Select something{' '}
                             <span className="@2xl/panes:hidden">in the Entries tab</span>
@@ -1798,6 +1994,20 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       unsupportedNote={unsupportedById.get(selected.id) ?? null}
                     />
                   )}
+                  {selected && selected.id === draftId && (
+                    <div className="mt-4 flex flex-col gap-3 rounded-xl border border-dashed border-white/[0.08] p-3 @xl:flex-row @xl:items-center">
+                      <span className="text-xs text-muted-foreground @xl:mr-auto">
+                        Not added yet. It joins your list when you add it.
+                      </span>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={discardDraft}>Discard</Button>
+                        <Button size="sm" onClick={commitDraft}>
+                          <Plus className="mr-1.5 h-4 w-4" />
+                          Add {selected.kind === 'collection' ? terms.collection.toLowerCase() : terms.row.toLowerCase()}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   </div>
                 </TabsContent>
 
@@ -1806,125 +2016,10 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                     entry={selected}
                     target={target}
                     onEditFolder={folderId => selected && goToProblem(selected.id, folderId)}
+                    pendingCatalogs={pendingAdditions.added}
                   />
                 </TabsContent>
 
-                <TabsContent value="json" className="space-y-3 pt-4">
-                  <div className="flex items-start gap-2 rounded-lg border border-sky-600/40 bg-sky-500/5 p-3 text-xs">
-                    <Info className="mt-px h-4 w-4 shrink-0 text-sky-400" />
-                    <div className="space-y-1">
-                      <p className="font-medium text-sky-200">
-                        Saving updates your addon, not {target === 'fusion' ? 'Fusion' : 'Nuvio'}
-                      </p>
-                      <p className="text-muted-foreground">
-                        Nothing is pushed to your app. Import the file or the link below again for these edits to
-                        show up there.
-                      </p>
-                      <p className="text-muted-foreground">
-                        {target === 'fusion'
-                          ? "Fusion adds on import rather than matching what it already has, so re-importing everything gives you duplicate widgets. Delete the widgets you changed first, then tick just those in Fusion's import list. They come back at the end, so you may need to reorder them."
-                          : 'Editing a collection you imported keeps its id, so Nuvio updates the one you already have instead of adding a second copy. Building a new collection from scratch mints a new id and arrives alongside the old one.'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${target === 'nuvio' ? NUVIO_CHIP : FUSION_CHIP}`}
-                    >
-                      {target === 'nuvio' ? 'Nuvio collections' : 'Fusion widgets'}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">Target and manifest URL are in the header</span>
-                    <div className="ml-auto flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={handleCopy}>
-                      {copied ? <Check className="mr-1.5 h-4 w-4" /> : <Copy className="mr-1.5 h-4 w-4" />}
-                      Copy
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={handleDownload}>
-                      <Download className="mr-1.5 h-4 w-4" /> Download
-                    </Button>
-                    </div>
-                  </div>
-
-
-                  <div className="space-y-1.5 rounded-lg border border-primary/40 bg-primary/5 p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <LinkIcon className="h-4 w-4 text-primary" />
-                      <Label htmlFor="collection-hosted-url" className="text-xs font-medium">Import by link</Label>
-                      <span className="text-xs text-muted-foreground">
-                        {target === 'fusion'
-                          ? 'Paste this straight into Fusion instead of the JSON'
-                          : 'Serves the same JSON live, if your app can read a URL'}
-                      </span>
-                    </div>
-                    {hostedUrl ? (
-                      <>
-                        <div className="flex gap-2">
-                          <Input id="collection-hosted-url" readOnly value={hostedUrl} className="h-9 font-mono text-xs" onClick={e => (e.target as HTMLInputElement).select()} />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="shrink-0"
-                            onClick={handleCopyUrl}
-                            aria-label="Copy the import link"
-                          >
-                            {copiedUrl ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                        <p className="flex items-start gap-1.5 text-xs text-amber-500">
-                          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-                          {stage === 'saved'
-                            ? 'The link serves what is on the server, which is these edits.'
-                            : 'The link serves what is on the server, so save before you re-import it.'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          It rebuilds on every request, so re-importing after saving picks up your edits. Anyone with
-                          the link can read it, same as your manifest URL{usePlaceholder
-                            ? ', and it always carries your real URL rather than the blanked copy'
-                            : ''}.
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        Save first. The link is served per user, so it needs a saved config to read.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5 rounded-lg border p-3">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="collection-use-placeholder"
-                        checked={usePlaceholder}
-                        onCheckedChange={setUsePlaceholder}
-                      />
-                      <Label htmlFor="collection-use-placeholder" className="text-xs font-medium">
-                        Make a copy for someone else
-                      </Label>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Your addon link contains your user ID, and this file embeds it on every row. Anyone who has it
-                      can read that config. Turn this on to blank it out before posting the file publicly. Whoever
-                      imports it here gets their own link filled in automatically, so they end up with your layout
-                      pointing at their catalogs.
-                    </p>
-                    {usePlaceholder && (
-                      <p className="flex items-start gap-1.5 text-xs text-amber-500">
-                        <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-                        This copy is for handing out, not for your own use. It has no addon link in it, so
-                        importing it back here is what puts one in.
-                      </p>
-                    )}
-                  </div>
-
-                  <textarea
-                    readOnly
-                    value={json}
-                    className="h-56 w-full resize-none rounded-md border bg-muted p-3 font-mono text-xs focus:outline-none sm:h-80"
-                    onClick={event => (event.target as HTMLTextAreaElement).select()}
-                  />
-                </TabsContent>
               </Tabs>
             </div>
 
@@ -1933,12 +2028,13 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 mobilePane === 'preview' ? 'block' : 'hidden'
               }`}
             >
-              <div className="sticky top-0 rounded-lg border p-4">
+              <div className="sticky top-0 rounded-xl border border-white/[0.06] bg-card/80 p-4">
                 <span className="mb-3 block text-sm font-medium text-muted-foreground">Live preview</span>
                 <CollectionPreview
                   entry={selected}
                   target={target}
                   onEditFolder={folderId => selected && goToProblem(selected.id, folderId)}
+                  pendingCatalogs={pendingAdditions.added}
                 />
               </div>
             </div>
@@ -1946,7 +2042,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
           </div>
           )}
 
-          <footer className="flex max-h-[18dvh] min-h-0 flex-col gap-3 overflow-y-auto border-t px-5 py-4 @2xl:max-h-[30dvh] @2xl:flex-row @2xl:flex-wrap @2xl:items-center @2xl:justify-end">
+          <footer className="flex max-h-[18dvh] min-h-0 min-w-0 flex-col gap-3 overflow-y-auto border-t border-white/[0.08] bg-background/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-sm @2xl:max-h-[30dvh] @2xl:flex-row @2xl:flex-wrap @2xl:items-center @2xl:justify-end @2xl:bg-transparent @2xl:px-5 @2xl:py-4 @2xl:backdrop-blur-none">
             <div className="min-w-0 space-y-1 @2xl:mr-auto">
               {overBy > 0 && (
                 <p className="flex items-start gap-1.5 text-xs text-amber-500">
@@ -2084,14 +2180,14 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             onChange={event => previewImport(event.target.value)}
             onPaste={handleImportPaste}
             placeholder='[{"id":"...","title":"My Collection","folders":[...]}]'
-            className="h-48 w-full resize-none rounded-md border bg-muted p-3 font-mono text-xs focus:outline-none"
+            className="h-48 w-full resize-none rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 font-mono text-xs focus:outline-none"
           />
 
           {importPreview && (
-            <div className="space-y-2 rounded-md border p-3">
+            <div className="space-y-2 rounded-xl border border-white/[0.06] p-3">
               <div className="flex flex-wrap items-center gap-2">
                 {importPreview.format === 'unknown' ? (
-                  <Badge variant="outline" className="border-amber-600/50 bg-amber-800/60 text-xs text-amber-200">
+                  <Badge variant="outline" className="border-amber-400/20 bg-amber-500/15 text-xs text-amber-200">
                     unrecognised
                   </Badge>
                 ) : (
@@ -2113,12 +2209,12 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       `${importPreview.entries.reduce((n, e) => n + entrySourceCount(e), 0)} sources`}
                 </span>
                 {rebuildable > 0 && (
-                  <Badge variant="outline" className="border-emerald-600/50 bg-emerald-800/60 text-xs text-emerald-200">
+                  <Badge variant="outline" className="border-emerald-400/20 bg-emerald-500/15 text-xs text-emerald-200">
                     {rebuildable} catalog{rebuildable === 1 ? '' : 's'} rebuildable
                   </Badge>
                 )}
                 {importUnresolved.length > 0 && (
-                  <Badge variant="outline" className="border-amber-600/50 bg-amber-800/60 text-xs text-amber-200">
+                  <Badge variant="outline" className="border-amber-400/20 bg-amber-500/15 text-xs text-amber-200">
                     {importUnresolved.length} not in your catalogs
                   </Badge>
                 )}
@@ -2161,13 +2257,18 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                         </div>
                       )}
                     </div>
-                    <CollectionPreview entry={shown ?? null} target={shape} onEditFolder={() => undefined} />
+                    <CollectionPreview
+                      entry={shown ?? null}
+                      target={shape}
+                      onEditFolder={() => undefined}
+                      pendingCatalogs={importAdditions.added}
+                    />
                   </div>
                 );
               })()}
 
               {importPreview.nativeCount > 0 && (
-                <div className="space-y-2 rounded-md border p-2">
+                <div className="space-y-2 rounded-lg bg-white/[0.03] p-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Label htmlFor="convert-native" className="text-xs font-medium">
@@ -2197,7 +2298,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               )}
 
               {rebuildable > 0 && (
-                <div className="space-y-1 rounded-md border border-emerald-600/40 bg-emerald-950/20 p-2">
+                <div className="space-y-1 rounded-lg border border-emerald-400/20 bg-emerald-500/10 p-2">
                   <p className="text-xs text-emerald-500">
                     This file carries the definitions for {rebuildable} catalog{rebuildable === 1 ? '' : 's'} you
                     do not have. Only the ones your design still uses when you apply are added, so trimming the
@@ -2215,7 +2316,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               )}
 
               {importAdditions.needsAccount.length > 0 && (
-                <p className="rounded-md border border-amber-600/40 bg-amber-950/20 p-2 text-xs text-amber-500">
+                <p className="rounded-lg border border-amber-400/20 bg-amber-500/10 p-2 text-xs text-amber-500">
                   This file uses your own {importAdditions.needsAccount.join(' and ')} catalogs, such as your
                   watchlist. Connect {importAdditions.needsAccount.length === 1 ? 'that account' : 'those accounts'} and
                   import again to have them added.
@@ -2223,7 +2324,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               )}
 
               {importUnresolved.length > 0 && (
-                <div className="space-y-1 rounded-md border border-amber-600/40 bg-amber-950/20 p-2">
+                <div className="space-y-1 rounded-lg border border-amber-400/20 bg-amber-500/10 p-2">
                   <p className="text-xs text-amber-500">
                     These catalogs are not in your setup and the file does not say how to rebuild them. You can
                     still import, but those tiles will come up empty.
@@ -2247,9 +2348,9 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                     ['Catalogs', importCounts.sources],
                     ['Existing', importCounts.existing],
                   ] as const).map(([label, value]) => (
-                    <div key={label} className="rounded-md border px-2 py-1.5">
+                    <div key={label} className="rounded-lg bg-white/[0.03] px-2 py-1.5">
                       <div className="text-base font-semibold leading-tight">{value}</div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                      <div className="text-[10px] text-muted-foreground">{label}</div>
                     </div>
                   ))}
                 </div>
@@ -2285,7 +2386,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
           )}
 
           {importPreview && importPreview.entries.length > 0 && (
-            <p className="border-t pt-3 text-xs text-muted-foreground">
+            <p className="border-t border-white/[0.06] pt-3 text-xs text-muted-foreground">
               <span className="text-foreground">Merge</span> folds the file into whatever it shares an id with,
               skipping catalogs you already have. <span className="text-foreground">Add as new</span> keeps both
               copies. <span className="text-foreground">Overwrite</span> discards what you have.
@@ -2341,13 +2442,13 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[26rem] space-y-2 overflow-y-auto">
+          <div className="max-h-[26rem] min-w-0 space-y-2 overflow-y-auto">
             {missingGroups.map(group => {
               const chosen = remapChoices[group.key];
               return (
                 <div
                   key={group.key}
-                  className={`space-y-2 rounded-lg border p-3 ${
+                  className={`space-y-2 rounded-xl border border-white/[0.06] p-3 ${
                     chosen ? 'border-primary/50 bg-primary/5' : 'border-amber-600/40 bg-amber-950/10'
                   }`}
                 >
@@ -2402,7 +2503,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             })}
           </div>
 
-          <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex flex-col gap-2 border-t border-white/[0.06] pt-3 sm:flex-row sm:items-center sm:justify-end">
             <span className="text-xs text-muted-foreground sm:mr-auto">
               {Object.keys(remapChoices).length} of {missingGroups.length} matched. Anything left unmatched stays
               as it is.
@@ -2483,11 +2584,11 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             </DialogDescription>
           </DialogHeader>
 
-          <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+          <p className="rounded-lg bg-white/[0.03] p-2 text-xs text-muted-foreground">
             Swapping keeps the layout and points each one at a catalog you already have, everywhere it is used.
           </p>
 
-          <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-white/[0.06] pt-3">
             <Button
               variant="ghost"
               onClick={() => setConfirmApply(false)}
@@ -2522,13 +2623,13 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             </DialogDescription>
           </DialogHeader>
 
-          <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+          <p className="rounded-lg bg-white/[0.03] p-2 text-xs text-muted-foreground">
             {nativeBlockFor === 'apply'
               ? `The design is fine for ${strandedTarget.other}, so you can apply it and build for ${strandedTarget.other} instead. Applying also publishes your hosted widgets URL, which would hand out the same empty export.`
               : `Switching to ${strandedTarget.other} gives you the complete export. Routing the sources through AIOMetadata keeps them on both targets, at one catalog each.`}
           </p>
 
-          <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-white/[0.06] pt-3">
             <Button variant="ghost" onClick={() => setNativeBlockFor(null)}>Cancel</Button>
             <Button
               variant="outline"
@@ -2560,12 +2661,12 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             </DialogDescription>
           </DialogHeader>
 
-          <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+          <p className="rounded-lg bg-white/[0.03] p-2 text-xs text-muted-foreground">
             You have {enabledCatalogCount} catalog{enabledCatalogCount === 1 ? '' : 's'} enabled. Every catalog
             added here becomes an entry in your manifest, which your client fetches each time it loads the addon.
           </p>
 
-          <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-white/[0.06] pt-3">
             <Button variant="ghost" onClick={() => setOverLimitOpen(false)}>Back to editing</Button>
             <Button
               variant="outline"

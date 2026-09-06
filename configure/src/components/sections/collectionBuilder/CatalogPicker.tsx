@@ -207,8 +207,8 @@ export function CatalogPicker({
                   onClick={() => setTypeFilter(prev => (prev === type ? null : type))}
                   className={`rounded-full border px-2 py-0.5 text-xs transition-colors ${
                     typeFilter === type
-                      ? 'border-primary bg-primary/15 text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-accent/50'
+                      ? 'bg-primary/15 text-foreground'
+                      : 'bg-white/[0.03] text-muted-foreground hover:bg-white/[0.06]'
                   }`}
                 >
                   {type}
@@ -289,12 +289,12 @@ export function CatalogPicker({
                         aria-pressed={multiple && !isAdded ? isSelected : undefined}
                         onClick={() => toggle(catalog)}
                         onMouseEnter={() => { if (pointerActive.current) setActiveIndex(virtualRow.index); }}
-                        className={`flex h-9 w-full items-center gap-2 rounded-md border px-2 text-left text-sm transition-colors ${
+                        className={`flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors @2xl:h-9 @2xl:min-h-0 ${
                           isAdded
-                            ? 'cursor-default border-transparent opacity-45'
+                            ? 'cursor-default opacity-45'
                             : isSelected
-                              ? 'border-primary/60 bg-primary/10'
-                              : 'border-transparent hover:border-border hover:bg-accent/50'
+                              ? 'bg-primary/15'
+                              : 'hover:bg-white/[0.04] active:bg-white/[0.06]'
                         } ${isActive && !isAdded ? 'ring-1 ring-primary/40' : ''}`}
                       >
                         {multiple && (
@@ -319,14 +319,14 @@ export function CatalogPicker({
                         {catalog.pendingSave && (
                           <Badge
                             variant="outline"
-                            className="shrink-0 border-sky-600/50 bg-sky-900/50 text-xs text-sky-200"
+                            className="shrink-0 border-sky-400/20 bg-sky-500/15 text-xs text-sky-200"
                             title="In your config but not saved yet, so it is not in the manifest"
                           >
                             unsaved
                           </Badge>
                         )}
                         {catalog.genreRequired && (
-                          <Badge variant="outline" className="shrink-0 border-amber-600/50 bg-amber-800/60 text-xs text-amber-200">
+                          <Badge variant="outline" className="shrink-0 border-amber-400/20 bg-amber-500/15 text-xs text-amber-200">
                             genre
                           </Badge>
                         )}
@@ -348,7 +348,7 @@ export function CatalogPicker({
           </div>
         </div>
         {multiple && (!onCreate || tab === 'config') && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
             <div className="flex flex-wrap items-center gap-1">
               <span className="text-xs text-muted-foreground">
                 {selected.length === 0 ? 'Nothing selected' : `${selected.length} selected`}

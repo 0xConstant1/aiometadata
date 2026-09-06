@@ -211,7 +211,7 @@ export function ProviderListSearch({
               return (
                 <div
                   key={result.key}
-                  className="flex items-center gap-3 rounded-lg border bg-muted/30 p-2.5"
+                  className="flex items-center gap-3 rounded-lg bg-white/[0.03] p-2.5 transition-colors hover:bg-white/[0.06]"
                 >
                   {result.image ? (
                     <img src={result.image} alt="" loading="lazy" className="h-14 w-10 shrink-0 rounded object-cover" />

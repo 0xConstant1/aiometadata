@@ -77,6 +77,8 @@ export function RowActions({
   onMoveTo,
   onDelete,
   deleteLabel,
+  open,
+  onOpenChange,
 }: {
   label: string;
   canMoveUp: boolean;
@@ -86,9 +88,12 @@ export function RowActions({
   /** Omitted where the row already carries its own delete control. */
   onDelete?: () => void;
   deleteLabel?: string;
+  /** Controlled, so the row it sits on can open it from a long press. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -181,10 +186,10 @@ export function SourceRow({
     <div
       ref={innerRef}
       style={style}
-      className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-md border px-3 py-2 @md:grid-cols-[auto_minmax(0,1fr)_auto_auto] ${
+      className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-lg px-3 py-2.5 transition-colors @md:grid-cols-[auto_minmax(0,1fr)_auto_auto] ${
         unknown
-          ? 'border-amber-600/60 bg-amber-950/20'
-          : pending ? 'border-emerald-600/50 bg-emerald-950/20' : 'bg-muted/30'
+          ? 'bg-amber-500/10 ring-1 ring-inset ring-amber-400/25'
+          : pending ? 'bg-emerald-500/10 ring-1 ring-inset ring-emerald-400/25' : 'bg-white/[0.03]'
       }`}
     >
       <div className="flex items-center gap-2">
@@ -238,7 +243,7 @@ export function SourceRow({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 border-amber-600/60 text-amber-200 hover:bg-amber-900/40"
+            className="h-8 border-0 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25"
             onClick={onReplace}
           >
             <Replace className="mr-1.5 h-4 w-4" /> Replace

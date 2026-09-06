@@ -56,15 +56,15 @@ export function ClassicRowEditor({
       {unsupportedNote && (
         <div className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${
           target === 'fusion'
-            ? 'border-red-600/40 bg-red-950/20 text-red-400'
-            : 'border-amber-600/40 bg-amber-950/20 text-amber-500'
+            ? 'border-red-400/20 bg-red-500/10 text-red-400'
+            : 'border-amber-400/20 bg-amber-500/10 text-amber-500'
         }`}>
           <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
           {unsupportedNote}
         </div>
       )}
 
-      <div className="flex items-center gap-2 rounded-md border border-violet-700/50 bg-violet-950/30 px-3 py-2 text-xs text-violet-300">
+      <div className="flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-xs text-violet-300">
         <Rows3 className="h-4 w-4 shrink-0" />
         Classic rows are Fusion only. Nuvio has no equivalent, so this row is left out of the Nuvio export.
       </div>
@@ -116,7 +116,7 @@ export function ClassicRowEditor({
           <button
             type="button"
             onClick={onAddSource}
-            className="w-full rounded-md border border-dashed px-2 py-3 text-center text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/40 hover:text-foreground"
+            className="w-full rounded-xl border border-dashed border-white/[0.08] px-2 py-3 text-center text-xs text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground active:bg-white/[0.06]"
           >
             No catalog selected. Fusion drops rows without one.
             <span className="mt-0.5 block font-medium">Pick one</span>
@@ -149,7 +149,7 @@ export function ClassicRowEditor({
         </div>
         <div className="space-y-2 @2xl:col-span-2">
           <Label id={`${uid}-aspect`} className="text-sm font-medium">Aspect ratio</Label>
-          <div role="group" aria-labelledby={`${uid}-aspect`} className="flex gap-1 rounded-lg border p-1">
+          <div role="group" aria-labelledby={`${uid}-aspect`} className="flex gap-1 rounded-xl bg-white/[0.03] p-1">
             {SHAPE_ORDER.map(shape => {
               const value = ASPECT_BY_SHAPE[shape];
               const active = entry.aspectRatio === value;
