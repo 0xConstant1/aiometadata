@@ -2025,6 +2025,13 @@ function getKitsuGenresForItem(item, included = [], allowIncludedFallback = fals
     .filter(Boolean);
 }
 
+/** Where the catalog layer reads it from. Merged: releaseDates shares the object. */
+function withCatalogCertification(meta) {
+  if (!meta || isUnratedCertification(meta.certification)) return meta;
+  meta.app_extras = { ...(meta.app_extras || {}), certification: meta.certification };
+  return meta;
+}
+
 async function parseAnimeCatalogMeta(anime, config, language, descriptionFallback = null) {
   if (!anime || !anime.mal_id) return null;
 
@@ -2139,7 +2146,7 @@ async function parseAnimeCatalogMeta(anime, config, language, descriptionFallbac
       name: anime.title_english || anime.title
     });
   }
-  return {
+  return withCatalogCertification({
     id:  `mal:${malId}`,
     type: stremioType,
     logo: stremioType === 'movie' ? await tmdb.getTmdbMovieLogo(tmdbId, config) : await tmdb.getTmdbSeriesLogo(tmdbId, config),
@@ -2164,7 +2171,7 @@ async function parseAnimeCatalogMeta(anime, config, language, descriptionFallbac
       defaultVideoId: stremioType === 'movie' ? mapping?.imdb_id ? mapping?.imdb_id: (kitsuId ? `kitsu:${kitsuId}` : `mal:${malId}`): null,
       hasScheduledVideos: stremioType === 'series',
     },
-  };
+  });
 }
 
 /**
@@ -2363,7 +2370,7 @@ async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideo
           meta.app_extras = { releaseDates };
         }
 
-        return meta;
+        return withCatalogCertification(meta);
       }));
       // Filter out null metas before further processing
       metas = metas.filter(Boolean);
@@ -2527,7 +2534,7 @@ async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideo
         meta.app_extras = { releaseDates };
       }
 
-      return meta;
+      return withCatalogCertification(meta);
     }
   }));
   

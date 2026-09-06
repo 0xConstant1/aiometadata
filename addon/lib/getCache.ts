@@ -1530,23 +1530,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
   normalizeCreditsInPayload(result);
 
   if (result?.metas?.length) {
-    const displayAgeRating = config.displayAgeRating || false;
-    for (const meta of result.metas) {
-      const cert = meta.app_extras?.certification;
-      if (!cert) continue;
-      const displayCert = meta.app_extras?.certificationLocal || cert;
-      const hasCertLink = meta.links?.some((l: any) => (l.name === cert || l.name === displayCert) && l.category === 'Genres');
-      if (displayAgeRating && !hasCertLink) {
-        if (!Array.isArray(meta.links)) meta.links = [];
-        const imdbId = meta.id?.match(/^tt\d+/)?.[0] || meta.imdb_id;
-        const url = imdbId
-          ? `https://www.imdb.com/title/${imdbId}/parentalguide/`
-          : `https://www.themoviedb.org/movie/${meta.id}`;
-        meta.links.unshift({ name: displayCert, category: 'Genres', url });
-      } else if (!displayAgeRating && hasCertLink) {
-        meta.links = meta.links.filter((l: any) => !((l.name === cert || l.name === displayCert) && l.category === 'Genres'));
-      }
-    }
+    for (const meta of result.metas) applyDisplayAgeRatingProjection(meta, config);
   }
 
   await applyImdbRatingProjectionToList(result?.metas);
