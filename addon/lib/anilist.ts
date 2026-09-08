@@ -260,7 +260,7 @@ class AniListAPI {
    * Fetch items from a specific list with pagination
    * Returns items: [{ score, media: { id, idMal } }], hasMore, total
    */
-  async fetchListItems(username: string, listName: string, page = 1, pageSize = 50, sort = 'ADDED_TIME_DESC'): Promise<any> {
+  async fetchListItems(username: string, listName: string, page = 1, pageSize = 50, sort = 'ADDED_TIME_DESC', accessToken?: string): Promise<any> {
     if (!username) {
       throw new Error('Username is required');
     }
@@ -325,7 +325,8 @@ class AniListAPI {
         }, {
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
           },
           timeout: 30000
         })
@@ -399,7 +400,8 @@ class AniListAPI {
         }, {
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
           },
           timeout: 30000
         })

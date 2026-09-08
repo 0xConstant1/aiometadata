@@ -3763,8 +3763,11 @@ addon.get("/api/anilist/lists/by-username/:username", async (req, res) => {
     const trimmedUsername = username.trim();
     consola.info(`[AniList Lists] Fetching available lists for username: ${trimmedUsername}`);
     
-    // Fetch user's lists from AniList API (public endpoint, doesn't require auth)
-    const result = await anilist.fetchUserLists(trimmedUsername);
+    const { resolveAnilistAccessToken }: any = require('./utils/anilistUtils');
+    const result = await anilist.fetchUserLists(trimmedUsername, await resolveAnilistAccessToken({
+      tokenId: String(req.query.tokenId || '').trim(),
+      userUUID: String(req.query.userUUID || '').trim(),
+    }));
     
     res.json({
       success: true,

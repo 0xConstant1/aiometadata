@@ -2421,14 +2421,18 @@ async function getAniListCatalog(
     
     logger.debug(`[AniList] Using sort: ${sortBase}, direction: ${sortDirection}, combined: ${sort}`);
     
+    const accessToken = await getAnilistAccessToken(config);
+
     // Fetch list items from AniList API with caching
     const response = await cacheWrapAniListCatalog(
       username,
       listName,
       page,
-      async () => anilist.fetchListItems(username, listName, page, pageSize, sort),
+      async () => anilist.fetchListItems(username, listName, page, pageSize, sort, accessToken),
       customCacheTTL,
-      { enableErrorCaching: true },
+      // The page is shared, so a reader without a token must not cache its
+      // rejection over a copy a token holder could have fetched.
+      { enableErrorCaching: anilistRequiresAuth() ? !!accessToken : true },
       sort
     );
     

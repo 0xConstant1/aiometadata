@@ -61,7 +61,7 @@ export async function getAnilistWatchedIds(config: any): Promise<{ anilistIds: S
       const malIds: number[] = [];
       
       while (hasMore && page <= 10) {
-        const response = await anilist.fetchListItems(username, 'Completed', page, 500);
+        const response = await anilist.fetchListItems(username, 'Completed', page, 500, 'ADDED_TIME_DESC', tokenData.access_token);
         
         if (response && response.items) {
           for (const item of response.items) {

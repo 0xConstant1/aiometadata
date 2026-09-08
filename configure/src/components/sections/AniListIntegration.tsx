@@ -176,7 +176,11 @@ export function AniListIntegration({ isOpen, onClose }: AniListIntegrationProps)
     setIsLoadingPublicLists(true);
     setPublicListsLoaded(false);
     try {
-      const response = await fetch(`/api/anilist/lists/by-username/${encodeURIComponent(trimmedUsername)}`);
+      const listParams = new URLSearchParams();
+      if (config.apiKeys?.anilistTokenId) listParams.set('tokenId', config.apiKeys.anilistTokenId);
+      if (auth.userUUID) listParams.set('userUUID', auth.userUUID);
+      const query = listParams.toString();
+      const response = await fetch(`/api/anilist/lists/by-username/${encodeURIComponent(trimmedUsername)}${query ? `?${query}` : ''}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
