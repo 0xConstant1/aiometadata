@@ -5,23 +5,68 @@ import { useCatalogTags } from '@/hooks/useCatalogTags';
 import { TagChip } from '@/components/TagChip';
 import { TagManagerDialog } from '@/components/TagManagerDialog';
 
+export type CollectionFilter = 'all' | 'in' | 'out';
+
+const COLLECTION_OPTIONS: Array<{ value: CollectionFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'in', label: 'In a collection' },
+  { value: 'out', label: 'Not in one' },
+];
+
 interface TagFilterBarProps {
   tagFilters: string[];
   onToggle: (name: string) => void;
   onClear: () => void;
+  collectionFilter?: CollectionFilter;
+  onCollectionFilterChange?: (value: CollectionFilter) => void;
+  collectionCounts?: { in: number; out: number };
 }
 
-export function TagFilterBar({ tagFilters, onToggle, onClear }: TagFilterBarProps) {
+export function TagFilterBar({
+  tagFilters,
+  onToggle,
+  onClear,
+  collectionFilter = 'all',
+  onCollectionFilterChange,
+  collectionCounts,
+}: TagFilterBarProps) {
   const { tags, tagCounts } = useCatalogTags();
   const [managerOpen, setManagerOpen] = useState(false);
 
-  if (tags.length === 0) return null;
+  const showCollections = !!onCollectionFilterChange && !!collectionCounts;
+  if (tags.length === 0 && !showCollections) return null;
 
   const hasFilter = tagFilters.length > 0;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/30 px-2.5 py-2">
-      <span className="mr-1 text-xs font-medium text-muted-foreground">Tags:</span>
+      {showCollections && (
+        <div className="mr-1 flex items-center gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">Collections:</span>
+          <div className="flex items-center rounded-md bg-white/[0.02] p-0.5">
+            {COLLECTION_OPTIONS.map(option => {
+              const active = collectionFilter === option.value;
+              const count = option.value === 'all' ? null : collectionCounts![option.value];
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onCollectionFilterChange!(option.value)}
+                  aria-pressed={active}
+                  className={`rounded px-2 py-1 text-xs transition-colors ${active
+                    ? 'bg-card/80 text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground active:bg-white/[0.04]'}`}
+                >
+                  {option.label}{count === null ? '' : ` (${count})`}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {tags.length > 0 && (
+        <span className="mr-1 text-xs font-medium text-muted-foreground">Tags:</span>
+      )}
       {tags.map((t) => {
         const active = tagFilters.includes(t.name);
         return (

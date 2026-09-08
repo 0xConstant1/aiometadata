@@ -43,6 +43,18 @@ export function findCollectionUsage(
   return { sources, entries };
 }
 
+/** Every catalog a collection points at, as usage keys. */
+export function collectedCatalogKeys(collections: BuilderEntry[] | undefined): Set<string> {
+  const keys = new Set<string>();
+  for (const entry of collections || []) {
+    const drafts = entry.kind === 'classicRow'
+      ? (entry.source ? [entry.source] : [])
+      : entry.folders.flatMap(folder => folder.sources);
+    for (const draft of drafts) keys.add(catalogUsageKey(draft.catalogId, draft.type));
+  }
+  return keys;
+}
+
 export function describeCollectionUsage(usage: CollectionUsage): string {
   if (usage.sources === 0) return '';
   const noun = usage.sources === 1 ? 'source' : 'sources';

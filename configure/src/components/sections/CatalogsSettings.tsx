@@ -46,6 +46,7 @@ import { BulkActionBar } from '@/components/BulkActionBar';
 import { ScrollToTopButton } from '@/components/ScrollToTopButton';
 import {
   catalogUsageKey,
+  collectedCatalogKeys,
   describeCollectionUsage,
   findCollectionUsage,
   type CollectionUsage,
@@ -54,7 +55,7 @@ import { SelectAllControl } from '@/components/SelectAllControl';
 import { SelectByFieldControl } from '@/components/SelectByFieldControl';
 import { SelectByTagControl } from '@/components/SelectByTagControl';
 import { CatalogTagRow } from '@/components/CatalogTagRow';
-import { TagFilterBar } from '@/components/TagFilterBar';
+import { TagFilterBar, type CollectionFilter } from '@/components/TagFilterBar';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   showBulkEnableSuccess,
@@ -3989,12 +3990,16 @@ function CatalogsSettingsContent({
   hideDisabledCatalogs,
   setHideDisabledCatalogs,
   tagFilters,
-  setTagFilters
+  setTagFilters,
+  collectionFilter,
+  setCollectionFilter
 }: {
   hideDisabledCatalogs: boolean;
   setHideDisabledCatalogs: (value: boolean) => void;
   tagFilters: string[];
   setTagFilters: React.Dispatch<React.SetStateAction<string[]>>;
+  collectionFilter: CollectionFilter;
+  setCollectionFilter: React.Dispatch<React.SetStateAction<CollectionFilter>>;
 }) {
   const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini } = useConfig();
   const {
@@ -4182,7 +4187,11 @@ function CatalogsSettingsContent({
     }
   }, [hasTvdbKey, config.catalogs, setConfig]);
 
-  const filteredCatalogs = useMemo(() =>
+  const collectedKeys = useMemo(() => collectedCatalogKeys(config.collections), [config.collections]);
+
+  // Everything except the collection filter, so its counts describe the list
+  // the other filters have already narrowed to.
+  const visibleCatalogs = useMemo(() =>
     config.catalogs.filter(cat => {
       // Absorbed catalogs remain visible (with a badge) so they can be merged elsewhere
 
@@ -4201,6 +4210,22 @@ function CatalogsSettingsContent({
     }),
     [config.catalogs, config.streaming, hideDisabledCatalogs, hasTvdbKey, tagFilters]
   );
+
+  const collectionCounts = useMemo(() => {
+    let inside = 0;
+    for (const cat of visibleCatalogs) {
+      if (collectedKeys.has(catalogUsageKey(cat.id, cat.type))) inside += 1;
+    }
+    return { in: inside, out: visibleCatalogs.length - inside };
+  }, [visibleCatalogs, collectedKeys]);
+
+  const filteredCatalogs = useMemo(() => {
+    if (collectionFilter === 'all') return visibleCatalogs;
+    return visibleCatalogs.filter(cat => {
+      const used = collectedKeys.has(catalogUsageKey(cat.id, cat.type));
+      return collectionFilter === 'in' ? used : !used;
+    });
+  }, [visibleCatalogs, collectionFilter, collectedKeys]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -5539,6 +5564,9 @@ function CatalogsSettingsContent({
         tagFilters={tagFilters}
         onToggle={(name) => setTagFilters(prev => prev.includes(name) ? prev.filter(t => t !== name) : [...prev, name])}
         onClear={() => setTagFilters([])}
+        collectionFilter={collectionFilter}
+        onCollectionFilterChange={(config.collections?.length ?? 0) > 0 ? setCollectionFilter : undefined}
+        collectionCounts={(config.collections?.length ?? 0) > 0 ? collectionCounts : undefined}
       />
 
       <div className="relative">
@@ -6141,6 +6169,7 @@ export function CatalogsSettings() {
   const { config, hasBuiltInTvdb, setConfig } = useConfig();
   const [hideDisabledCatalogs, setHideDisabledCatalogs] = useState(config.showDisabledCatalogs ?? false);
   const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [collectionFilter, setCollectionFilter] = useState<CollectionFilter>('all');
 
   useEffect(() => {
     setHideDisabledCatalogs(config.showDisabledCatalogs ?? false);
@@ -6153,6 +6182,8 @@ export function CatalogsSettings() {
 
   // Check if TVDB key is available
   const hasTvdbKey = !!config.apiKeys?.tvdb?.trim() || hasBuiltInTvdb;
+
+  const collectedKeys = useMemo(() => collectedCatalogKeys(config.collections), [config.collections]);
 
   // Compute filtered catalogs to pass to SelectionProvider
   const filteredCatalogs = useMemo(() =>
@@ -6168,11 +6199,16 @@ export function CatalogsSettings() {
       // Filter by selected tags (match any)
       if (tagFilters.length > 0 && !tagFilters.some(t => cat.tags?.includes(t))) return false;
 
+      if (collectionFilter !== 'all') {
+        const used = collectedKeys.has(catalogUsageKey(cat.id, cat.type));
+        if (collectionFilter === 'in' ? !used : used) return false;
+      }
+
       if (cat.source !== "streaming") return true;
       const serviceId = cat.id.replace("streaming.", "").replace(/ .*/, "");
       return Array.isArray(config.streaming) && config.streaming.includes(serviceId);
     }),
-    [config.catalogs, config.streaming, hideDisabledCatalogs, hasTvdbKey, tagFilters]
+    [config.catalogs, config.streaming, hideDisabledCatalogs, hasTvdbKey, tagFilters, collectionFilter, collectedKeys]
   );
 
   return (
@@ -6182,6 +6218,8 @@ export function CatalogsSettings() {
         setHideDisabledCatalogs={handleSetHideDisabled}
         tagFilters={tagFilters}
         setTagFilters={setTagFilters}
+        collectionFilter={collectionFilter}
+        setCollectionFilter={setCollectionFilter}
       />
     </SelectionProvider>
   );
