@@ -433,10 +433,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'ANILIST_REQUIRES_AUTH',
     envVar: 'ANILIST_REQUIRES_AUTH',
     label: 'AniList Requires A Connected Account',
-    description: 'AniList refuses reads that carry no account token. Turn this off if AniList restores public access, and its catalogs, artwork and previews go back to working without a connected account.',
+    description: 'Turn on only if AniList starts refusing reads that carry no account token. Its catalogs, artwork and previews then stop caching empty answers, and the interface asks for a connected account.',
     category: 'Providers',
     type: 'boolean',
-    default: true,
+    default: false,
   },
   {
     key: 'DISABLE_TRAKT_SEARCH',

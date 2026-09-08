@@ -19,6 +19,16 @@ const host = process.env.HOST_NAME && process.env.HOST_NAME.startsWith('http')
   ? process.env.HOST_NAME 
   : `https://${process.env.HOST_NAME}`;
 
+/** AniList's firewall rejects requests carrying no Referer, whatever its value. */
+function anilistHeaders(accessToken?: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Referer': host,
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+  };
+}
+
 class AniListAPI {
   baseURL: string;
   cache: Map<any, any>;
@@ -233,11 +243,7 @@ class AniListAPI {
           query,
           variables: { userName: username }
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 30000
         })
       );
@@ -323,11 +329,7 @@ class AniListAPI {
             sort: [sort, 'MEDIA_ID'],
           }
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 30000
         })
       );
@@ -398,11 +400,7 @@ class AniListAPI {
           query,
           variables: { userName: username, sort: [sort, 'MEDIA_ID'] }
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 30000
         })
       );
@@ -493,11 +491,7 @@ class AniListAPI {
           query,
           variables: { malId: malId }
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 10000
         })
       );
@@ -549,11 +543,7 @@ class AniListAPI {
         httpPost(this.baseURL, {
           query
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 30000
         })
       );
@@ -618,11 +608,7 @@ class AniListAPI {
         httpPost(this.baseURL, {
           query
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 30000
         })
       );
@@ -877,10 +863,7 @@ class AniListAPI {
           query: mutation,
           variables: variables
         }, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 30000
         })
       );
@@ -975,11 +958,7 @@ class AniListAPI {
           query: gqlQuery,
           variables: { search: query.trim(), page: 1, perPage: 20 }
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 10000
         })
       );
@@ -1218,7 +1197,7 @@ class AniListAPI {
     try {
       const response = await this.makeRateLimitedRequest(() =>
         httpPost(this.baseURL, { query, variables }, {
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+          headers: anilistHeaders(accessToken),
           timeout: 15000
         })
       );
@@ -1317,11 +1296,7 @@ class AniListAPI {
           query,
           variables: { page, perPage: pageSize, ...(genre && genre !== 'None' ? { genres: [genre] } : {}) }
         }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
+          headers: anilistHeaders(accessToken),
           timeout: 15000
         })
       );
