@@ -2,6 +2,8 @@
 
 export interface UserConfig {
   language?: string;
+  /** Playback is reported by the client, so the subtitle trigger is not used. */
+  playbackReporting?: boolean;
   providers?: {
     movie?: string;
     series?: string;

@@ -332,6 +332,8 @@ export interface AppConfig {
   tags?: TagDef[];
   catalogModeOnly?: boolean;
   hideStremioCatalogs?: boolean;
+  /** Playback is reported by the client, so the subtitle trigger is not used. */
+  playbackReporting?: boolean;
   customPosterUrlPattern?: string;
   customBackgroundUrlPattern?: string;
   customLandscapeUrlPattern?: string;
