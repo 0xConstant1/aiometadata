@@ -2880,6 +2880,12 @@ async function buildAnimeResponse(stremioId, malData, language, characterData, e
     }
     
     
+    // MAL has no episode list for some older titles but still knows the count.
+    if (stremioType === 'series' && malData.status === 'Finished Airing' && (!episodeData || episodeData.length === 0) && Number(malData.episodes) > 0) {
+      const aired = malData.aired?.from || null;
+      episodeData = Array.from({ length: Number(malData.episodes) }, (_, i) => ({ mal_id: i + 1, title: null, synopsis: '', aired }));
+    }
+
     // Process episodes while API calls are running
     if (stremioType === 'series' && malData.status !== 'Not yet aired' && episodeData && episodeData.length > 0) {      // Filter episodes once
       
