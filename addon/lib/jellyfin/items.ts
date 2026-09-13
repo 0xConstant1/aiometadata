@@ -267,6 +267,18 @@ function peopleFrom(meta: any, serverId: string): any[] {
   return people.filter((p: any) => p.Name && !seen.has(`${p.Type}|${p.Id}`) && seen.add(`${p.Type}|${p.Id}`));
 }
 
+// A direct video link plays in the client's own player, so those go first.
+function remoteTrailers(meta: any): any[] {
+  const streams = Array.isArray(meta.trailerStreams) ? meta.trailerStreams : [];
+  const direct = streams
+    .filter((t: any) => typeof t?.url === 'string' && /^https?:\/\//i.test(t.url))
+    .map((t: any) => ({ Name: t.title || 'Trailer', Url: t.url }));
+  const youtube = streams
+    .filter((t: any) => typeof t?.ytId === 'string' && t.ytId)
+    .map((t: any) => ({ Name: t.title || 'Trailer', Url: `https://www.youtube.com/watch?v=${t.ytId}` }));
+  return [...direct, ...youtube].slice(0, envInt('JELLYFIN_MAX_TRAILERS', 8, 1));
+}
+
 function premiereDate(meta: any): string | null {
   if (typeof meta.released === 'string' && meta.released) return meta.released;
   const year = parseInt(String(meta.year || meta.releaseInfo || ''), 10);
@@ -330,10 +342,7 @@ export function metaToBaseItem(
     People: peopleFrom(meta, serverId),
     Studios: [],
     Taglines: [],
-    RemoteTrailers: (Array.isArray(meta.trailerStreams) ? meta.trailerStreams : [])
-      .slice(0, 5)
-      .map((t: any) => ({ Name: t?.title, Url: t?.ytId ? `https://www.youtube.com/watch?v=${t.ytId}` : undefined }))
-      .filter((t: any) => t.Url),
+    RemoteTrailers: remoteTrailers(meta),
     ImageTags: imageTags,
     BackdropImageTags: images.backdrop ? ['b'] : [],
     ImageBlurHashes: {},

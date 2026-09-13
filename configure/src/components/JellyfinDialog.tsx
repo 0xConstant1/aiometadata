@@ -134,6 +134,19 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, onChange, on
   );
 }
 
+function resumeSourceCaption(value: string, options: Array<{ value: string; label: string }>): string {
+  if (value === 'off') {
+    return 'This server only: Continue Watching, Next Up and the watched ticks come from what you play through this server, on this configuration. Nothing watched elsewhere appears, and nothing is read from your trackers; plays are still reported to them.';
+  }
+  if (value === 'auto') {
+    const names = options.map((o) => o.label);
+    const list = names.length ? names.join(' and ') : 'a connected tracker';
+    return `Automatic: Continue Watching merges the paused titles of every connected tracker (${list}), newest first. The watched ticks, Next Up and Upcoming come from one of them, the first connected in the order MDBList, Trakt, Simkl, PublicMetaDB.`;
+  }
+  const name = options.find((o) => o.value === value)?.label ?? 'that tracker';
+  return `${name} only: Continue Watching, the watched ticks, Next Up and Upcoming all come from ${name}, on top of what you play here. Pick this when two trackers disagree and you want one to win.`;
+}
+
 function newUserId(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
@@ -439,7 +452,10 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Anything played through this server is remembered here and shows in Continue Watching and as watched on its own. For you, and for users that are you, a connected tracker adds what was played elsewhere, such as on a phone. Only services that store a playback position can, so AniList and MyAnimeList are not offered. Automatic reads every connected service that can.
+              {resumeSourceCaption(config.jellyfinResumeSource ?? 'auto', resumeSourceOptions)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Whatever is picked, what you play through this server is remembered here and always wins over a tracker's view of the same title. Only services that store a playback position are offered, so AniList and MyAnimeList are not.
             </p>
             {resumeSourceOptions.length === 0 && (
               <p className="text-xs text-muted-foreground">

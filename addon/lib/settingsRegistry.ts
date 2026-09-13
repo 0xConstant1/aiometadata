@@ -451,16 +451,6 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 0,
   },
   {
-    key: 'JELLYFIN_NEXTUP_MAX_PAGES',
-    envVar: 'JELLYFIN_NEXTUP_MAX_PAGES',
-    label: 'Jellyfin Next Up Pages (MDBList)',
-    description: 'How many pages of 100 in-progress shows are read from MDBList for Next Up and Upcoming. Reading stops early once MDBList reports no more.',
-    category: 'Features',
-    type: 'number',
-    default: 10,
-    min: 1,
-  },
-  {
     key: 'JELLYFIN_WATCHED_MAX_PAGES',
     envVar: 'JELLYFIN_WATCHED_MAX_PAGES',
     label: 'Jellyfin Watched History Pages (MDBList)',
