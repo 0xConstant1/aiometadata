@@ -541,6 +541,31 @@ async function unwatch(parsedId: ParsedMediaId, config: any): Promise<void> {
 async function clearResumePoint(parsedId: ParsedMediaId, config: any): Promise<void> {
   const mediaType = parsedId.type === 'movie' ? 'movie' : 'series';
   await eachHistoryService(parsedId, config, mediaType, 'clearPlayback', 'Clear resume point');
+  await clearPublicMetaDbResumePoint(parsedId, config, mediaType);
+}
+
+async function clearPublicMetaDbResumePoint(parsedId: ParsedMediaId, config: any, mediaType: 'movie' | 'series'): Promise<void> {
+  if (!shouldTrackServiceMediaType(config, 'publicmetadb', mediaType)) return;
+  const apiKey = config.apiKeys?.publicmetadb;
+  if (!apiKey) return;
+  try {
+    const { clearResume, tmdbIdFrom } = require('../utils/publicmetadbUtils');
+    if (parsedId.type === 'movie') {
+      const ids = normalizeIdsForMovie(parsedId);
+      const tmdbId = ids ? await tmdbIdFrom(ids, 'movie') : null;
+      if (!tmdbId) return;
+      await clearResume(apiKey, tmdbId, 'movie');
+      logger.info('[PublicMetaDB] Cleared the resume point', { tmdb: tmdbId });
+      return;
+    }
+    const resolution = await resolveSeriesIds(parsedId, config);
+    const tmdbId = resolution ? await tmdbIdFrom(resolution.ids, 'series') : null;
+    if (!tmdbId || !resolution) return;
+    await clearResume(apiKey, tmdbId, 'tv', resolution.season, resolution.episode);
+    logger.info('[PublicMetaDB] Cleared the resume point', { tmdb: tmdbId, season: resolution.season, episode: resolution.episode });
+  } catch (error: any) {
+    logger.error(`[PublicMetaDB] Clearing the resume point failed: ${error.message}`);
+  }
 }
 
 // MDBList holds a resume point apart from watched status, so a mark either way

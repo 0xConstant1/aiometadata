@@ -42,11 +42,22 @@ export async function videoIdFor(
   episode: number
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
   let tvdb = ids.tvdb;
+  let imdb = ids.imdb;
   if (!tvdb && ids.tmdb) {
     tvdb = idMapper.getMappingByTmdbId(String(ids.tmdb), 'series')?.tvdb_id;
   }
   if (!tvdb && ids.imdb) {
     tvdb = idMapper.getMappingByImdbId(String(ids.imdb))?.tvdb_id;
+  }
+  if ((!tvdb || !imdb) && ids.tmdb) {
+    try {
+      const wiki: any = require('../wiki-mapper');
+      const mapped = wiki.getByTmdbId?.(String(ids.tmdb), 'series');
+      if (!imdb && mapped?.imdbId) imdb = mapped.imdbId;
+      if (!tvdb && mapped?.tvdbId) tvdb = mapped.tvdbId;
+    } catch {
+      // optional
+    }
   }
 
   if (tvdb) {
@@ -69,7 +80,7 @@ export async function videoIdFor(
     }
   }
 
-  const base = ids.imdb || (tvdb ? `tvdb:${tvdb}` : ids.tmdb ? `tmdb:${ids.tmdb}` : null);
+  const base = imdb || (tvdb ? `tvdb:${tvdb}` : ids.tmdb ? `tmdb:${ids.tmdb}` : null);
   if (!base) return null;
 
   return { metaId: base, videoId: `${base}:${season}:${episode}`, mediaType: 'series' };
@@ -176,12 +187,40 @@ async function simklRows(tokenId: string): Promise<ResumeRow[]> {
   return rows.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+async function pmdbRows(apiKey: string): Promise<ResumeRow[]> {
+  const { fetchResume } = require('../../utils/publicmetadbUtils');
+  const rows: ResumeRow[] = [];
+  for (const entry of await fetchResume(apiKey)) {
+    const progress = Number(entry?.progress);
+    if (!Number.isFinite(progress) || progress <= 0 || !entry?.tmdb_id) continue;
+    const updatedAt = Date.parse(entry?.updated ?? entry?.created ?? '') || 0;
+    const runtimeMinutes = Number(entry?.runtime_ms) > 0 ? Math.round(Number(entry.runtime_ms) / 60000) : null;
+
+    if (entry.media_type === 'movie') {
+      const base = movieBase(entry.tmdb_id);
+      rows.push({ metaId: base, videoId: base, mediaType: 'movie', kind: 'movie', progress, runtimeMinutes, updatedAt });
+      continue;
+    }
+    const season = Number(entry?.season);
+    const episode = Number(entry?.episode);
+    if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
+    const resolved = await videoIdFor({ tmdb: entry.tmdb_id }, season, episode);
+    if (resolved) rows.push({ ...resolved, kind: 'episode', progress, runtimeMinutes, updatedAt });
+  }
+  return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export function movieBase(tmdbId: string | number): string {
+  const wiki: any = require('../wiki-mapper');
+  const imdb = wiki.getByTmdbId?.(String(tmdbId), 'movie')?.imdbId;
+  return imdb ? String(imdb) : `tmdb:${tmdbId}`;
+}
+
 async function rowsFrom(service: Capable, credential: string): Promise<ResumeRow[]> {
   if (service === 'mdblist') return mdblistRows(credential);
   if (service === 'simkl') return simklRows(credential);
+  if (service === 'publicmetadb') return pmdbRows(credential);
 
-  // Trakt and PublicMetaDB hold positions too, but reading them back is not
-  // wired yet, so their rows are absent rather than wrong.
   logger.debug(`Resume source ${service} has no reader yet`);
   return [];
 }

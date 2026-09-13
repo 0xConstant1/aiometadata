@@ -183,6 +183,34 @@ async function fetchResume(apiKey: string): Promise<any[]> {
   return data.items || [];
 }
 
+async function fetchWatched(apiKey: string, page: number = 1, perPage: number = 500): Promise<{ items: any[]; total: number; totalPages: number }> {
+  const data = await makeRequest(`/api/external/watched?page=${page}&perPage=${Math.min(Math.max(1, perPage), 500)}`, apiKey);
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    total: Number(data?.total) || 0,
+    totalPages: Number(data?.totalPages) || 1,
+  };
+}
+
+async function tmdbIdFrom(ids: Record<string, any>, mediaType: 'movie' | 'series'): Promise<number | null> {
+  if (ids.tmdb) return Number(ids.tmdb) || null;
+  if (!ids.imdb) return null;
+  const resolved = await resolveAllIds(ids.imdb, mediaType, {}, undefined, ['tmdb']);
+  return resolved?.tmdbId ? parseInt(resolved.tmdbId, 10) : null;
+}
+
+async function clearResume(apiKey: string, tmdbId: number, mediaType: 'movie' | 'tv', season?: number, episode?: number): Promise<boolean> {
+  const matches = (await fetchResume(apiKey)).filter((item: any) =>
+    Number(item?.tmdb_id) === Number(tmdbId) &&
+    item?.media_type === mediaType &&
+    (mediaType === 'movie' || (Number(item?.season) === season && Number(item?.episode) === episode))
+  );
+  for (const item of matches) {
+    if (item?.id) await makeRequest(`/api/external/resume/${encodeURIComponent(item.id)}`, apiKey, 'DELETE');
+  }
+  return matches.length > 0;
+}
+
 async function fetchLists(apiKey: string, page: number = 1, perPage: number = 50): Promise<any> {
   return makeRequest(`/api/external/lists?page=${page}&perPage=${perPage}`, apiKey);
 }
@@ -538,7 +566,10 @@ export {
   validateKey,
   fetchSkips,
   fetchResume,
+  fetchWatched,
   saveResume,
+  clearResume,
+  tmdbIdFrom,
   removeWatched,
   fetchLists,
   fetchListItems,

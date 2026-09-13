@@ -219,7 +219,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
 async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
   const { httpGet } = require('../../utils/httpClient');
   const pageSize = envInt('JELLYFIN_WATCHED_PAGE_SIZE', 1000, 1);
-  const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 10, 1);
+  const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
 
   const episodes = new Set<string>();
   const movies = new Set<string>();
@@ -292,9 +292,16 @@ async function mdblistNextUp(apiKey: string): Promise<NextUpRow[]> {
   const rows: NextUpRow[] = [];
 
   try {
-    const { items } = await fetchMDBListUpNext(apiKey, 1, envInt('JELLYFIN_NEXTUP_LIMIT', 100, 1), true);
+    const pageSize = 100;
+    const maxPages = envInt('JELLYFIN_NEXTUP_MAX_PAGES', 10, 1);
+    const items: any[] = [];
+    for (let page = 1; page <= maxPages; page += 1) {
+      const result = await fetchMDBListUpNext(apiKey, page, pageSize, true);
+      items.push(...(Array.isArray(result.items) ? result.items : []));
+      if (!result.hasMore || !result.items?.length) break;
+    }
 
-    for (const item of Array.isArray(items) ? items : []) {
+    for (const item of items) {
       const ids = item?.show?.ids ?? {};
       const season = Number(item?.next_episode?.season);
       const episode = Number(item?.next_episode?.episode);
@@ -335,6 +342,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
   if (!credential) return EMPTY;
 
   if (service === 'mdblist') return mdblistSnapshot(userUUID, credential);
+  if (service === 'publicmetadb') return pmdbSnapshot(userUUID, credential);
   if (service !== 'simkl') return EMPTY;
 
   const tokenId = credential;
@@ -417,6 +425,132 @@ export async function upcomingFollowed(config: any, days: number): Promise<Array
   }
 }
 
+// No activity digest on PublicMetaDB; the newest play and the total stand in.
+async function pmdbFingerprint(apiKey: string): Promise<string> {
+  const { cacheWrapGlobal } = require('../getCache');
+  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  const head = await cacheWrapGlobal(
+    `pmdb_watched_head:${keyHash}`,
+    async () => {
+      const { fetchWatched } = require('../../utils/publicmetadbUtils');
+      const page = await fetchWatched(apiKey, 1, 1);
+      const first = page.items[0];
+      return `${page.total}|${first?.id ?? ''}|${first?.watched_at ?? ''}`;
+    },
+    envInt('PMDB_ACTIVITIES_TTL', 300, 30),
+    { upstream: true }
+  );
+  return createHash('sha256').update(String(head)).digest('hex').substring(0, 16);
+}
+
+// The newest play of a show seeds Next Up, which moves on from it.
+async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
+  const { fetchWatched } = require('../../utils/publicmetadbUtils');
+  const { movieBase } = require('./resume');
+  const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
+
+  const rows: any[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const result = await fetchWatched(apiKey, page, 500);
+    rows.push(...result.items);
+    if (page >= result.totalPages || !result.items.length) break;
+  }
+  if (!rows.length) throw new Error('The watched history could not be read');
+
+  const episodes = new Set<string>();
+  const movies = new Set<string>();
+  const series = new Map<string, { watched: number; total: number }>();
+  const latest = new Map<string, { row: any; at: number }>();
+  const followedSince = Date.now() - envInt('JELLYFIN_NEXTUP_OWN_DAYS', 120, 1) * 24 * 60 * 60 * 1000;
+
+  for (const row of rows) {
+    if (!row?.tmdb_id) continue;
+    const at = Date.parse(row?.watched_at ?? '') || 0;
+    if (row.media_type === 'movie') {
+      movies.add(movieBase(row.tmdb_id));
+      movies.add(`tmdb:${row.tmdb_id}`);
+      continue;
+    }
+    const season = Number(row?.season);
+    const episode = Number(row?.episode);
+    if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
+    const resolved = await videoIdFor({ tmdb: row.tmdb_id }, season, episode);
+    if (!resolved) continue;
+    if (episodes.has(resolved.videoId)) continue;
+    episodes.add(resolved.videoId);
+
+    const counts = series.get(resolved.metaId) ?? { watched: 0, total: 0 };
+    counts.watched += 1;
+    series.set(resolved.metaId, counts);
+
+    const held = latest.get(resolved.metaId);
+    if (!held || at > held.at) latest.set(resolved.metaId, { row: { ...resolved, season, episode }, at });
+  }
+
+  const nextUp: NextUpRow[] = [];
+  const following: Array<{ metaId: string; mediaType: 'anime' | 'series' }> = [];
+  for (const [metaId, { row, at }] of latest) {
+    nextUp.push({
+      metaId,
+      videoId: row.mediaType === 'anime' ? row.videoId : null,
+      season: row.mediaType === 'anime' ? null : row.season,
+      episode: row.mediaType === 'anime' ? Number(String(row.videoId).split(':').pop()) : row.episode,
+      mediaType: row.mediaType,
+      lastWatchedAt: at,
+    });
+    if (at >= followedSince) following.push({ metaId, mediaType: row.mediaType });
+  }
+
+  return {
+    episodes: [...episodes],
+    movies: [...movies],
+    series: [...series],
+    nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
+    following,
+  };
+}
+
+async function pmdbSnapshot(userUUID: string, apiKey: string): Promise<WatchedSnapshot> {
+  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  let key: string;
+  try {
+    key = `${keyHash}:${await pmdbFingerprint(apiKey)}`;
+  } catch (error: any) {
+    logger.warn(`PublicMetaDB history digest failed: ${error?.message || error}`);
+    return EMPTY;
+  }
+
+  const memo = hydrated.get(key);
+  if (memo) return memo;
+
+  try {
+    const { cacheWrapGlobal } = require('../getCache');
+    const raw: RawSnapshot = await cacheWrapGlobal(
+      `jellyfin_watched_pmdb_v1:${key}`,
+      () => buildPmdb(apiKey),
+      envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
+      { upstream: true }
+    );
+
+    const snapshot: WatchedSnapshot = {
+      episodes: new Set(raw?.episodes ?? []),
+      movies: new Set(raw?.movies ?? []),
+      series: new Map(raw?.series ?? []),
+      nextUp: raw?.nextUp ?? [],
+      following: raw?.following ?? [],
+      fingerprint: key,
+    };
+    if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);
+    logger.debug(
+      `Watched snapshot for ${userUUID} from publicmetadb: ${snapshot.episodes.size} episodes, ${snapshot.movies.size} films`
+    );
+    return snapshot;
+  } catch (error: any) {
+    logger.warn(`Watched snapshot from publicmetadb failed: ${error?.message || error}`);
+    return EMPTY;
+  }
+}
+
 /**
  * MDBList publishes the same kind of digest Simkl does, and its own docs say to
  * read it before deciding what changed, so the key is those timestamps rather
@@ -491,7 +625,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string): Promise<Watche
  */
 export async function invalidateWatched(config: any): Promise<void> {
   const service = sourceFor(config);
-  if (!service || (service !== 'simkl' && service !== 'mdblist')) return;
+  if (!service || (service !== 'simkl' && service !== 'mdblist' && service !== 'publicmetadb')) return;
 
   const credential = credentialFor(config, service);
   if (!credential) return;
@@ -513,7 +647,9 @@ export async function invalidateWatched(config: any): Promise<void> {
     const { deleteKeysByPattern } = require('../getCache');
     const pattern = service === 'simkl'
       ? `*simkl-api-last-activities:${keyHash}`
-      : `*mdblist_last_activities:${keyHash}`;
+      : service === 'publicmetadb'
+        ? `*pmdb_watched_head:${keyHash}`
+        : `*mdblist_last_activities:${keyHash}`;
     await deleteKeysByPattern(pattern);
   } catch (error: any) {
     logger.debug(`Could not invalidate the watched snapshot: ${error?.message || error}`);
