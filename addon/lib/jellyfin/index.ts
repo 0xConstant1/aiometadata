@@ -67,9 +67,13 @@ function sessionProfile(req: any, config: any): Profile {
   return profileById(config, req.params.userUUID, req.jellyfin?.profileId ?? null);
 }
 
-function userFor(profile: Profile, serverId: string): any {
-  return userDto(profile.userId, serverId, profile.name, avatarTag(profile));
+function userFor(profile: Profile, serverId: string, configuration?: any): any {
+  const user = userDto(profile.userId, serverId, profile.name, avatarTag(profile));
+  if (configuration && typeof configuration === 'object') user.Configuration = { ...user.Configuration, ...configuration };
+  return user;
 }
+
+const USER_CONFIGURATION_ID = 'user-configuration';
 
 export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): any {
   const loginRateLimit = options.loginRateLimit || ((_req: any, _res: any, next: any) => next());
@@ -315,14 +319,29 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json({ EnableMetrics: false, ServerName: SERVER_NAME });
   });
 
+  const storedConfiguration = async (req: any, profile: Profile): Promise<any> =>
+    database.getPreferences(req.params.userUUID, profile.id ?? '', USER_CONFIGURATION_ID, '').catch(() => null);
+
   const meHandler = async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
     const serverId = serverIdFor(userUUID);
     const config = await database.getUserConfig(userUUID);
     const profile = (req.params.userId && profileByUserId(config, userUUID, req.params.userId)) || sessionProfile(req, config);
-    res.json(userFor(profile, serverId));
+    res.json(userFor(profile, serverId, await storedConfiguration(req, profile)));
   };
   router.get('/Users/Me', meHandler);
+
+  router.post(['/Users/:userId/Configuration', '/Users/Configuration'], async (req: any, res: any) => {
+    const userUUID = req.params.userUUID;
+    const config = await database.getUserConfig(userUUID);
+    const profile = (req.params.userId && profileByUserId(config, userUUID, req.params.userId)) || sessionProfile(req, config);
+    if (req.body && typeof req.body === 'object') {
+      await database.savePreferences(userUUID, profile.id ?? '', USER_CONFIGURATION_ID, '', req.body).catch((error: any) =>
+        logger.debug(`User configuration save failed: ${error?.message || error}`)
+      );
+    }
+    res.status(204).end();
+  });
   router.get('/Users', async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
     const config = await database.getUserConfig(userUUID);
@@ -1514,9 +1533,18 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const includeResumable = flag('EnableResumable', true);
     const includeRewatching = flag('EnableRewatching', false);
 
-    const resumable = includeResumable
-      ? null
-      : new Set((await resumeSnapshot(userUUID, config)).map((r) => r.metaId));
+    let resumable: Set<string> | null = null;
+    if (!includeResumable) {
+      const { videoIdAliases } = require('./aliases');
+      resumable = new Set<string>();
+      for (const row of await resumeSnapshot(userUUID, config)) {
+        resumable.add(row.metaId);
+        for (const alias of await videoIdAliases(row.videoId)) {
+          const parsed = parseStremioId(alias);
+          if (parsed) resumable.add(parsed.base);
+        }
+      }
+    }
 
     // The table first; a tracker adds the shows it knows that the table does not.
     const own = await ownNextUpRows(userUUID, profileKey(config));
@@ -1594,10 +1622,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         // The tracker's next episode may already be played here; the table wins.
         await applyWatchedState(episodes, snapshot, userUUID, profileKey(config));
         const from = episodes.indexOf(target);
+        const nowMs = Date.now();
         const next = episodes
           .slice(from)
           .find((episode: any, i: number) => episode.UserData?.Played !== true && (i === 0 || episode.ParentIndexNumber !== 0));
-        if (next) items[index] = next;
+        const airedAt = Date.parse(next?.PremiereDate || '');
+        if (next && !(Number.isFinite(airedAt) && airedAt > nowMs)) items[index] = next;
     });
 
     const shown = new Set<string>();
@@ -1629,7 +1659,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const serverId = serverIdFor(userUUID);
     const profile = profileKey(config);
     const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
-    const within = (at: number): boolean => Number.isFinite(at) && at >= now && at <= horizon;
+    // An episode airing today has not aired yet.
+    const today = new Date(now).setUTCHours(0, 0, 0, 0);
+    const within = (at: number): boolean => Number.isFinite(at) && at >= today && at <= horizon;
 
     const [snapshot, resume, own, caughtUp] = await Promise.all([
       watchedSnapshot(userUUID, config),
@@ -1637,11 +1669,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       ownNextUpRows(userUUID, profile),
       upcomingFollowed(config, days),
     ]);
+    // Tracker-followed shows are all checked; locally known ones are capped.
     const shows = new Map<string, string>();
-    for (const row of [...own, ...snapshot.nextUp, ...snapshot.following, ...resume.filter((r) => r.kind === 'episode'), ...caughtUp]) {
+    for (const row of [...caughtUp, ...snapshot.following]) {
       if (!shows.has(row.metaId)) shows.set(row.metaId, row.mediaType);
     }
-    const followed = [...shows.entries()].slice(0, envInt('JELLYFIN_UPCOMING_SHOWS', 60, 1));
+    let local = 0;
+    const localCap = envInt('JELLYFIN_UPCOMING_LOCAL_SHOWS', 60, 0);
+    for (const row of [...own, ...snapshot.nextUp, ...resume.filter((r) => r.kind === 'episode')]) {
+      if (shows.has(row.metaId)) continue;
+      if (local >= localCap) break;
+      shows.set(row.metaId, row.mediaType);
+      local += 1;
+    }
+    const followed = [...shows.entries()];
 
     const seen = new Set<string>();
     const premieres: any[] = [];
@@ -1657,7 +1698,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         .filter((episode: any) => episode.ParentIndexNumber !== 0);
       const aired = episodes.filter((episode: any) => {
         const at = premiereAt(episode);
-        return Number.isFinite(at) && at < now;
+        return Number.isFinite(at) && at < today;
       });
       await applyWatchedState(aired, snapshot, userUUID, profile);
       if (aired.some((episode: any) => episode.UserData?.Played !== true)) return;
