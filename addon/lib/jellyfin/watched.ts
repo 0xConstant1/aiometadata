@@ -55,7 +55,7 @@ export interface WatchedSnapshot {
   /** Base ids of watched films. */
   movies: Set<string>;
   /** Watched and total episode counts, keyed by every id the series answers to. */
-  series: Map<string, { watched: number; total: number }>;
+  series: Map<string, { watched: number; total: number; at?: number }>;
   nextUp: NextUpRow[];
   /** Shows the tracker lists as being watched, next episode aired or not. */
   following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
@@ -133,6 +133,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
   const counts = {
     watched: Number(entry?.watched_episodes_count) || 0,
     total: Number(entry?.total_episodes_count) || 0,
+    at: Date.parse(entry?.last_watched_at ?? '') || undefined,
   };
   for (const key of keys) snapshot.series.set(key, counts);
 
@@ -171,7 +172,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
 interface RawSnapshot {
   episodes: string[];
   movies: string[];
-  series: Array<[string, { watched: number; total: number }]>;
+  series: Array<[string, { watched: number; total: number; at?: number }]>;
   nextUp: NextUpRow[];
   following?: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
 }
@@ -223,7 +224,7 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
 
   const episodes = new Set<string>();
   const movies = new Set<string>();
-  const series = new Map<string, { watched: number; total: number }>();
+  const series = new Map<string, { watched: number; total: number; at?: number }>();
 
   const read = async (mediatype: 'episode' | 'movie'): Promise<any[]> => {
     const collected: any[] = [];
@@ -259,6 +260,7 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
     if (ids.tmdb) movies.add(`tmdb:${ids.tmdb}`);
   }
 
+  const latest = new Map<string, { resolved: any; season: number; number: number; at: number }>();
   for (const entry of episodeRows) {
     const episode = entry?.episode;
     const season = Number(episode?.season);
@@ -271,60 +273,39 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
 
     episodes.add(resolved.videoId);
 
+    const at = Date.parse(entry?.last_watched_at ?? '') || 0;
     const counts = series.get(resolved.metaId) ?? { watched: 0, total: 0 };
     counts.watched += 1;
+    if (at && (!counts.at || at > counts.at)) counts.at = at;
     series.set(resolved.metaId, counts);
+
+    const held = latest.get(resolved.metaId);
+    if (!held || at > held.at || (at === held.at && (season > held.season || (season === held.season && number > held.number)))) {
+      latest.set(resolved.metaId, { resolved, season, number, at });
+    }
+  }
+
+  // Seeded with the last episode watched, not the earliest gap; the shelf moves on from it.
+  const nextUp: NextUpRow[] = [];
+  for (const [metaId, { resolved, season, number, at }] of latest) {
+    nextUp.push({
+      metaId,
+      videoId: resolved.mediaType === 'anime' ? resolved.videoId : null,
+      season: resolved.mediaType === 'anime' ? null : season,
+      episode: resolved.mediaType === 'anime' ? Number(String(resolved.videoId).split(':').pop()) : number,
+      mediaType: resolved.mediaType,
+      lastWatchedAt: at,
+    });
   }
 
   return {
     episodes: [...episodes],
     movies: [...movies],
     series: [...series],
-    nextUp: await mdblistNextUp(apiKey),
+    nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
   };
 }
 
-// MDBList names the next episode by the show's TMDB id and a season number, so
-// an anime row goes through the same pivot the resume path uses and everything
-// else is fetched by TMDB, which the meta route resolves to its own id.
-async function mdblistNextUp(apiKey: string): Promise<NextUpRow[]> {
-  const { fetchMDBListUpNext } = require('../../utils/mdbList');
-  const rows: NextUpRow[] = [];
-
-  try {
-    const pageSize = 100;
-    const maxPages = envInt('JELLYFIN_NEXTUP_MAX_PAGES', 10, 1);
-    const items: any[] = [];
-    for (let page = 1; page <= maxPages; page += 1) {
-      const result = await fetchMDBListUpNext(apiKey, page, pageSize, true);
-      items.push(...(Array.isArray(result.items) ? result.items : []));
-      if (!result.hasMore || !result.items?.length) break;
-    }
-
-    for (const item of items) {
-      const ids = item?.show?.ids ?? {};
-      const season = Number(item?.next_episode?.season);
-      const episode = Number(item?.next_episode?.episode);
-      if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
-
-      const resolved = await videoIdFor(ids, season, episode);
-      if (!resolved) continue;
-
-      rows.push({
-        metaId: resolved.metaId,
-        videoId: resolved.mediaType === 'anime' ? resolved.videoId : null,
-        season: resolved.mediaType === 'anime' ? null : season,
-        episode,
-        mediaType: resolved.mediaType,
-        lastWatchedAt: Date.parse(item?.last_watched_at ?? '') || 0,
-      });
-    }
-  } catch (error: any) {
-    logger.warn(`MDBList up next failed: ${error?.message || error}`);
-  }
-
-  return rows.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt);
-}
 
 /**
  * Simkl suspends a client_id for polling the whole library, so a refetch is
@@ -459,7 +440,7 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
 
   const episodes = new Set<string>();
   const movies = new Set<string>();
-  const series = new Map<string, { watched: number; total: number }>();
+  const series = new Map<string, { watched: number; total: number; at?: number }>();
   const latest = new Map<string, { row: any; at: number }>();
   const followedSince = Date.now() - envInt('JELLYFIN_NEXTUP_OWN_DAYS', 120, 1) * 24 * 60 * 60 * 1000;
 

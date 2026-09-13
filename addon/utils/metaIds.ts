@@ -49,7 +49,7 @@ export function extractCanonicalIdFromDynamicUpNextId(type: string, stremioId: s
     return null;
   }
 
-  const prefixes = ['mdblist_upnext_', 'pmdb_resume_', 'upnext_'];
+  const prefixes = ['mdblist_upnext_', 'simkl_upnext_', 'pmdb_resume_', 'upnext_'];
   const prefix = prefixes.find(p => stremioId.startsWith(p));
   if (!prefix) {
     return null;

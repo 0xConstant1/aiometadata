@@ -25,7 +25,7 @@ export interface WatchStatePull {
   watched?: {
     movies: string[];
     episodes: string[];
-    counts: Record<string, { watched: number; total: number }>;
+    counts: Record<string, { watched: number; total: number; at?: number }>;
     nextUp: Array<{ type: 'series'; metaId: string; videoId: string; season: number | null; episode: number; at: number }>;
   };
 }
@@ -79,8 +79,10 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
 
   if (!version || since === version) return { version, items };
 
-  const counts: Record<string, { watched: number; total: number }> = {};
-  for (const [id, value] of snapshot.series) counts[id] = { watched: value.watched, total: value.total };
+  const counts: Record<string, { watched: number; total: number; at?: number }> = {};
+  for (const [id, value] of snapshot.series) {
+    counts[id] = { watched: value.watched, total: value.total, ...(value.at ? { at: seconds(value.at) } : {}) };
+  }
 
   return {
     version,

@@ -294,7 +294,12 @@ function normalizeIdsForMovie(parsedId: ParsedMediaId): Record<string, any> | nu
 async function resolveSeriesIds(parsedId: ParsedMediaId, config: any = {}, isSimkl: boolean = false): Promise<ResolvedSeriesIds | null> {
   switch (parsedId.provider) {
     case 'imdb': {
-      const animeMapping = idMapper.getMappingByImdbId(parsedId.id);
+      const found = idMapper.getMappingByImdbId(parsedId.id);
+      if (found && !idMapper.mappingIsType(found, 'series')) {
+        logger.debug(`[Watch Tracking] ${parsedId.id} is a film in the anime mapping, not a series`);
+        return null;
+      }
+      const animeMapping = found;
       if (animeMapping?.tvdb_id && !isSimkl) {
         try {
           const anidbInfo = await resolveAnidbEpisodeFromTvdbEpisode(
@@ -465,7 +470,7 @@ async function creditWatch(parsedId: ParsedMediaId, config: any): Promise<void> 
   const mediaType = parsedId.type === 'movie' ? 'movie' : 'series';
 
   await eachHistoryService(parsedId, config, mediaType, 'addToHistory', 'Crediting a watch');
-  await clearMdblistResumePoint(parsedId, config, mediaType);
+  await clearResumePoint(parsedId, config);
   await publicMetaDbHistory(parsedId, config, mediaType, 'watched');
 }
 

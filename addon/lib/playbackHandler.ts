@@ -131,6 +131,17 @@ export async function handlePlaybackReport(
     return { status: 204 };
   }
 
+  // A film's id played through a series page would credit the franchise show.
+  if (type === 'series') {
+    const idMapper = require('./id-mapper');
+    const base = String(report.metaId || id).split(':')[0];
+    const mapping = base.startsWith('tt') ? idMapper.getMappingByImdbId(base) : null;
+    if (mapping && !idMapper.mappingIsType(mapping, 'series')) {
+      logger.debug(`Rejected series event on a film's id: ${id}`);
+      return { status: 400, reason: 'not a series' };
+    }
+  }
+
   const progress =
     report.positionMs !== null && report.durationMs
       ? Math.round((report.positionMs / report.durationMs) * 100)
@@ -174,9 +185,28 @@ export async function handlePlaybackReport(
     creditWatchEverywhere(type, id, report, config).catch((error: any) => {
       logger.error(`Crediting a watch failed for ${id}: ${error.message}`);
     }),
+    clearSessionOnFinish(type, id, report, config).catch((error: any) => {
+      logger.error(`Clearing the session failed for ${id}: ${error.message}`);
+    }),
   ]);
 
+  if (intent === 'watched' || intent === 'unwatched' || report.event === 'stop') {
+    const { invalidateResume } = require('./jellyfin/resume');
+    const { invalidateWatched } = require('./jellyfin/watched');
+    invalidateResume(userUUID);
+    if (intent === 'watched' || intent === 'unwatched') await invalidateWatched(config).catch(() => undefined);
+  }
+
   return { status: 204 };
+}
+
+// A watch only hides a tracker's paused session; it has to be deleted or an unwatch revives it.
+async function clearSessionOnFinish(type: string, id: string, report: PlaybackReport, config: any): Promise<void> {
+  if (report.event !== 'stop' || intentOf(report) !== 'watched') return;
+  const { parseMediaId, clearResumePoint } = require('./subtitleHandler');
+  const parsedId = parseMediaId(id);
+  if (!parsedId) return;
+  await clearResumePoint(parsedId, config);
 }
 
 /**

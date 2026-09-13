@@ -1599,7 +1599,7 @@ async function historySync(
       : { movies: [{ ids: idInput }] };
 
   try {
-    await makeRateLimitedRequest(
+    const response: any = await makeRateLimitedRequest(
       () => httpPost(`https://api.mdblist.com/sync/${path}?apikey=${apiKey}`, payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 10000,
@@ -1608,6 +1608,13 @@ async function historySync(
       apiKey,
       `MDBList /sync/${path} (${formatIdSummary(idInput)})`
     );
+    // A miss comes back inside a 200.
+    const missed = response?.data?.not_found;
+    const missing = ['movies', 'shows', 'episodes'].reduce((n, key) => n + (Array.isArray(missed?.[key]) ? missed[key].length : 0), 0);
+    if (missing > 0) {
+      logger.warn(`[MDBList] /sync/${path} did not find the title`, { ids: idInput, season, episode, not_found: missed });
+      return false;
+    }
     logger.info(`[MDBList] ${path === 'watched' ? 'Added to' : 'Removed from'} history`, { ids: idInput, season, episode });
     return true;
   } catch (error: any) {
