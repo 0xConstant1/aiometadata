@@ -32,7 +32,7 @@ import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByNa
 import { segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
 import { allBoxSets, boxSetMembers, boxSetsFor, collectionById, collectionView, folderCoverSize } from './collections';
-import { applyWatchedState, isWatched, ownNextUpRows, watchedSnapshot } from './watched';
+import { applyWatchedState, isWatched, ownNextUpRows, upcomingFollowed, watchedSnapshot } from './watched';
 import { registerStubs } from './stubs';
 import { recordPlayed, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData } from './playstate';
 
@@ -1624,19 +1624,21 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const now = Date.now();
-    const horizon = now + envInt('JELLYFIN_UPCOMING_DAYS', 90, 1) * 24 * 60 * 60 * 1000;
+    const days = envInt('JELLYFIN_UPCOMING_DAYS', 90, 1);
+    const horizon = now + days * 24 * 60 * 60 * 1000;
     const serverId = serverIdFor(userUUID);
     const profile = profileKey(config);
     const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
     const within = (at: number): boolean => Number.isFinite(at) && at >= now && at <= horizon;
 
-    const [snapshot, resume, own] = await Promise.all([
+    const [snapshot, resume, own, caughtUp] = await Promise.all([
       watchedSnapshot(userUUID, config),
       resumeSnapshot(userUUID, config),
       ownNextUpRows(userUUID, profile),
+      upcomingFollowed(config, days),
     ]);
     const shows = new Map<string, string>();
-    for (const row of [...own, ...snapshot.nextUp, ...resume.filter((r) => r.kind === 'episode')]) {
+    for (const row of [...own, ...snapshot.nextUp, ...snapshot.following, ...resume.filter((r) => r.kind === 'episode'), ...caughtUp]) {
       if (!shows.has(row.metaId)) shows.set(row.metaId, row.mediaType);
     }
     const followed = [...shows.entries()].slice(0, envInt('JELLYFIN_UPCOMING_SHOWS', 60, 1));
@@ -1650,9 +1652,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       if (seen.has(identity)) return;
       seen.add(identity);
       const seriesId = encodeJellyfinId({ k: 'series', t: mediaType, i: String(meta.id) });
-      const first = buildEpisodes(meta, mediaType, seriesId, serverId, null)
-        .find((episode: any) => episode.IndexNumber === 1 && episode.ParentIndexNumber > 0 && within(premiereAt(episode)));
-      if (first) premieres.push(first);
+      // Only a show the user is caught up on: an aired episode still unwatched is Next Up's business.
+      const episodes = buildEpisodes(meta, mediaType, seriesId, serverId, null)
+        .filter((episode: any) => episode.ParentIndexNumber !== 0);
+      const aired = episodes.filter((episode: any) => {
+        const at = premiereAt(episode);
+        return Number.isFinite(at) && at < now;
+      });
+      await applyWatchedState(aired, snapshot, userUUID, profile);
+      if (aired.some((episode: any) => episode.UserData?.Played !== true)) return;
+
+      const next = episodes
+        .filter((episode: any) => within(premiereAt(episode)))
+        .sort((a: any, b: any) => premiereAt(a) - premiereAt(b))[0];
+      if (next) premieres.push(next);
     });
 
     const watchlists = (await getCatalogs(userUUID, config)).filter(

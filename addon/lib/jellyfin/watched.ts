@@ -57,6 +57,8 @@ export interface WatchedSnapshot {
   /** Watched and total episode counts, keyed by every id the series answers to. */
   series: Map<string, { watched: number; total: number }>;
   nextUp: NextUpRow[];
+  /** Shows the tracker lists as being watched, next episode aired or not. */
+  following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
   fingerprint: string;
 }
 
@@ -65,6 +67,7 @@ const EMPTY: WatchedSnapshot = {
   movies: new Set(),
   series: new Map(),
   nextUp: [],
+  following: [],
   fingerprint: '',
 };
 
@@ -106,11 +109,15 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
   const ids = entry?.show?.ids ?? {};
   const keys = seriesKeys(ids);
 
+  const metaId = isAnime && ids.kitsu
+    ? `kitsu:${ids.kitsu}`
+    : (ids.imdb ? String(ids.imdb) : ids.tvdb ? `tvdb:${ids.tvdb}` : null);
+  if (metaId && entry?.status === 'watching') {
+    snapshot.following.push({ metaId, mediaType: isAnime && ids.kitsu ? 'anime' : 'series' });
+  }
+
   const next = parseNextToWatch(entry?.next_to_watch);
   if (next) {
-    const metaId = isAnime && ids.kitsu
-      ? `kitsu:${ids.kitsu}`
-      : (ids.imdb ? String(ids.imdb) : ids.tvdb ? `tvdb:${ids.tvdb}` : null);
     if (metaId) {
       snapshot.nextUp.push({
         metaId,
@@ -166,6 +173,7 @@ interface RawSnapshot {
   movies: string[];
   series: Array<[string, { watched: number; total: number }]>;
   nextUp: NextUpRow[];
+  following?: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
 }
 
 async function build(accessToken: string): Promise<RawSnapshot> {
@@ -182,6 +190,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     movies: new Set(),
     series: new Map(),
     nextUp: [],
+    following: [],
     fingerprint: '',
   };
 
@@ -200,6 +209,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     movies: [...snapshot.movies],
     series: [...snapshot.series],
     nextUp: snapshot.nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
+    following: snapshot.following,
   };
 }
 
@@ -349,7 +359,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
 
     const { cacheWrapGlobal } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_v1:${key}`,
+      `jellyfin_watched_v2:${key}`,
       () => build(accessToken),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true }
@@ -360,6 +370,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
       movies: new Set(raw?.movies ?? []),
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
+      following: raw?.following ?? [],
       fingerprint,
     };
     if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);
@@ -370,6 +381,39 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
   } catch (error: any) {
     logger.warn(`Watched snapshot failed: ${error?.message || error}`);
     return EMPTY;
+  }
+}
+
+/** Shows the tracker says are caught up with an episode on the way, as followed shows. */
+export async function upcomingFollowed(config: any, days: number): Promise<Array<{ metaId: string; mediaType: 'anime' | 'series' }>> {
+  const { readsTrackers } = require('./profiles');
+  if (!readsTrackers(config)) return [];
+  const apiKey = credentialFor(config, 'mdblist');
+  if (!apiKey) return [];
+
+  const { cacheWrapGlobal } = require('../getCache');
+  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  try {
+    return await cacheWrapGlobal(
+      `jellyfin_upcoming_mdblist_v1:${keyHash}:${days}`,
+      async () => {
+        const { fetchMDBListUpcoming } = require('../../utils/mdbList');
+        const out: Array<{ metaId: string; mediaType: 'anime' | 'series' }> = [];
+        for (const item of await fetchMDBListUpcoming(apiKey, days)) {
+          const season = Number(item?.next_episode?.season);
+          const episode = Number(item?.next_episode?.episode);
+          if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
+          const resolved = await videoIdFor(item?.show?.ids ?? {}, season, episode);
+          if (resolved) out.push({ metaId: resolved.metaId, mediaType: resolved.mediaType });
+        }
+        return out;
+      },
+      envInt('JELLYFIN_UPCOMING_TTL', 6 * 60 * 60, 60),
+      { upstream: true }
+    );
+  } catch (error: any) {
+    logger.warn(`MDBList upcoming failed: ${error?.message || error}`);
+    return [];
   }
 }
 
@@ -425,6 +469,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string): Promise<Watche
       movies: new Set(raw?.movies ?? []),
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
+      following: [],
       fingerprint: key,
     };
     if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);

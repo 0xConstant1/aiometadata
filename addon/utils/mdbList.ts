@@ -1436,6 +1436,24 @@ async function fetchMDBListUpNext(
   }
 }
 
+/** Caught-up shows with an episode airing within `days` (MDBList caps it at 90). */
+async function fetchMDBListUpcoming(apiKey: string, days: number, limit: number = 100): Promise<any[]> {
+  if (!apiKey) return [];
+  const window = Math.min(Math.max(1, Math.round(days)), 90);
+  const url = `https://api.mdblist.com/upnext/upcoming?apikey=${apiKey}&days=${window}&limit=${Math.min(Math.max(1, limit), 100)}`;
+  try {
+    const response: any = await makeRateLimitedRequest(
+      () => httpGet(url, { dispatcher: mdblistDispatcher }),
+      apiKey,
+      `MDBList fetchMDBListUpcoming (days: ${window})`
+    );
+    return Array.isArray(response.data?.items) ? response.data.items : [];
+  } catch (error: any) {
+    logger.error(`[MDBList Upcoming] Error fetching upcoming shows: ${error.message}`);
+    return [];
+  }
+}
+
 /**
  * Parse MDBList Up Next items into Stremio meta format
  * @param items - Array of MDBList up next items
@@ -1868,6 +1886,7 @@ export {
   testMdblistKey,
   fetchMDBListUpNext,
   parseMDBListUpNextItems,
+  fetchMDBListUpcoming,
   fetchMdbListSearchItems,
   checkinMovie,
   checkinEpisode,
