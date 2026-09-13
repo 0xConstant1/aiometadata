@@ -42,7 +42,8 @@ export async function videoIdAliases(videoId: string): Promise<string[]> {
       const season = Number(parsed.season);
       const episode = Number(parsed.episode);
       const imdbId = parsed.idType === 'imdb' ? parsed.base : null;
-      const mapping = imdbId ? idMapper.getMappingByImdbId(imdbId) : idMapper.getMappingByTvdbId(parseInt(parsed.base.split(':')[1], 10));
+      const found = imdbId ? idMapper.getMappingByImdbId(imdbId) : idMapper.getMappingByTvdbId(parseInt(parsed.base.split(':')[1], 10));
+      const mapping = idMapper.mappingIsType(found, 'series') ? found : null;
       const tvdbId = parsed.idType === 'tvdb'
         ? parseInt(parsed.base.split(':')[1], 10)
         : mapping?.thetvdb_id

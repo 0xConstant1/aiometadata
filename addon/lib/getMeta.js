@@ -333,7 +333,8 @@ async function getMeta(type, language, stremioId, config = {}, userUUID, include
     let isImdbIdAnime = false;
     let detectedAnimeMapping = null;
     if (stremioId.startsWith('tt')) {
-        const fribbMapping = idMapper.getMappingByImdbId(stremioId);
+        const found = idMapper.getMappingByImdbId(stremioId);
+        const fribbMapping = idMapper.mappingIsType(found, type) ? found : null;
         const traktMapping = type === 'movie' ? idMapper.getTraktAnimeMovieByImdbId(stremioId) : null;
         isImdbIdAnime = !!fribbMapping || !!traktMapping;
         detectedAnimeMapping = fribbMapping;
@@ -352,7 +353,8 @@ async function getMeta(type, language, stremioId, config = {}, userUUID, include
     if (stremioId.startsWith('tvdb:')) {
         const tvdbId = stremioId.replace('tvdb:', '');
         if (type !== 'movie') {
-             const fribbMapping = idMapper.getMappingByTvdbId(tvdbId);
+             const found = idMapper.getMappingByTvdbId(tvdbId);
+             const fribbMapping = idMapper.mappingIsType(found, type) ? found : null;
              if (fribbMapping) isTvdbIdAnime = true;
              detectedAnimeMapping = fribbMapping;
         }

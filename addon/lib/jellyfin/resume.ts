@@ -41,13 +41,20 @@ export async function videoIdFor(
   season: number,
   episode: number
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
+  // MDBList and PublicMetaDB number episodes the way TMDB does.
+  if (ids.tmdb) {
+    const viaTmdb = await fromTmdbNumbering(ids, season, episode);
+    if (viaTmdb) return viaTmdb;
+  }
+
   let tvdb = ids.tvdb;
   let imdb = ids.imdb;
   if (!tvdb && ids.tmdb) {
     tvdb = idMapper.getMappingByTmdbId(String(ids.tmdb), 'series')?.tvdb_id;
   }
   if (!tvdb && ids.imdb) {
-    tvdb = idMapper.getMappingByImdbId(String(ids.imdb))?.tvdb_id;
+    const found = idMapper.getMappingByImdbId(String(ids.imdb));
+    if (idMapper.mappingIsType(found, 'series')) tvdb = found?.tvdb_id;
   }
   if ((!tvdb || !imdb) && ids.tmdb) {
     try {
@@ -185,6 +192,29 @@ async function simklRows(tokenId: string): Promise<ResumeRow[]> {
   }
 
   return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+async function fromTmdbNumbering(
+  ids: Record<string, any>,
+  season: number,
+  episode: number
+): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
+  const tmdb = String(ids.tmdb);
+  try {
+    if (idMapper.getMappingByTmdbId(tmdb, 'series')) {
+      const kitsu = await idMapper.resolveKitsuEpisodeFromTmdb(Number(tmdb), season, episode);
+      if (kitsu?.kitsuId) {
+        return { metaId: `kitsu:${kitsu.kitsuId}`, videoId: `kitsu:${kitsu.kitsuId}:${kitsu.episodeNumber}`, mediaType: 'anime' };
+      }
+    }
+    const position = await idMapper.tmdbEpisodePosition(Number(tmdb), season, episode);
+    if (position === episode) return null;
+    const base = ids.imdb || (ids.tvdb ? `tvdb:${ids.tvdb}` : `tmdb:${tmdb}`);
+    return { metaId: base, videoId: `${base}:${season}:${position}`, mediaType: 'series' };
+  } catch (error: any) {
+    logger.debug(`TMDB numbering for ${tmdb} S${season}E${episode} failed: ${error?.message}`);
+    return null;
+  }
 }
 
 async function pmdbRows(apiKey: string): Promise<ResumeRow[]> {
