@@ -952,12 +952,14 @@ interface WatchHistoryResponse {
   seasons: any[];
   episodes: WatchHistoryEpisodeEntry[];
   pagination: {
-    page: number;
-    limit: number;
-    total_movies: number;
-    total_seasons: number;
-    total_episodes: number;
-    has_more: boolean;
+    offset?: number;
+    limit?: number;
+    total_movies?: number;
+    total_shows?: number;
+    total_seasons?: number;
+    total_episodes?: number;
+    has_more?: boolean;
+    next_cursor?: string;
   };
 }
 
@@ -1035,6 +1037,9 @@ function normalizeEpisodeIdInput(input: EpisodeIdInput | null | undefined) {
 /**
  * Fetch user's watch history from MDBList API
  */
+/** Bounded so a very large library cannot spend the whole rate limit on one read. */
+const MAX_WATCH_HISTORY_PAGES = parseInt(process.env.MDBLIST_WATCH_HISTORY_PAGES || '6', 10);
+
 async function fetchWatchHistory(apiKey: string): Promise<WatchHistoryResponse | null> {
   if (!apiKey) {
     logger.debug('[Watch Tracking] Missing API key for fetchWatchHistory');
@@ -1042,15 +1047,41 @@ async function fetchWatchHistory(apiKey: string): Promise<WatchHistoryResponse |
   }
 
   try {
-    const url = `https://api.mdblist.com/sync/watched?apikey=${apiKey}`;
+    // Without `offset` the endpoint answers in cursor mode, capped at 100 rows,
+    // and reports no totals — which silently truncated a library of hundreds to
+    // whatever fitted in the first page. Passing an offset switches it to the
+    // paged mode, which returns 1000 at a time and says how many there are.
+    const merged: WatchHistoryResponse = {
+      movies: [], seasons: [], episodes: [], pagination: {},
+    };
 
-    const response: any = await makeRateLimitedRequest(
-      () => httpGet(url, { dispatcher: mdblistDispatcher }),
-      apiKey,
-      'MDBList fetchWatchHistory'
+    let offset = 0;
+    for (let page = 0; page < MAX_WATCH_HISTORY_PAGES; page += 1) {
+      const url = `https://api.mdblist.com/sync/watched?apikey=${apiKey}&offset=${offset}`;
+      const response: any = await makeRateLimitedRequest(
+        () => httpGet(url, { dispatcher: mdblistDispatcher }),
+        apiKey,
+        `MDBList fetchWatchHistory (offset ${offset})`
+      );
+
+      const body = response.data as WatchHistoryResponse;
+      if (!body) break;
+
+      merged.movies.push(...(body.movies || []));
+      merged.seasons.push(...(body.seasons || []));
+      merged.episodes.push(...(body.episodes || []));
+      merged.pagination = body.pagination || {};
+
+      const returned = (body.movies?.length || 0) + (body.seasons?.length || 0) + (body.episodes?.length || 0);
+      if (!body.pagination?.has_more || returned === 0) break;
+      offset += body.pagination.limit || returned;
+    }
+
+    logger.debug(
+      `[Watch Tracking] Read ${merged.movies.length} movies and ${merged.episodes.length} episodes `
+      + `of ${merged.pagination.total_movies ?? '?'} / ${merged.pagination.total_episodes ?? '?'}`
     );
-
-    return response.data as WatchHistoryResponse;
+    return merged;
   } catch (error: any) {
     logger.error(`[Watch Tracking] Failed to fetch watch history: ${error.message}`);
     return null;
@@ -1405,6 +1436,24 @@ async function fetchMDBListUpNext(
   }
 }
 
+/** Caught-up shows with an episode airing within `days` (MDBList caps it at 90). */
+async function fetchMDBListUpcoming(apiKey: string, days: number, limit: number = 100): Promise<any[]> {
+  if (!apiKey) return [];
+  const window = Math.min(Math.max(1, Math.round(days)), 90);
+  const url = `https://api.mdblist.com/upnext/upcoming?apikey=${apiKey}&days=${window}&limit=${Math.min(Math.max(1, limit), 100)}`;
+  try {
+    const response: any = await makeRateLimitedRequest(
+      () => httpGet(url, { dispatcher: mdblistDispatcher }),
+      apiKey,
+      `MDBList fetchMDBListUpcoming (days: ${window})`
+    );
+    return Array.isArray(response.data?.items) ? response.data.items : [];
+  } catch (error: any) {
+    logger.error(`[MDBList Upcoming] Error fetching upcoming shows: ${error.message}`);
+    return [];
+  }
+}
+
 /**
  * Parse MDBList Up Next items into Stremio meta format
  * @param items - Array of MDBList up next items
@@ -1533,6 +1582,89 @@ async function parseMDBListUpNextItems(
   logger.info(`[MDBList Up Next] Total parsing time: ${totalParseTime}ms`);
   
   return validMetas;
+}
+
+// An episode always names its season and number: a show sent bare cascades to
+// every season and episode it has.
+async function historySync(
+  path: 'watched' | 'watched/remove',
+  idInput: Record<string, string | number>,
+  apiKey: string,
+  season?: number,
+  episode?: number
+): Promise<boolean> {
+  const payload =
+    season != null && episode != null
+      ? { shows: [{ ids: idInput, seasons: [{ number: season, episodes: [{ number: episode }] }] }] }
+      : { movies: [{ ids: idInput }] };
+
+  try {
+    await makeRateLimitedRequest(
+      () => httpPost(`https://api.mdblist.com/sync/${path}?apikey=${apiKey}`, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000,
+        dispatcher: mdblistDispatcher,
+      }),
+      apiKey,
+      `MDBList /sync/${path} (${formatIdSummary(idInput)})`
+    );
+    logger.info(`[MDBList] ${path === 'watched' ? 'Added to' : 'Removed from'} history`, { ids: idInput, season, episode });
+    return true;
+  } catch (error: any) {
+    logger.error(`[MDBList] /sync/${path} failed: ${error.message}`);
+    return false;
+  }
+}
+
+async function addToHistory(
+  idInput: Record<string, string | number>,
+  apiKey: string,
+  season?: number,
+  episode?: number
+): Promise<boolean> {
+  return historySync('watched', idInput, apiKey, season, episode);
+}
+
+async function removeFromHistory(
+  idInput: Record<string, string | number>,
+  apiKey: string,
+  season?: number,
+  episode?: number
+): Promise<boolean> {
+  return historySync('watched/remove', idInput, apiKey, season, episode);
+}
+
+// A resume point is held separately from watched status, so clearing a watch
+// leaves the item in continue-watching until the session is cleared as well.
+async function clearScrobbleSession(
+  idInput: Record<string, string | number>,
+  apiKey: string,
+  season?: number,
+  episode?: number
+): Promise<boolean> {
+  if (!idInput || !apiKey) return false;
+
+  const payload =
+    season != null && episode != null
+      ? { show: { ids: idInput, season: { number: season, episode: { number: episode } } } }
+      : { movie: { ids: idInput } };
+
+  // Not through the rate-limited wrapper: it counts every 4xx as a failed call
+  // and logs it, and the usual answer here is 404. A title marked watched by
+  // hand was never paused, so it holds no session, and that is not a failure.
+  try {
+    await httpPost(`https://api.mdblist.com/scrobble/clear?apikey=${apiKey}`, payload, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000,
+      dispatcher: mdblistDispatcher,
+    });
+    logger.info('[MDBList] Cleared the resume point', { ids: idInput, season, episode });
+    return true;
+  } catch (error: any) {
+    if (error?.response?.status === 404) return true;
+    logger.error(`[MDBList] Clearing the resume point failed: ${error.message}`);
+    return false;
+  }
 }
 
 export interface MdblistScrobbleOptions {
@@ -1738,6 +1870,7 @@ async function fetchMDBListCatalog(
 }
 
 export {
+  fetchWatchHistory,
   fetchMDBListItems,
   fetchMDBListExternalItems,
   usesMdblistExternalItemsEndpoint,
@@ -1753,9 +1886,14 @@ export {
   testMdblistKey,
   fetchMDBListUpNext,
   parseMDBListUpNextItems,
+  fetchMDBListUpcoming,
   fetchMdbListSearchItems,
   checkinMovie,
   checkinEpisode,
+  addToHistory,
+  removeFromHistory,
+  clearScrobbleSession,
+  clearScrobbleSession as clearPlayback,
   fetchMDBListCatalog
 };
 

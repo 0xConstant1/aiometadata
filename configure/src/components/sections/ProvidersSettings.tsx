@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 import { useConfig } from '@/contexts/ConfigContext';
 import { isInUse } from '@/lib/metaProviderUsage';
 import { Callout } from '@/components/settings/Callout';
@@ -8,6 +9,11 @@ import { ProviderSelect, type SelectableOption } from '@/components/settings/Pro
 import { SettingRow } from '@/components/settings/SettingRow';
 import { NoticeDisclosure } from '@/components/settings/NoticeDisclosure';
 import { animeNotices } from '@/lib/animeNotices';
+
+const trailerProviders: SelectableOption[] = [
+  { value: 'default', label: 'Metadata provider' },
+  { value: 'addon', label: 'A trailer addon' },
+];
 
 const movieProviders: SelectableOption[] = [
   { value: 'tmdb', label: 'The Movie Database (TMDB)' },
@@ -176,6 +182,35 @@ export function ProvidersSettings() {
               <p className="text-xs text-muted-foreground mt-2">
                 MAL is disabled because "Use IMDb ID for Catalog/Search" is enabled in MAL settings.
               </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Trailers</CardTitle><CardDescription>Where a title's trailer comes from.</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            <ProviderSelect
+              id="trailer-provider"
+              ariaLabel="Trailer source"
+              value={config.trailerProvider ?? 'default'}
+              onValueChange={(val) => setConfig(prev => ({ ...prev, trailerProvider: val === 'addon' ? 'addon' : undefined }))}
+              options={trailerProviders}
+              hasTvdbKey={hasTvdbKey}
+            />
+            {config.trailerProvider === 'addon' && (
+              <>
+                <Input
+                  id="trailer-addon-url"
+                  aria-label="Trailer addon manifest URL"
+                  value={config.trailerAddonUrl ?? ''}
+                  placeholder="https://.../manifest.json"
+                  className="font-mono text-xs"
+                  onChange={(e) => setConfig(prev => ({ ...prev, trailerAddonUrl: e.target.value.trim() || undefined }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The manifest URL of an addon that answers stream requests with trailers, YouTube ids or direct video links. Its own settings, such as language, travel in that URL. A title it does not know keeps the metadata provider's trailer.
+                </p>
+              </>
             )}
           </CardContent>
         </Card>

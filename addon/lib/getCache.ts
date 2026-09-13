@@ -16,6 +16,7 @@ const {
   applyImdbRatingProjection,
   applyImdbRatingProjectionToList,
 }: any = require('./imdbRatingProjection');
+const { applyTrailerAddonProjection }: any = require('./trailerProjection');
 const {
   RELEASE_AVAILABILITY_FIELD,
   normalizeMetaReleaseAvailability,
@@ -1186,6 +1187,7 @@ async function projectMetaForUser(meta: any, config: any): Promise<any> {
   if (!meta) return meta;
   normalizeMetaCredits(meta);
   applyTrailerStreamsProjection(meta);
+  await applyTrailerAddonProjection(meta, config);
   applyCastCountProjection(meta, config);
   applyBlurThumbProjection(meta, config);
   applyDisplayAgeRatingProjection(meta, config);

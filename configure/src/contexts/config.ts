@@ -240,6 +240,8 @@ export interface AppConfig {
   managerAccounts?: ManagerAccount[];
   /** Poster rating provider: 'none' to disable rating posters, 'rpdb' for RatingPosterDB, 'top' for Top Poster API, or 'custom' for custom URL patterns */
   posterRatingProvider?: 'none' | 'rpdb' | 'top' | 'custom';
+  trailerProvider?: 'default' | 'addon';
+  trailerAddonUrl?: string;
   usePosterProxy: boolean;
   mdblistWatchTracking: boolean;
   anilistWatchTracking: boolean;

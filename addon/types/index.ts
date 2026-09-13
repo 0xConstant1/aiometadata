@@ -50,6 +50,8 @@ export interface UserConfig {
     { movie?: boolean; series?: boolean }
   >>;
   /** Poster rating provider: 'rpdb' for RatingPosterDB, 'top' for Top Poster API, or 'custom' for custom URL patterns */
+  trailerProvider?: 'default' | 'addon';
+  trailerAddonUrl?: string;
   posterRatingProvider?: 'rpdb' | 'top' | 'custom';
   catalogs?: Catalog[];
   streaming?: StreamingConfig[];

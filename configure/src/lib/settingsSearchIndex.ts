@@ -262,6 +262,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ['kitsu', 'mal', 'tvdb', 'imdb', 'anime'],
   },
   {
+    id: 'providers.trailerProvider', section: 'providers', anchor: 'trailer-provider',
+    label: 'Trailers',
+    description: "Where a title's trailer comes from: the metadata provider or a trailer addon.",
+    keywords: ['trailer', 'trailers', 'youtube', 'addon'],
+  },
+  {
     id: 'providers.tvdbSeasonOrder', section: 'providers', anchor: 'tvdb-season-order',
     label: 'Season Order',
     description: '"Aired Order (Default)" or "Official order" are recommended.',
