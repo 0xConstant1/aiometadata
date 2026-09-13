@@ -1,3 +1,4 @@
+import { historyPayload, type EpisodeRef } from './historyPayload';
 import { httpGet, httpPost } from "./httpClient.js";
 import { resolveAllIds } from "../lib/id-resolver.js";
 const buildInfo = require('../lib/buildInfo');
@@ -1591,12 +1592,10 @@ async function historySync(
   idInput: Record<string, string | number>,
   apiKey: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  const payload =
-    season != null && episode != null
-      ? { shows: [{ ids: idInput, seasons: [{ number: season, episodes: [{ number: episode }] }] }] }
-      : { movies: [{ ids: idInput }] };
+  const payload = historyPayload(idInput, season, episode, episodes);
 
   try {
     const response: any = await makeRateLimitedRequest(
@@ -1627,18 +1626,20 @@ async function addToHistory(
   idInput: Record<string, string | number>,
   apiKey: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  return historySync('watched', idInput, apiKey, season, episode);
+  return historySync('watched', idInput, apiKey, season, episode, episodes);
 }
 
 async function removeFromHistory(
   idInput: Record<string, string | number>,
   apiKey: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  return historySync('watched/remove', idInput, apiKey, season, episode);
+  return historySync('watched/remove', idInput, apiKey, season, episode, episodes);
 }
 
 // A resume point is held separately from watched status, so clearing a watch

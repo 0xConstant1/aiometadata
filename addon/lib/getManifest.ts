@@ -1687,7 +1687,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       ? {
           watchState: {
             version: WATCH_STATE_VERSION,
-            push: { events: PLAYBACK_MANIFEST_EVENTS },
+            push: { events: PLAYBACK_MANIFEST_EVENTS, bulk: true },
             pull: { items: true, watched: true, ttlSeconds: watchStatePullTtl() },
           },
           playback: { version: 1, events: PLAYBACK_MANIFEST_EVENTS },

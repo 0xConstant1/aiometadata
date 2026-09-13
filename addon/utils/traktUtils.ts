@@ -1,4 +1,5 @@
 import { httpGet, httpPost, httpRequest } from "./httpClient.js";
+import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { getMeta } from "../lib/getMeta.js";
 import { mapWithLimit } from "./concurrency.js";
 import { cacheWrapMetaSmart, cacheWrapGlobal, readGlobalCache, writeGlobalCache } from "../lib/getCache.js";
@@ -3253,12 +3254,10 @@ export async function addToHistory(
   idInput: Record<string, string | number>,
   accessToken: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  const payload =
-    season != null && episode != null
-      ? { shows: [{ ids: idInput, seasons: [{ number: season, episodes: [{ number: episode }] }] }] }
-      : { movies: [{ ids: idInput }] };
+  const payload = historyPayload(idInput, season, episode, episodes);
 
   try {
     await makeRateLimitedRequest(
@@ -3289,12 +3288,10 @@ export async function removeFromHistory(
   idInput: Record<string, string | number>,
   accessToken: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  const payload =
-    season != null && episode != null
-      ? { shows: [{ ids: idInput, seasons: [{ number: season, episodes: [{ number: episode }] }] }] }
-      : { movies: [{ ids: idInput }] };
+  const payload = historyPayload(idInput, season, episode, episodes);
 
   try {
     await makeRateLimitedRequest(

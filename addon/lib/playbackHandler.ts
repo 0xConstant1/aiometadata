@@ -113,6 +113,69 @@ export interface PlaybackOutcome {
  * do, an event is accepted and recorded so the sender sees a healthy sink and
  * stops retrying.
  */
+// Acknowledged at once; the sender gives up on the request after 15 seconds.
+export async function handleBulkPlaybackReport(
+  type: string,
+  id: string,
+  body: any,
+  config: any,
+  userUUID: string
+): Promise<PlaybackOutcome> {
+  const event = String(body?.event || '');
+  if (type !== 'series' || (event !== 'played' && event !== 'unplayed')) {
+    return { status: 400, reason: 'unrecognised bulk event' };
+  }
+  const videos = (Array.isArray(body?.videos) ? body.videos : [])
+    .map((v: any) => (typeof v?.videoId === 'string' ? v.videoId : null))
+    .filter((v: string | null): v is string => !!v);
+  if (!videos.length) return { status: 400, reason: 'no videos' };
+
+  if (typeof body?.id === 'string' && body.id) {
+    const key = `${userUUID}:${body.id}`;
+    if (seen.has(key)) return { status: 204 };
+    seen.set(key, true);
+  }
+
+  const idMapper = require('./id-mapper');
+  const base = String(body?.metaId || id).split(':')[0];
+  const mapping = base.startsWith('tt') ? idMapper.getMappingByImdbId(base) : null;
+  if (mapping && !idMapper.mappingIsType(mapping, 'series')) return { status: 400, reason: 'not a series' };
+
+  logger.info(`${event} ${type}/${id}: ${videos.length} video(s) (${body?.scope || 'bulk'} ${body?.part ?? 1}/${body?.parts ?? 1})`);
+
+  const work = async () => {
+    const { markEpisodes } = require('./subtitleHandler');
+    await markEpisodes(videos, config, event === 'played' ? 'addToHistory' : 'removeFromHistory');
+    if (event === 'played') {
+      // A count-based list only needs the furthest episode.
+      const last = [...videos].sort((a, b) => episodeOrder(a) - episodeOrder(b)).pop() as string;
+      const { parseMediaId } = require('./subtitleHandler');
+      const parsedLast = parseMediaId(last);
+      if (parsedLast) {
+        await advanceAnimeLists(type, last, {
+          id: null, event: 'played', at: null, metaId: body?.metaId ?? null, videoId: last,
+          positionMs: null, durationMs: null, played: true,
+          season: parsedLast.season ?? null, episode: parsedLast.episode ?? null, ids: body?.ids ?? {},
+        }, config, userUUID).catch((error: any) => logger.error(`Anime list update failed for ${id}: ${error.message}`));
+      }
+    }
+    const { invalidateResume } = require('./jellyfin/resume');
+    const { invalidateWatched } = require('./jellyfin/watched');
+    invalidateResume(userUUID);
+    await invalidateWatched(config).catch(() => undefined);
+  };
+  work().catch((error: any) => logger.error(`Bulk ${event} failed for ${id}: ${error.message}`));
+
+  return { status: 204 };
+}
+
+function episodeOrder(videoId: string): number {
+  const parts = videoId.split(':').map(Number);
+  const episode = parts.pop() ?? 0;
+  const season = parts.length >= 2 ? parts.pop() ?? 0 : 0;
+  return season * 100000 + episode;
+}
+
 export async function handlePlaybackReport(
   type: string,
   id: string,
@@ -120,6 +183,9 @@ export async function handlePlaybackReport(
   config: any,
   userUUID: string
 ): Promise<PlaybackOutcome> {
+  const scope = String(body?.scope || '');
+  if (scope === 'season' || scope === 'series') return handleBulkPlaybackReport(type, id, body, config, userUUID);
+
   const report = parsePlaybackReport(body);
   if (!report) {
     logger.debug(`Unusable playback body for ${type}/${id}`);

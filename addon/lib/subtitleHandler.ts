@@ -535,6 +535,52 @@ async function eachHistoryService(
   }
 }
 
+// Each video resolves on its own (an anime episode pivots per episode); one history call per show ids.
+async function markEpisodes(videoIds: string[], config: any, method: 'addToHistory' | 'removeFromHistory'): Promise<void> {
+  const parsed = videoIds.map(parseMediaId).filter((p): p is ParsedMediaId => !!p && p.type === 'series');
+  if (!parsed.length) return;
+
+  for (const service of ['trakt', 'simkl', 'mdblist'] as const) {
+    if (!shouldTrackServiceMediaType(config, service, 'series')) continue;
+    try {
+      let utils: any;
+      let credential: string | undefined;
+      if (service === 'mdblist') {
+        utils = require('../utils/mdbList');
+        credential = config.apiKeys?.mdblist;
+      } else {
+        utils = service === 'trakt' ? require('../utils/traktUtils') : require('../utils/simklUtils');
+        const tokenId = service === 'trakt' ? config.apiKeys?.traktTokenId : config.apiKeys?.simklTokenId;
+        if (!tokenId) continue;
+        const token = service === 'trakt' ? await utils.getTraktToken(tokenId) : await utils.getSimklToken(tokenId);
+        credential = token?.access_token;
+      }
+      if (!credential) continue;
+
+      const groups = new Map<string, { ids: Record<string, any>; episodes: Array<{ season: number; episode: number }> }>();
+      for (const id of parsed) {
+        const resolution = await resolveSeriesIds(id, config, service === 'simkl');
+        if (!resolution) continue;
+        const key = JSON.stringify(resolution.ids);
+        const group = groups.get(key) ?? { ids: resolution.ids, episodes: [] };
+        group.episodes.push({ season: resolution.season, episode: resolution.episode });
+        groups.set(key, group);
+      }
+      for (const group of groups.values()) {
+        await utils[method](group.ids, credential, undefined, undefined, group.episodes);
+      }
+    } catch (error: any) {
+      logger.error(`[${service}] Marking ${parsed.length} episode(s) failed: ${error.message}`);
+    }
+  }
+
+  if (shouldTrackServiceMediaType(config, 'publicmetadb', 'series')) {
+    for (const id of parsed) {
+      await checkinPublicMetaDB(id, config, { action: method === 'addToHistory' ? 'watched' : 'unwatch' }).catch(() => undefined);
+    }
+  }
+}
+
 async function unwatch(parsedId: ParsedMediaId, config: any): Promise<void> {
   const mediaType = parsedId.type === 'movie' ? 'movie' : 'series';
   await eachHistoryService(parsedId, config, mediaType, 'removeFromHistory', 'Unwatch');
@@ -777,6 +823,7 @@ export {
   unwatch,
   clearResumePoint,
   creditWatch,
+  markEpisodes,
   shouldTrackMdblistWatch,
   shouldTrackAniList
 };
@@ -790,6 +837,7 @@ module.exports = {
   unwatch,
   clearResumePoint,
   creditWatch,
+  markEpisodes,
   shouldTrackMdblistWatch,
   shouldTrackAniList
 };
