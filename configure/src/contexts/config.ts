@@ -403,6 +403,7 @@ export interface AppConfig {
   jellyfinUserName?: string;
   jellyfinUserAvatar?: string;
   jellyfinUserTags?: string[];
+  jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'introdb' | 'off';
   jellyfinUsers?: JellyfinUser[];
   customPosterUrlPattern?: string;
   customBackgroundUrlPattern?: string;

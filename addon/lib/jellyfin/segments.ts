@@ -70,9 +70,22 @@ async function fromIntroDb(lookup: Lookup): Promise<Segment[]> {
 }
 
 // Timestamps are per title, not per file, so a release cut differently is off by that much.
+export type SkipSource = 'auto' | 'publicmetadb' | 'introdb' | 'off';
+
+export function skipSources(config: any): Array<'publicmetadb' | 'introdb'> {
+  const choice: SkipSource = config?.jellyfinSkipSource ?? 'auto';
+  const pmdb = Boolean(config?.apiKeys?.publicmetadb);
+  if (choice === 'off') return [];
+  if (choice === 'publicmetadb') return pmdb ? ['publicmetadb'] : [];
+  if (choice === 'introdb') return ['introdb'];
+  return pmdb ? ['publicmetadb', 'introdb'] : ['introdb'];
+}
+
 export async function segmentsFor(config: any, lookup: Lookup): Promise<Segment[]> {
+  const sources = skipSources(config);
+  if (!sources.length) return [];
   const pmdbKey: string = config?.apiKeys?.publicmetadb || '';
-  const key = `jf_segments:v1:${lookup.kind}:${lookup.tmdbId || ''}:${lookup.imdbId || ''}:${lookup.season ?? ''}:${lookup.episode ?? ''}:${pmdbKey ? 'p' : ''}`;
+  const key = `jf_segments:v2:${sources.join('+')}:${lookup.kind}:${lookup.tmdbId || ''}:${lookup.imdbId || ''}:${lookup.season ?? ''}:${lookup.episode ?? ''}`;
   const ttl = envInt('JELLYFIN_SEGMENTS_TTL', 7 * 24 * 60 * 60, 60);
 
   const data = await cacheWrapGlobal(key, async () => {
@@ -80,18 +93,12 @@ export async function segmentsFor(config: any, lookup: Lookup): Promise<Segment[
     const take = (segments: Segment[]) => {
       for (const segment of segments) if (!found.has(segment.type)) found.set(segment.type, segment);
     };
-    if (pmdbKey) {
+    for (const source of sources) {
+      if (found.size >= 3) break;
       try {
-        take(await fromPublicMetaDb(pmdbKey, lookup));
+        take(source === 'publicmetadb' ? await fromPublicMetaDb(pmdbKey, lookup) : await fromIntroDb(lookup));
       } catch (error: any) {
-        logger.debug(`PublicMetaDB skips unavailable: ${error?.message || error}`);
-      }
-    }
-    if (found.size < 3) {
-      try {
-        take(await fromIntroDb(lookup));
-      } catch (error: any) {
-        logger.debug(`IntroDB unavailable: ${error?.message || error}`);
+        logger.debug(`${source === 'publicmetadb' ? 'PublicMetaDB' : 'IntroDB'} skips unavailable: ${error?.message || error}`);
       }
     }
     return { segments: [...found.values()] };

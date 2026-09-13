@@ -48,6 +48,30 @@ function encodeSeriesId(descriptor: any): string {
   return encodeJellyfinId({ k: 'series', t: descriptor.t, i: descriptor.i });
 }
 
+// An anime episode's id names its own entry; the library may group the show under an IMDb id.
+async function seriesForEpisode(userUUID: string, config: any, descriptor: any): Promise<{ meta: any; seriesId: string } | null> {
+  const idMapper: any = require('../id-mapper');
+  const perEntry = /^(kitsu|mal|anilist|anidb):/.test(String(descriptor.i));
+  const grouped = perEntry && config?.providers?.anime !== 'kitsu' && config?.providers?.anime !== 'mal';
+  if (grouped) {
+    const numeric = parseInt(String(descriptor.i).split(':')[1], 10);
+    const mapping = String(descriptor.i).startsWith('kitsu:') ? idMapper.getMappingByKitsuId(numeric)
+      : String(descriptor.i).startsWith('mal:') ? idMapper.getMappingByMalId(numeric)
+      : String(descriptor.i).startsWith('anilist:') ? idMapper.getMappingByAnilistId(numeric)
+      : idMapper.getMappingByAnidbId(numeric);
+    const imdb = mapping?.imdb_id;
+    if (imdb) {
+      const meta = await fetchMeta(userUUID, 'series', String(imdb));
+      const wanted = encodeJellyfinId(descriptor);
+      if (meta && buildEpisodes(meta, descriptor.t, '', '', null).some((e: any) => e.Id === wanted)) {
+        return { meta, seriesId: encodeJellyfinId({ k: 'series', t: descriptor.t, i: String(meta.id) }) };
+      }
+    }
+  }
+  const meta = await fetchMeta(userUUID, 'series', descriptor.i);
+  return meta ? { meta, seriesId: encodeSeriesId(descriptor) } : null;
+}
+
 function localAddress(req: any): string {
   const host = process.env.HOST_NAME || req.get('host') || '';
   return host.startsWith('http') ? host : `https://${host}`;
@@ -1218,19 +1242,26 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
-    const meta = await fetchMeta(userUUID, 'series', descriptor.i);
-    if (!meta) {
+    const found = descriptor.k === 'episode'
+      ? await seriesForEpisode(userUUID, await loadConfig(req), descriptor)
+      : await fetchMeta(userUUID, 'series', descriptor.i).then((meta: any) => (meta ? { meta, seriesId: encodeSeriesId(descriptor) } : null));
+    if (!found) {
       res.json([]);
       return;
     }
+    const meta = found.meta;
 
     const serverId = serverIdFor(userUUID);
     const series = metaToBaseItem(meta, descriptor.t, serverId, null);
     const chain: any[] = [];
 
-    if (descriptor.k === 'episode' && descriptor.s !== null && descriptor.s !== undefined) {
-      const season = buildSeasons(meta, descriptor.t, series.Id, serverId)
-        .find((entry: any) => entry.IndexNumber === descriptor.s);
+    if (descriptor.k === 'episode') {
+      const wanted = normaliseJellyfinId(String(req.params.itemId));
+      const episode = buildEpisodes(meta, descriptor.t, found.seriesId, serverId, null).find((e: any) => e.Id === wanted);
+      const number = episode?.ParentIndexNumber ?? descriptor.s;
+      const season = number === null || number === undefined
+        ? null
+        : buildSeasons(meta, descriptor.t, series.Id, serverId).find((entry: any) => entry.IndexNumber === number);
       if (season) chain.push(season);
     }
 
@@ -1696,15 +1727,16 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       // Only a show the user is caught up on: an aired episode still unwatched is Next Up's business.
       const episodes = buildEpisodes(meta, mediaType, seriesId, serverId, null)
         .filter((episode: any) => episode.ParentIndexNumber !== 0);
+      await applyWatchedState(episodes, snapshot, userUUID, profile);
+      const unplayed = (episode: any) => episode.UserData?.Played !== true;
       const aired = episodes.filter((episode: any) => {
         const at = premiereAt(episode);
         return Number.isFinite(at) && at < today;
       });
-      await applyWatchedState(aired, snapshot, userUUID, profile);
-      if (aired.some((episode: any) => episode.UserData?.Played !== true)) return;
+      if (aired.some(unplayed)) return;
 
       const next = episodes
-        .filter((episode: any) => within(premiereAt(episode)))
+        .filter((episode: any) => within(premiereAt(episode)) && unplayed(episode))
         .sort((a: any, b: any) => premiereAt(a) - premiereAt(b))[0];
       if (next) premieres.push(next);
     });
@@ -1846,12 +1878,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     if (descriptor.k === 'episode') {
-      const meta = await fetchMeta(userUUID, 'series', descriptor.i);
-      if (!meta) {
+      const found = await seriesForEpisode(userUUID, await loadConfig(req), descriptor);
+      if (!found) {
         res.status(404).json({ Message: 'Item not found' });
         return;
       }
-      const seriesId = encodeSeriesId(descriptor);
+      const { meta, seriesId } = found;
       // Numbering can differ between the series meta and the one an episode's
       // own id resolves to, so the guid is matched rather than the index.
       const episodes = buildEpisodes(meta, descriptor.t, seriesId, serverIdFor(userUUID), null);

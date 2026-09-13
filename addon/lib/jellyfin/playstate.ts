@@ -18,6 +18,8 @@ function watchedAtPercent(): number {
 interface SessionPosition {
   positionMs: number;
   at: number;
+  writtenAt?: number;
+  writtenMs?: number;
   /** Last reported pause state, so only the change is acted on. */
   paused?: boolean;
 }
@@ -362,7 +364,21 @@ export async function recordProgress(req: any, body: any): Promise<void> {
   const changed = previous !== undefined && previous.paused !== paused;
   const startsPaused = previous === undefined && paused;
   if (!changed && !startsPaused) {
-    setPosition(key, { positionMs, at: Date.now(), paused });
+    const now = Date.now();
+    const next: SessionPosition = { positionMs, at: now, paused, writtenAt: previous?.writtenAt, writtenMs: previous?.writtenMs };
+    // Table only; a tracker still hears edges alone.
+    const interval = envInt('JELLYFIN_PROGRESS_WRITE_INTERVAL', 60, 0) * 1000;
+    const moved = positionMs !== (previous?.writtenMs ?? -1);
+    if (interval > 0 && !paused && moved && now - (previous?.writtenAt ?? 0) >= interval) {
+      const config = await loadConfig(req);
+      const session = config?.playbackReporting ? await resolveSession(userUUID, itemId) : null;
+      if (session) {
+        await recordPlaystate(userUUID, profileKey(config), session, 'start', positionMs, null);
+        next.writtenAt = now;
+        next.writtenMs = positionMs;
+      }
+    }
+    setPosition(key, next);
     return;
   }
 

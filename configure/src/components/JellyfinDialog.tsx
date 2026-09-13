@@ -147,6 +147,15 @@ function resumeSourceCaption(value: string, options: Array<{ value: string; labe
   return `${name} only: Continue Watching, the watched ticks, Next Up and Upcoming all come from ${name}, on top of what you play here. Pick this when two trackers disagree and you want one to win.`;
 }
 
+function skipSourceCaption(value: string, hasPmdb: boolean): string {
+  if (value === 'off') return 'Off: no markers are offered, so clients show no skip button.';
+  if (value === 'publicmetadb') return 'PublicMetaDB only: markers come from your PublicMetaDB key and nothing else.';
+  if (value === 'introdb') return 'IntroDB only: markers come from IntroDB, which needs no key. Each lookup sends the title, season and episode to it.';
+  return hasPmdb
+    ? 'Automatic: PublicMetaDB is asked first, and IntroDB fills whatever it lacks. Each lookup sends the title, season and episode to both.'
+    : 'Automatic: IntroDB answers, since no PublicMetaDB key is set. Each lookup sends the title, season and episode to it.';
+}
+
 function newUserId(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
@@ -464,9 +473,30 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
             )}
           </div>
 
+          <div className="space-y-1.5 border-t pt-3">
+            <Label htmlFor="jellyfin-skip-source" className="text-sm font-medium">Skip intro and credits</Label>
+            <Select
+              value={config.jellyfinSkipSource ?? 'auto'}
+              onValueChange={(value) => setConfig(prev => ({ ...prev, jellyfinSkipSource: value === 'auto' ? undefined : (value as NonNullable<typeof prev.jellyfinSkipSource>) }))}
+            >
+              <SelectTrigger id="jellyfin-skip-source" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Automatic</SelectItem>
+                {config.apiKeys?.publicmetadb ? <SelectItem value="publicmetadb">PublicMetaDB</SelectItem> : null}
+                <SelectItem value="introdb">IntroDB</SelectItem>
+                <SelectItem value="off">Off</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {skipSourceCaption(config.jellyfinSkipSource ?? 'auto', Boolean(config.apiKeys?.publicmetadb))}
+            </p>
+          </div>
+
         </div>
 
-        <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex flex-col gap-2 border-t bg-card px-4 py-3 sm:-mx-6 sm:-mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="sticky bottom-0 -mx-4 -mb-4 mt-6 flex flex-col gap-2 border-t bg-card px-4 py-3 sm:-mx-6 sm:-mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p className={cn('text-xs', isDirty ? 'text-amber-400' : 'text-muted-foreground')}>
             {isDirty
               ? 'Unsaved changes. Clients see users, passwords and settings only once saved.'
