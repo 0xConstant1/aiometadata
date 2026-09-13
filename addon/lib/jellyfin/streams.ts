@@ -384,6 +384,16 @@ export function placeholderMediaSource(id: string, name: string): any {
   };
 }
 
+// The second entry is a marker: a client that builds its picker from the item
+// and lists it gives the user a way to ask for the versions.
 export function placeholderSources(itemId: string): any[] {
-  return [placeholderMediaSource(itemId, 'Streams resolve on play')];
+  const { encodeJellyfinId } = require('./ids');
+  return [
+    placeholderMediaSource(itemId, 'Streams load when played'),
+    placeholderMediaSource(encodeJellyfinId({ k: 'marker', i: normaliseHex(itemId) }), 'Load the stream list'),
+  ];
+}
+
+function normaliseHex(id: string): string {
+  return String(id || '').replace(/-/g, '').toLowerCase();
 }

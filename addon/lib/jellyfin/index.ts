@@ -419,7 +419,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const captured: any[] = [];
         // query and params are prototype getters, so a spread would lose them.
         const forged = Object.create(req, {
-          params: { value: { ...req.params, itemId: id }, enumerable: true },
+          params: { value: { ...req.params, itemId: id, listed: true }, enumerable: true },
           query: { value: req.query, enumerable: true },
         });
         await singleItemHandler(
@@ -762,6 +762,23 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
    * source's tracks and container: a client reads those off the item, not only
    * off the source.
    */
+  // A single item carries its versions inline, as a real server's does: a
+  // client builds its picker from them and asks PlaybackInfo only to play. The
+  // page is not held past the budget; the placeholder stays when it runs out.
+  const attachSourcesInTime = async (req: any, item: any, descriptor: any, itemId: string): Promise<void> => {
+    const budget = envInt('JELLYFIN_ITEM_SOURCES_WAIT_MS', 15000, 0);
+    if (req.params?.listed) return;
+    if (budget === 0 && !req.params?.forceSources) return;
+    const work = attachSources(req, item, descriptor, itemId).catch((error: any) =>
+      logger.debug(`Sources for ${itemId} unavailable: ${error?.message || error}`)
+    );
+    if (req.params?.forceSources) {
+      await work;
+      return;
+    }
+    await Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, budget).unref?.())]);
+  };
+
   const attachSources = async (
     req: any,
     item: any,
@@ -793,9 +810,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     );
   };
 
-  const playbackHandler = async (req: any, res: any) => {
-    const itemId = String(req.params.itemId);
+  const unwrapMarker = async (itemId: string): Promise<{ itemId: string; descriptor: any }> => {
     const descriptor = await decodeJellyfinId(itemId);
+    if (descriptor?.k === 'marker') return { itemId: descriptor.i, descriptor: await decodeJellyfinId(descriptor.i) };
+    return { itemId, descriptor };
+  };
+
+  const playbackHandler = async (req: any, res: any) => {
+    const { itemId, descriptor } = await unwrapMarker(String(req.params.itemId));
 
     if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) {
       res.status(404).json({ MediaSources: [], PlaySessionId: '', ErrorCode: 'NotAllowed' });
@@ -823,8 +845,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   // Some clients never fetch the URL a MediaSource carries: they ask the server
   // for the video and expect to be sent on.
   const videoStreamHandler = async (req: any, res: any) => {
-    const itemId = String(req.params.itemId);
-    const descriptor = await decodeJellyfinId(itemId);
+    const { itemId, descriptor } = await unwrapMarker(String(req.params.itemId));
     if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) {
       res.status(404).json({ Message: 'Item not found' });
       return;
@@ -1754,6 +1775,15 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
+    if (descriptor.k === 'marker') {
+      const forged = Object.create(req, {
+        params: { value: { ...req.params, itemId: descriptor.i, forceSources: true }, enumerable: true },
+        query: { value: req.query, enumerable: true },
+      });
+      await singleItemHandler(forged, res);
+      return;
+    }
+
     if (descriptor.k === 'person') {
       const config = await loadConfig(req);
       const person = config ? await personByName(config, descriptor.n) : null;
@@ -1780,10 +1810,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return;
       }
 
-      const fields = String(req.query.Fields ?? req.query.fields ?? '');
-      if (fields.includes('MediaSources')) {
-        await attachSources(req, episode, descriptor, String(req.params.itemId));
-      }
+      await attachSourcesInTime(req, episode, descriptor, String(req.params.itemId));
 
       const episodeConfig = await loadConfig(req);
       if (episodeConfig) {
@@ -1845,12 +1872,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         item.UserData = { ...item.UserData, Key: requestedId, ItemId: requestedId };
       }
 
-      // The client reads MediaSources straight off the item when it asks for
-      // them in Fields, and reports "no file" without ever calling PlaybackInfo
-      // if they are absent. Only ever resolved for a single item, never a list.
-      const fields = String(req.query.Fields ?? req.query.fields ?? '');
-      if (descriptor.k === 'movie' && fields.includes('MediaSources')) {
-        await attachSources(req, item, descriptor, String(req.params.itemId));
+      if (descriptor.k === 'movie') {
+        await attachSourcesInTime(req, item, descriptor, String(req.params.itemId));
       }
 
       if (descriptor.k === 'series') {

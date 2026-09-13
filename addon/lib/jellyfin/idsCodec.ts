@@ -7,7 +7,7 @@ const NONE16 = 0xffff;
 const MAX48 = 2 ** 48 - 1;
 
 export type PackableKind = 'movie' | 'series' | 'season' | 'episode';
-export type HashedKind = 'view' | 'genre' | 'person' | 'studio' | 'collection' | 'boxset';
+export type HashedKind = 'view' | 'genre' | 'person' | 'studio' | 'collection' | 'boxset' | 'marker';
 export type JellyfinKind = PackableKind | HashedKind;
 
 export type Descriptor =
@@ -19,7 +19,9 @@ export type Descriptor =
   | { k: 'person' | 'studio'; n: string }
   /** A collection built in the configuration, and one folder tile inside it. */
   | { k: 'collection'; c: string }
-  | { k: 'boxset'; c: string; f: string };
+  | { k: 'boxset'; c: string; f: string }
+  /** The picker entry that resolves an item's versions when chosen. */
+  | { k: 'marker'; i: string };
 
 const KIND_CODES: Record<PackableKind, number> = {
   movie: 1,
@@ -243,6 +245,8 @@ export function canonicalDescriptor(d: Descriptor): string {
       return `collection|${d.c}`;
     case 'boxset':
       return `boxset|${d.c}|${d.f}`;
+    case 'marker':
+      return `marker|${d.i}`;
   }
 }
 
@@ -254,13 +258,24 @@ export function dashedGuid(hex32: string): string {
   return `${hex32.slice(0, 8)}-${hex32.slice(8, 12)}-${hex32.slice(12, 16)}-${hex32.slice(16, 20)}-${hex32.slice(20)}`;
 }
 
+// A marker on a packed id is that id under another prefix byte, so it needs no
+// lookup; a marker on a hashed id falls back to hashing.
+const MARKER = 0xc3;
+const PACKED_PREFIX = PACKED.toString(16);
+const MARKER_PREFIX = MARKER.toString(16);
+
 export function packJellyfinId(d: Descriptor): string | null {
+  if (d.k === 'marker') {
+    const inner = normaliseJellyfinId(d.i);
+    return inner.startsWith(PACKED_PREFIX) && inner.length === 32 ? `${MARKER_PREFIX}${inner.slice(2)}` : null;
+  }
   return tryPack(d);
 }
 
 export function unpackJellyfinId(raw: string): Descriptor | null {
   const id = normaliseJellyfinId(raw);
   if (!/^[0-9a-f]{32}$/.test(id)) return null;
+  if (id.startsWith(MARKER_PREFIX)) return { k: 'marker', i: `${PACKED_PREFIX}${id.slice(2)}` };
   return tryUnpack(id);
 }
 

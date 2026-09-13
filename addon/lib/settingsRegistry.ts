@@ -431,6 +431,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_ITEM_SOURCES_WAIT_MS',
+    envVar: 'JELLYFIN_ITEM_SOURCES_WAIT_MS',
+    label: 'Jellyfin Item Sources Wait (ms)',
+    description: 'How long opening a title waits for the stream addon so the item carries its versions inline, the way a client builds its version picker. Past this the title opens with a placeholder entry that loads the list when chosen, and resolves on play. 0 never resolves on open.',
+    category: 'Features',
+    type: 'number',
+    default: 15000,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_CATALOG_MIN_PAGE',
     envVar: 'JELLYFIN_CATALOG_MIN_PAGE',
     label: 'Jellyfin Catalog Min Page',
