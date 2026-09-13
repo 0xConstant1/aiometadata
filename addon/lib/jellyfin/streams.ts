@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import redis from '../redisClient';
+const buildInfo: any = require('../buildInfo');
 
 const logger = consola.withTag('Jellyfin');
 
@@ -15,6 +16,12 @@ export interface PlayableStream {
   container: string | null;
   size: number | null;
   filename: string | null;
+  parsed?: any;
+}
+
+// The stream addon adds what it parsed from a release only for a user agent it knows.
+function streamUserAgent(): string {
+  return process.env.JELLYFIN_STREAM_USER_AGENT?.trim() || `AIOStreams/aiometadata-${buildInfo.version}`;
 }
 
 function requestTimeoutMs(): number {
@@ -147,6 +154,7 @@ export function toPlayable(stream: any): PlayableStream | null {
     container: containerOf(stream),
     size: Number.isFinite(size) && size > 0 ? size : null,
     filename: filename || null,
+    parsed: stream?.streamData?.parsedFile && typeof stream.streamData.parsedFile === 'object' ? stream.streamData.parsedFile : undefined,
   };
 }
 
@@ -186,7 +194,7 @@ export async function fetchStreams(
 
   try {
     const response = await fetch(url, {
-      headers: { accept: 'application/json' },
+      headers: { accept: 'application/json', 'user-agent': streamUserAgent() },
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -242,51 +250,141 @@ const CODECS: Array<[RegExp, string]> = [
   [/\bav1\b/i, 'av1'],
 ];
 
-// A source with no video stream is treated as unplayable however good its URL
-// is. Nothing here knows the real file, so numbers stay absent, not invented.
+const LANGUAGE_CODES: Record<string, string> = {
+  english: 'eng', japanese: 'jpn', french: 'fre', german: 'ger', spanish: 'spa', italian: 'ita', portuguese: 'por',
+  russian: 'rus', korean: 'kor', chinese: 'chi', mandarin: 'chi', cantonese: 'chi', hindi: 'hin', arabic: 'ara',
+  dutch: 'dut', polish: 'pol', swedish: 'swe', danish: 'dan', finnish: 'fin', norwegian: 'nor', turkish: 'tur',
+  czech: 'cze', hungarian: 'hun', greek: 'gre', hebrew: 'heb', thai: 'tha', vietnamese: 'vie', indonesian: 'ind',
+  ukrainian: 'ukr', romanian: 'rum', bulgarian: 'bul', croatian: 'hrv', serbian: 'srp', slovak: 'slo', slovenian: 'slv',
+  tamil: 'tam', telugu: 'tel', malayalam: 'mal', kannada: 'kan', bengali: 'ben', persian: 'per', malay: 'may', filipino: 'fil',
+  latino: 'spa', 'brazilian portuguese': 'por',
+};
+
+function languageCode(name: unknown): string | undefined {
+  if (typeof name !== 'string') return undefined;
+  const key = name.trim().toLowerCase();
+  if (/^[a-z]{3}$/.test(key)) return key;
+  return LANGUAGE_CODES[key];
+}
+
+const AUDIO_CODECS: Array<[RegExp, string]> = [
+  [/truehd|atmos/i, 'truehd'],
+  [/dts-?hd|dts:x|dts/i, 'dts'],
+  [/dd\+|e-?ac-?3|ddp/i, 'eac3'],
+  [/\bdd\b|ac-?3|dolby digital/i, 'ac3'],
+  [/flac/i, 'flac'],
+  [/opus/i, 'opus'],
+  [/aac/i, 'aac'],
+  [/mp3/i, 'mp3'],
+];
+
+function audioCodec(tag: unknown): string | undefined {
+  if (typeof tag !== 'string') return undefined;
+  return AUDIO_CODECS.find(([re]) => re.test(tag))?.[1];
+}
+
+function channelCount(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const text = String(value ?? '');
+  const layout = /(\d)\.(\d)/.exec(text);
+  if (layout) return Number(layout[1]) + Number(layout[2]);
+  const plain = /^(\d+)$/.exec(text.trim());
+  return plain ? Number(plain[1]) : undefined;
+}
+
+function videoRange(tags: string[]): { VideoRange: string; VideoRangeType: string } {
+  const joined = tags.join(' ');
+  if (/\bDV\b|dolby ?vision/i.test(joined)) return { VideoRange: 'HDR', VideoRangeType: 'DOVI' };
+  if (/hdr10\+/i.test(joined)) return { VideoRange: 'HDR', VideoRangeType: 'HDR10Plus' };
+  if (/hdr10|\bhdr\b/i.test(joined)) return { VideoRange: 'HDR', VideoRangeType: 'HDR10' };
+  if (/hlg/i.test(joined)) return { VideoRange: 'HDR', VideoRangeType: 'HLG' };
+  return { VideoRange: 'SDR', VideoRangeType: 'SDR' };
+}
+
+const STREAM_FLAGS = {
+  IsForced: false,
+  IsHearingImpaired: false,
+  IsOriginal: false,
+  IsExternal: false,
+  IsInterlaced: false,
+  IsTextSubtitleStream: false,
+  SupportsExternalStream: false,
+};
+
+// The addon's parsed release first, the label as fallback; an unknown stays absent.
 function buildMediaStreams(playable: PlayableStream): any[] {
+  const parsed = playable.parsed || {};
   const label = foldLabel(playable.name);
-  const resolution = RESOLUTIONS.find(([re]) => re.test(label));
-  const codec = CODECS.find(([re]) => re.test(label));
+  const resolution =
+    RESOLUTIONS.find(([re]) => re.test(String(parsed.resolution || ''))) ??
+    RESOLUTIONS.find(([re]) => re.test(label));
+  const codec =
+    CODECS.find(([re]) => re.test(String(parsed.encode || ''))) ??
+    CODECS.find(([re]) => re.test(label));
+  const visual: string[] = Array.isArray(parsed.visualTags) ? parsed.visualTags.map(String) : [];
+  const range = videoRange(visual.length ? visual : [label]);
 
-  const displayTitle = [resolution ? `${resolution[2]}p` : null, codec ? codec[1] : null]
-    .filter(Boolean)
-    .join(' ') || 'Video';
+  const streams: any[] = [{
+    Type: 'Video',
+    Index: 0,
+    Codec: codec ? codec[1] : undefined,
+    Width: resolution ? resolution[1] : undefined,
+    Height: resolution ? resolution[2] : undefined,
+    IsDefault: true,
+    ...STREAM_FLAGS,
+    ...range,
+    DisplayTitle: [resolution ? `${resolution[2]}p` : null, codec ? codec[1] : null, range.VideoRangeType !== 'SDR' ? range.VideoRangeType : null]
+      .filter(Boolean).join(' ') || 'Video',
+    AspectRatio: resolution ? '16:9' : undefined,
+  }];
 
-  return [
-    {
-      Type: 'Video',
-      Index: 0,
-      Codec: codec ? codec[1] : undefined,
-      Width: resolution ? resolution[1] : undefined,
-      Height: resolution ? resolution[2] : undefined,
-      IsDefault: true,
-      IsForced: false,
-      IsHearingImpaired: false,
-      IsOriginal: false,
-      IsExternal: false,
-      IsInterlaced: false,
-      IsTextSubtitleStream: false,
-      SupportsExternalStream: false,
-      VideoRange: 'SDR',
-      VideoRangeType: 'SDR',
-      DisplayTitle: displayTitle,
-      AspectRatio: resolution ? '16:9' : undefined,
-    },
-    {
+  const audioTracks: any[] = Array.isArray(parsed.audioTracks) && parsed.audioTracks.length
+    ? parsed.audioTracks
+    : [{
+        codec: Array.isArray(parsed.audioTags) ? parsed.audioTags[0] : undefined,
+        channels: Array.isArray(parsed.audioChannels) ? parsed.audioChannels[0] : undefined,
+        language: Array.isArray(parsed.languages) ? parsed.languages.find((l: unknown) => languageCode(l)) : undefined,
+      }];
+  audioTracks.forEach((track: any, i: number) => {
+    const language = languageCode(track?.language ?? track?.lang);
+    const codecName = audioCodec(track?.codec ?? track?.format) ?? (typeof track?.codec === 'string' ? track.codec.toLowerCase() : undefined);
+    const channels = channelCount(track?.channels ?? track?.channelLayout);
+    streams.push({
       Type: 'Audio',
-      Index: 1,
-      IsDefault: true,
-      IsForced: false,
-      IsHearingImpaired: false,
-      IsOriginal: false,
-      IsExternal: false,
-      IsInterlaced: false,
-      IsTextSubtitleStream: false,
-      SupportsExternalStream: false,
-      DisplayTitle: 'Audio',
-    },
-  ];
+      Index: streams.length,
+      Codec: codecName,
+      Language: language,
+      Channels: channels,
+      ChannelLayout: typeof track?.channelLayout === 'string' ? track.channelLayout : typeof track?.channels === 'string' ? track.channels : undefined,
+      Title: typeof track?.title === 'string' ? track.title : typeof track?.name === 'string' ? track.name : undefined,
+      IsDefault: track?.default === true || track?.isDefault === true || i === 0,
+      ...STREAM_FLAGS,
+      DisplayTitle: [track?.language ?? track?.lang, track?.codec ?? track?.format, track?.channels].filter(Boolean).join(' ') || 'Audio',
+    });
+  });
+
+  const subtitleTracks: any[] = Array.isArray(parsed.subtitleTracks) && parsed.subtitleTracks.length
+    ? parsed.subtitleTracks
+    : (Array.isArray(parsed.subtitles) ? parsed.subtitles : []).map((language: unknown) => ({ language }));
+  for (const track of subtitleTracks) {
+    const language = languageCode(track?.language ?? track?.lang);
+    const format = typeof (track?.codec ?? track?.format) === 'string' ? String(track.codec ?? track.format).toLowerCase() : undefined;
+    streams.push({
+      Type: 'Subtitle',
+      Index: streams.length,
+      Codec: format,
+      Language: language,
+      Title: typeof track?.title === 'string' ? track.title : typeof track?.name === 'string' ? track.name : undefined,
+      IsDefault: track?.default === true || track?.isDefault === true,
+      ...STREAM_FLAGS,
+      IsForced: track?.forced === true || track?.isForced === true,
+      IsHearingImpaired: track?.sdh === true || track?.hearingImpaired === true,
+      IsTextSubtitleStream: !format || !/pgs|vobsub|dvd/i.test(format),
+      DisplayTitle: [track?.language ?? track?.lang, format, track?.forced ? 'Forced' : null].filter(Boolean).join(' ') || 'Subtitle',
+    });
+  }
+
+  return streams;
 }
 
 export function mediaSourceFor(

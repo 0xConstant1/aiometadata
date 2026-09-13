@@ -381,6 +381,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 0,
   },
   {
+    key: 'JELLYFIN_PROGRESS_WRITE_INTERVAL',
+    envVar: 'JELLYFIN_PROGRESS_WRITE_INTERVAL',
+    label: 'Jellyfin Progress Write Interval (seconds)',
+    description: 'How often a playing position is written to the playstate table between pause and stop, so a client that closes without stopping loses at most this much. Only the table is written; trackers hear pauses and stops alone. 0 writes on pause and stop only.',
+    category: 'Features',
+    type: 'number',
+    default: 60,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_PLAYSTATE_SYNC_INTERVAL',
     envVar: 'JELLYFIN_PLAYSTATE_SYNC_INTERVAL',
     label: 'Jellyfin Playstate Sync Interval',
@@ -429,6 +439,15 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     type: 'number',
     default: 100,
     min: 1,
+  },
+  {
+    key: 'JELLYFIN_STREAM_USER_AGENT',
+    envVar: 'JELLYFIN_STREAM_USER_AGENT',
+    label: 'Jellyfin Stream Request User Agent',
+    description: 'The user agent sent to the stream addon when the Jellyfin server resolves streams. AIOStreams attaches what it parsed from a release, such as audio and subtitle tracks, only for a user agent it recognises.',
+    category: 'Features',
+    type: 'string',
+    default: '',
   },
   {
     key: 'JELLYFIN_ITEM_SOURCES_WAIT_MS',
