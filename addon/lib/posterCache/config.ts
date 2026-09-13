@@ -101,6 +101,13 @@ export function getPosterProxyPrefix(): string {
   return host ? `${host}${POSTER_CACHE_ROUTE}` : '';
 }
 
+/** Where a collection layout's images are served from when routed through the cache; empty when there is no cache. */
+export function getCollectionImagePrefix(): string {
+  const prefix = getPosterProxyPrefix();
+  if (!prefix) return '';
+  return isBuiltinPosterCacheEnabled() ? `${prefix}/poster` : prefix;
+}
+
 export function getPosterWarmupBase(): string {
   const explicit = (process.env.POSTER_WARMUP_URL || '').trim().replace(/\/+$/, '');
   if (explicit) return explicit;

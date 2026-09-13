@@ -1122,12 +1122,62 @@ function scheduleEviction(): void {
   });
 }
 
+// Entries a configuration relies on, such as a collection layout's covers,
+// keyed `class:hash` to the configurations holding them. Kept out of eviction.
+const pins = new Map<string, Set<string>>();
+
+function pinsFile(): string {
+  return path.join(getCacheDir(), 'pins.json');
+}
+
+async function loadPins(): Promise<void> {
+  try {
+    const raw = JSON.parse(await fsp.readFile(pinsFile(), 'utf8'));
+    pins.clear();
+    for (const [key, owners] of Object.entries(raw || {})) {
+      if (Array.isArray(owners) && owners.length) pins.set(key, new Set(owners.map(String)));
+    }
+  } catch {
+    pins.clear();
+  }
+}
+
+async function savePins(): Promise<void> {
+  const out: Record<string, string[]> = {};
+  for (const [key, owners] of pins) out[key] = [...owners];
+  await fsp.writeFile(pinsFile(), JSON.stringify(out)).catch((error: any) => logger.warn(`Could not save pins: ${error?.message}`));
+}
+
+export function isPinned(imageClass: ImageClass, hash: string): boolean {
+  return pins.has(indexKey(imageClass, hash));
+}
+
+/** Replaces what one owner pins; an empty list releases everything it held. */
+export async function setPins(owner: string, keys: Array<{ imageClass: ImageClass; key: string }>): Promise<void> {
+  const wanted = new Set(keys.map(({ imageClass, key }) => indexKey(imageClass, hashKey(key))));
+  for (const [key, owners] of [...pins]) {
+    if (!wanted.has(key) && owners.delete(owner) && owners.size === 0) pins.delete(key);
+  }
+  for (const key of wanted) {
+    const owners = pins.get(key) ?? new Set<string>();
+    owners.add(owner);
+    pins.set(key, owners);
+  }
+  await savePins();
+}
+
+export function pinnedCount(): number {
+  return pins.size;
+}
+
 async function evict(): Promise<void> {
   const maxBytes = getMaxBytes();
   if (totalBytes() <= maxBytes) return;
 
   const target = Math.floor(maxBytes * 0.9);
-  const candidates = [...index.values()].sort((a, b) => a.lastAccess - b.lastAccess);
+  const candidates = [...index.values()]
+    .filter((entry) => !isPinned(entry.imageClass, entry.hash))
+    .sort((a, b) => a.lastAccess - b.lastAccess);
 
   let removed = 0;
   let current = totalBytes();
@@ -1145,7 +1195,7 @@ async function evict(): Promise<void> {
 /** Drops entries untouched for POSTER_CACHE_INACTIVE_DAYS (nginx `inactive=`). */
 async function sweepInactive(): Promise<void> {
   const cutoff = Date.now() - getInactiveDays() * 24 * 60 * 60 * 1000;
-  const stale = [...index.values()].filter((entry) => entry.lastAccess < cutoff);
+  const stale = [...index.values()].filter((entry) => entry.lastAccess < cutoff && !isPinned(entry.imageClass, entry.hash));
   for (const entry of stale) {
     await remove(entry.imageClass, entry.hash);
   }
@@ -1287,6 +1337,7 @@ export async function init(): Promise<void> {
     logger.warn(`Could not create cache dir: ${error?.message}`);
   });
 
+  await loadPins();
   indexed = scan().catch((error: any) => logger.warn(`Initial scan failed: ${error?.message}`));
 
   if (!sweepTimer) {

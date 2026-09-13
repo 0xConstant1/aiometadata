@@ -361,6 +361,10 @@ class ConfigApi {
         await configCache.del(userUUID);
       }
 
+      require('./collectionImageCacheSync')
+        .syncCollectionImages(userUUID, configWithTimestamp)
+        .catch(() => undefined);
+
       // Always trust the UUID after creation
       await database.trustUUID(userUUID);
       
@@ -766,6 +770,10 @@ class ConfigApi {
       } else {
         await configCache.del(userUUID);
       }
+
+      require('./collectionImageCacheSync')
+        .syncCollectionImages(userUUID, configWithTimestamp)
+        .catch(() => undefined);
       
       // Invalidate user's cache when config changes
       try {

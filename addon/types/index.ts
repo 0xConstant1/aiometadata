@@ -15,6 +15,8 @@ export interface UserConfig {
   jellyfinUserAvatar?: string;
   jellyfinUserTags?: string[];
   jellyfinUsers?: Array<{ id: string; name: string; avatar?: string; tags: string[]; trackers?: boolean }>;
+  /** Serve the collection layout's images through this instance's image cache. */
+  collectionImagesViaCache?: boolean;
   providers?: {
     movie?: string;
     series?: string;

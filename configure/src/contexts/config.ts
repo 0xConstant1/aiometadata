@@ -336,6 +336,8 @@ export interface AppConfig {
   deletedCatalogs?: string[];
   /** Collections and rows built in the Collections editor, exported as Nuvio or Fusion JSON */
   collections?: BuilderEntry[];
+  /** Serve the collection layout's images through this instance's image cache. */
+  collectionImagesViaCache?: boolean;
   search: {
     enabled: boolean; 
     // This is the switch for the AI layer.

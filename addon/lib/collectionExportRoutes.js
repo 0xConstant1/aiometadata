@@ -3,6 +3,8 @@ const database = require('./database');
 const { toFusionWidgets } = require('./collectionBuilder/fusionExport');
 const { toNuvioCollections } = require('./collectionBuilder/nuvioExport');
 const { buildBlueprintLookup } = require('./collectionBuilder/blueprintLookup');
+const { proxyCollectionImages } = require('./collectionBuilder/imageProxy');
+const { getCollectionImagePrefix } = require('./posterCache/config');
 const { isAliasFeatureEnabled, getAliasForUuid } = require('./aliasResolver');
 const buildInfo = require('./buildInfo');
 
@@ -46,7 +48,9 @@ function readTag(req) {
 async function loadEntries(userUUID) {
   const config = await database.getUserConfig(userUUID);
   if (!config) return { error: 'notFound' };
-  const entries = Array.isArray(config.collections) ? config.collections : [];
+  let entries = Array.isArray(config.collections) ? config.collections : [];
+  const prefix = config.collectionImagesViaCache ? getCollectionImagePrefix() : '';
+  if (prefix) entries = proxyCollectionImages(entries, prefix);
   return { config, entries };
 }
 

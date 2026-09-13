@@ -3003,6 +3003,11 @@ async function collectionPreviewHandler(req: any, res: any) {
   }
 }
 
+// Where a layout's images are served from when routed through the cache; empty without one.
+addon.get("/api/collections/image-prefix", (_req, res) => {
+  res.json({ prefix: require('./lib/posterCache/config').getCollectionImagePrefix() });
+});
+
 addon.get("/api/collections/preview", collectionPreviewHandler);
 // POST carries the definition of a catalog that is staged but not yet saved.
 addon.post("/api/collections/preview", collectionPreviewHandler);

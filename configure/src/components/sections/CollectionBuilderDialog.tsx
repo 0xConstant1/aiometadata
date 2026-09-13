@@ -61,6 +61,7 @@ import {
   type SourceDraft,
 } from '@shared/types';
 import { toNuvioCollections } from '@shared/nuvioExport';
+import { proxyCollectionImages } from '@shared/imageProxy';
 import {
   groupMissingCatalogs,
   parseImport,
@@ -360,13 +361,28 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     [config.catalogs]
   );
 
+  // Images routed through the instance's cache, when it has one and the config asks for it.
+  const [imagePrefix, setImagePrefix] = useState('');
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/collections/image-prefix')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => setImagePrefix(typeof data?.prefix === 'string' ? data.prefix : ''))
+      .catch(() => setImagePrefix(''));
+  }, [isOpen]);
+  const imagesViaCache = Boolean(config.collectionImagesViaCache) && Boolean(imagePrefix);
+  const exportEntries = useMemo(
+    () => (imagesViaCache ? proxyCollectionImages(committedEntries, imagePrefix) : committedEntries),
+    [committedEntries, imagesViaCache, imagePrefix]
+  );
+
   const nuvioResult = useMemo(
-    () => toNuvioCollections(committedEntries, identity, blueprints, { usePlaceholder }),
-    [committedEntries, identity, blueprints, usePlaceholder]
+    () => toNuvioCollections(exportEntries, identity, blueprints, { usePlaceholder }),
+    [exportEntries, identity, blueprints, usePlaceholder]
   );
   const fusionResult = useMemo(
-    () => toFusionWidgets(committedEntries, identity, { usePlaceholder, blueprints }),
-    [committedEntries, identity, usePlaceholder, blueprints]
+    () => toFusionWidgets(exportEntries, identity, { usePlaceholder, blueprints }),
+    [exportEntries, identity, usePlaceholder, blueprints]
   );
 
   const json = useMemo(
@@ -1502,6 +1518,27 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       </p>
                     )}
                   </div>
+
+                  {imagePrefix && (
+                    <div className="space-y-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id="collection-images-via-cache"
+                          checked={Boolean(config.collectionImagesViaCache)}
+                          onCheckedChange={checked => setConfig(prev => ({ ...prev, collectionImagesViaCache: checked || undefined }))}
+                        />
+                        <Label htmlFor="collection-images-via-cache" className="text-xs font-medium">
+                          Serve images through this server
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Folder covers, backdrops and logos are fetched from where you host them once, kept in this
+                        server's image cache and served from here, so a slow or down image host no longer leaves
+                        tiles blank. The addresses you entered stay as they are; only the exported file and link
+                        point at this server. Saved with the configuration.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                     <div className="flex items-center gap-2">
