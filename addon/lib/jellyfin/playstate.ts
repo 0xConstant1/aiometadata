@@ -242,7 +242,8 @@ async function tellTrackers(
   session: ResolvedSession,
   event: 'start' | 'pause' | 'stop' | 'played' | 'unplayed',
   positionMs: number,
-  played: boolean | null
+  played: boolean | null,
+  refreshWatched = true
 ): Promise<void> {
   const { handlePlaybackReport } = require('../playbackHandler');
   await handlePlaybackReport(
@@ -260,9 +261,9 @@ async function tellTrackers(
   const { invalidateWatched } = require('./watched');
   invalidateResume(userUUID);
 
-  // Only a finished stop drops the tracker snapshot: the tracker may now know
-  // more than the table, such as a show's next episode.
-  if (event === 'stop' && played === true) {
+  // A finished stop or a mark changes what the tracker holds, such as a show's
+  // next episode; a batch of marks drops the snapshot once, after the batch.
+  if ((event === 'stop' && played === true) || (refreshWatched && (event === 'played' || event === 'unplayed'))) {
     await invalidateWatched(config).catch(() => undefined);
   }
 }
@@ -305,7 +306,9 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
   })).filter((s): s is ResolvedSession => s !== null);
 
   if (!readsTrackers(config)) return;
-  mapWithConcurrency(sessions, 3, (session: ResolvedSession) => tellTrackers(userUUID, config, session, event, 0, played))
+  const { invalidateWatched } = require('./watched');
+  mapWithConcurrency(sessions, 3, (session: ResolvedSession) => tellTrackers(userUUID, config, session, event, 0, played, false))
+    .then(() => invalidateWatched(config))
     .catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
 }
 

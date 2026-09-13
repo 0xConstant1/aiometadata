@@ -371,6 +371,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: true,
   },
   {
+    key: 'PLAYBACK_MARK_REPEAT_WINDOW',
+    envVar: 'PLAYBACK_MARK_REPEAT_WINDOW',
+    label: 'Watched Mark Repeat Window (seconds)',
+    description: 'A mark-watched or mark-unwatched that repeats the same decision within this window is treated as an echo of it and not sent to the trackers again. Later than this, it is sent.',
+    category: 'Features',
+    type: 'number',
+    default: 300,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_PLAYSTATE_SYNC_INTERVAL',
     envVar: 'JELLYFIN_PLAYSTATE_SYNC_INTERVAL',
     label: 'Jellyfin Playstate Sync Interval',

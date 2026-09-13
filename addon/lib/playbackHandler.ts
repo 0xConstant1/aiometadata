@@ -65,10 +65,15 @@ export function parsePlaybackReport(body: any): PlaybackReport | null {
 
 // Kept apart from the sender's idempotency ids: this one remembers the last
 // decision about a title, not that a particular message was seen.
-const decisions = new LRUCache<string, 'watched' | 'unwatched'>({
+const decisions = new LRUCache<string, { intent: 'watched' | 'unwatched'; at: number }>({
   max: envInt('PLAYBACK_DEDUPE_MAX', 10000, 1),
   ttl: envInt('PLAYBACK_DEDUPE_TTL', 6 * 60 * 60, 60) * 1000,
 });
+
+/** A mark repeating a decision older than this is the user's, not an echo. */
+function markRepeatMs(): number {
+  return envInt('PLAYBACK_MARK_REPEAT_WINDOW', 300, 0) * 1000;
+}
 
 export function isDuplicate(userUUID: string, report: PlaybackReport): boolean {
   if (!report.id) return false;
@@ -89,10 +94,13 @@ export function isRepeatWatched(userUUID: string, report: PlaybackReport): boole
   // the second one unrecorded.
   const intent = intentOf(report) === 'unwatched' ? 'unwatched' : 'watched';
   const key = `watched:${userUUID}:${video}`;
-  if (decisions.get(key) === intent) return true;
+  const previous = decisions.get(key);
+  const now = Date.now();
+  decisions.set(key, { intent, at: now });
 
-  decisions.set(key, intent);
-  return false;
+  if (!previous || previous.intent !== intent) return false;
+  if (report.event === 'played' || report.event === 'unplayed') return now - previous.at < markRepeatMs();
+  return true;
 }
 
 export interface PlaybackOutcome {
