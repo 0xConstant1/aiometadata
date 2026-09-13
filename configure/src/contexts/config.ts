@@ -25,6 +25,10 @@ export interface JellyfinUser {
   tags: string[];
   /** Whether this user is the same person as the account, sharing its watch history and trackers. */
   trackers?: boolean;
+  /** Absent follows the main user. */
+  trackerSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
+  skipSource?: 'auto' | 'publicmetadb' | 'introdb' | 'off';
+  watchlistServices?: string[];
 }
 
 export interface CatalogConfig {
@@ -404,6 +408,7 @@ export interface AppConfig {
   jellyfinUserAvatar?: string;
   jellyfinUserTags?: string[];
   jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'introdb' | 'off';
+  jellyfinWatchlistServices?: string[];
   jellyfinUsers?: JellyfinUser[];
   customPosterUrlPattern?: string;
   customBackgroundUrlPattern?: string;

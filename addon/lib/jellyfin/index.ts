@@ -32,6 +32,7 @@ import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByNa
 import { segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
 import { allBoxSets, boxSetMembers, boxSetsFor, collectionById, collectionView, folderCoverSize } from './collections';
+import { setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyWatchedState, isWatched, ownNextUpRows, upcomingFollowed, watchedSnapshot } from './watched';
 import { registerStubs } from './stubs';
 import { recordPlayed, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData } from './playstate';
@@ -439,11 +440,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const parentId = req.query.ParentId ?? req.query.parentId;
     const filters = String(req.query.Filters ?? req.query.filters ?? '');
 
-    if (filters.includes('IsFavorite')) {
-      res.json(itemList([], 0, startIndex));
-      return;
-    }
-
     const config = await loadConfig(req);
     if (!config) {
       res.json(itemList([], 0, startIndex));
@@ -451,6 +447,21 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const serverId = serverIdFor(userUUID);
+
+    // The watchlist, newest first, is what a client calls favourites.
+    if (filters.includes('IsFavorite')) {
+      const wanted = includeItemTypes
+        ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
+        : null;
+      const entries = (await watchlistEntries(userUUID, config)).filter((entry) =>
+        !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
+      );
+      const page = entries.slice(startIndex, startIndex + limit);
+      const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
+      await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+      res.json(itemList(items, entries.length, startIndex));
+      return;
+    }
     const searchTerm = req.query.SearchTerm ?? req.query.searchTerm;
 
     // Particular items by id, not a listing of whichever library comes first.
@@ -621,7 +632,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         collected,
         includeItemTypes ? String(includeItemTypes) : undefined
       );
-      await applyWatchedState(across, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+      await applyWatchedState(across, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
 
       res.json(itemList(
         across,
@@ -650,7 +661,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         let children = wantsEpisodes
           ? buildEpisodes(meta, descriptor.t, encodeSeriesId(descriptor), serverId, descriptor.k === 'season' ? descriptor.s : null)
           : buildSeasons(meta, descriptor.t, String(parentId), serverId);
-        await applyWatchedState(children, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+        await applyWatchedState(children, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
 
         const filters = String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim());
         if (filters.includes('IsPlayed')) children = children.filter((c: any) => c.UserData?.Played === true);
@@ -688,7 +699,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           userUUID, config, serverId, collection, folder, startIndex, limit,
           includeItemTypes ? String(includeItemTypes) : undefined
         );
-        await applyWatchedState(page.items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+        await applyWatchedState(page.items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
         res.json(itemList(
           page.items,
           page.hasMore && page.items.length > 0 ? startIndex + page.items.length + limit : startIndex + page.items.length,
@@ -740,7 +751,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       ? startIndex + filtered.length + limit
       : startIndex + filtered.length;
 
-    await applyWatchedState(filtered, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+    await applyWatchedState(filtered, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
     res.json(itemList(filtered, total, startIndex));
   });
 
@@ -1970,7 +1981,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
       const itemConfig = await loadConfig(req);
       if (itemConfig) {
-        await applyWatchedState([item], await watchedSnapshot(userUUID, itemConfig), userUUID, profileKey(itemConfig));
+        await applyWatchedState([item], await watchedSnapshot(userUUID, itemConfig), userUUID, profileKey(itemConfig), itemConfig);
       }
 
       res.json(item);
@@ -2158,6 +2169,21 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(500).end();
     }
   });
+
+  const favouriteHandler = (listed: boolean) => async (req: any, res: any) => {
+    const userUUID = req.params.userUUID;
+    const itemId = String(req.params.itemId);
+    const config = await loadConfig(req);
+    const descriptor = await decodeJellyfinId(itemId);
+    if (!config || !descriptor) {
+      res.status(404).json({ Message: 'Item not found' });
+      return;
+    }
+    const changed = await setWatchlisted(userUUID, config, descriptor, listed);
+    res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, IsFavorite: changed && listed });
+  };
+  router.post(['/Users/:userId/FavoriteItems/:itemId', '/UserFavoriteItems/:itemId'], favouriteHandler(true));
+  router.delete(['/Users/:userId/FavoriteItems/:itemId', '/UserFavoriteItems/:itemId'], favouriteHandler(false));
 
   registerStubs(router);
 

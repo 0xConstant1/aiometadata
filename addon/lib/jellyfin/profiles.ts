@@ -14,6 +14,10 @@ export interface Profile {
   tags: string[];
   /** Whether this user is the same person as the account: its history and trackers. */
   sharesHistory: boolean;
+  /** Undefined follows the main user. */
+  trackerSource?: string;
+  skipSource?: string;
+  watchlistServices?: string[];
 }
 
 export function defaultUserName(config: any, userUUID: string): string {
@@ -74,6 +78,9 @@ export function listProfiles(config: any, userUUID: string): Profile[] {
       avatar: avatarOf(user.avatar),
       tags: knownTags(config, user.tags),
       sharesHistory: user.trackers === true,
+      trackerSource: typeof user.trackerSource === 'string' ? user.trackerSource : undefined,
+      skipSource: typeof user.skipSource === 'string' ? user.skipSource : undefined,
+      watchlistServices: Array.isArray(user.watchlistServices) ? user.watchlistServices.map(String) : undefined,
     });
   }
 
@@ -105,7 +112,15 @@ export function scopeConfigToProfile(config: any, userUUID: string, id: string |
 
   // The main user keeps its own history and trackers whatever tags it picks.
   const scoped = profile.id
-    ? { ...config, jellyfinProfileId: profile.id, jellyfinProfileTags: profile.tags, jellyfinProfileShares: profile.sharesHistory }
+    ? {
+        ...config,
+        jellyfinProfileId: profile.id,
+        jellyfinProfileTags: profile.tags,
+        jellyfinProfileShares: profile.sharesHistory,
+        ...(profile.trackerSource ? { jellyfinResumeSource: profile.trackerSource } : {}),
+        ...(profile.skipSource ? { jellyfinSkipSource: profile.skipSource } : {}),
+        ...(profile.watchlistServices ? { jellyfinWatchlistServices: profile.watchlistServices } : {}),
+      }
     : { ...config, jellyfinProfileTags: profile.tags };
   if (profile.tags.length) {
     const { ageRating, allowUnrated } = resolveInstallFilters(config, { tags: profile.tags });
@@ -126,8 +141,12 @@ export function profileKey(config: any): string {
   return typeof config?.jellyfinProfileId === 'string' ? config.jellyfinProfileId : '';
 }
 
-export function readsTrackers(config: any): boolean {
+export function writesTrackers(config: any): boolean {
   return !profileKey(config);
+}
+
+export function readsTrackers(config: any): boolean {
+  return (config?.jellyfinResumeSource ?? 'auto') !== 'off';
 }
 
 /** Items built from tracker rows never went through the catalog route's cap. */

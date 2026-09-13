@@ -193,7 +193,7 @@ async function report(
     return;
   }
 
-  const { profileKey, readsTrackers } = require('./profiles');
+  const { profileKey, writesTrackers } = require('./profiles');
   const profile = profileKey(config);
   const key = `${userUUID}:${profile}:${itemId}`;
   const known = await getPosition(key);
@@ -225,7 +225,7 @@ async function report(
   await recordPlaystate(userUUID, profile, session, event, positionMs, played);
 
   // A separate viewer's plays are not the account's history.
-  if (!readsTrackers(config)) return;
+  if (!writesTrackers(config)) return;
 
   // A pause at zero is what a collapsed position looks like, and a real one says
   // nothing a tracker can use, so it is remembered without writing a resume
@@ -292,7 +292,7 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
   const config = await loadConfig(req);
   if (!config?.playbackReporting) return;
 
-  const { profileKey, readsTrackers } = require('./profiles');
+  const { profileKey, writesTrackers } = require('./profiles');
   const profile = profileKey(config);
   const played = event === 'played';
 
@@ -307,7 +307,7 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
     return session;
   })).filter((s): s is ResolvedSession => s !== null);
 
-  if (!readsTrackers(config)) return;
+  if (!writesTrackers(config)) return;
   const { invalidateWatched } = require('./watched');
   mapWithConcurrency(sessions, 3, (session: ResolvedSession) => tellTrackers(userUUID, config, session, event, 0, played, false))
     .then(() => invalidateWatched(config))
@@ -421,8 +421,8 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
 
   // Cleared here means cleared on the trackers too, or their copy would come
   // back through the shelf on any device reading them directly.
-  const { readsTrackers } = require('./profiles');
-  if (positionMs === 0 && readsTrackers(config)) {
+  const { writesTrackers } = require('./profiles');
+  if (positionMs === 0 && writesTrackers(config)) {
     const { parseMediaId, clearResumePoint } = require('../subtitleHandler');
     const parsed = parseMediaId(session.videoId);
     if (parsed) {

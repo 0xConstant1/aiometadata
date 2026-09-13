@@ -651,7 +651,8 @@ export async function applyWatchedState(
   items: any[],
   snapshot: WatchedSnapshot,
   userUUID?: string,
-  profile = ''
+  profile = '',
+  config?: any
 ): Promise<void> {
   if (!items.length) return;
 
@@ -726,4 +727,11 @@ export async function applyWatchedState(
       item.UserData = { ...item.UserData, Played: true, PlayCount: 1 };
     })
   );
+
+  if (userUUID && config) {
+    const { applyWatchlistState } = require('./watchlist');
+    await applyWatchlistState(items, userUUID, config, descriptors).catch((error: any) =>
+      logger.debug(`Watchlist state unavailable: ${error?.message || error}`)
+    );
+  }
 }

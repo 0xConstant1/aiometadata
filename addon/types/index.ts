@@ -15,7 +15,8 @@ export interface UserConfig {
   jellyfinUserAvatar?: string;
   jellyfinUserTags?: string[];
   jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'introdb' | 'off';
-  jellyfinUsers?: Array<{ id: string; name: string; avatar?: string; tags: string[]; trackers?: boolean }>;
+  jellyfinWatchlistServices?: string[];
+  jellyfinUsers?: Array<{ id: string; name: string; avatar?: string; tags: string[]; trackers?: boolean; trackerSource?: string; skipSource?: string; watchlistServices?: string[] }>;
   /** Serve the collection layout's images through this instance's image cache. */
   collectionImagesViaCache?: boolean;
   providers?: {

@@ -285,6 +285,15 @@ class Database {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_uuid, profile, pref_id, client)
       )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_watchlist (
+        user_uuid TEXT NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
+        meta_id TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        listed INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_uuid, profile, meta_id)
+      )`,
       `CREATE TABLE IF NOT EXISTS trusted_uuids (
         user_uuid TEXT UNIQUE NOT NULL,
         trusted_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -395,6 +404,15 @@ class Database {
         data TEXT NOT NULL,
         updated_at BIGINT NOT NULL,
         PRIMARY KEY (user_uuid, profile, pref_id, client)
+      )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_watchlist (
+        user_uuid VARCHAR(64) NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
+        meta_id TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        listed INTEGER NOT NULL DEFAULT 1,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
       `CREATE TABLE IF NOT EXISTS trusted_uuids (
         user_uuid VARCHAR(255) UNIQUE NOT NULL,
@@ -989,6 +1007,23 @@ class Database {
       : `INSERT INTO jellyfin_preferences (user_uuid, profile, pref_id, client, data, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (user_uuid, profile, pref_id, client) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`;
     await this.runQuery(query, [userUUID, profile, prefId, client, JSON.stringify(data), Date.now()]);
+  }
+
+  async listWatchlist(userUUID: string, profile = ''): Promise<any[]> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT meta_id, media_type, listed, updated_at FROM jellyfin_watchlist WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC'
+      : 'SELECT meta_id, media_type, listed, updated_at FROM jellyfin_watchlist WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC';
+    return this.allQuery(query, [userUUID, profile]);
+  }
+
+  // listed=0 is a removal kept until the trackers stop listing the title.
+  async setWatchlisted(userUUID: string, profile: string, metaId: string, mediaType: string, listed: boolean): Promise<void> {
+    const query = this.type === 'sqlite'
+      ? `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, listed, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = excluded.media_type, listed = excluded.listed, updated_at = excluded.updated_at`
+      : `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, listed, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, listed = EXCLUDED.listed, updated_at = EXCLUDED.updated_at`;
+    await this.runQuery(query, [userUUID, profile, metaId, mediaType, listed ? 1 : 0, Date.now()]);
   }
 
   async deletePlaystate(userUUID: string, videoId: string, profile = ''): Promise<void> {
