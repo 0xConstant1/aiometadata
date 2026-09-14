@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import redis from '../redisClient';
+import { streamSubtitleTracks, type FileHints, type SubtitleTrack } from './subtitles';
 const buildInfo: any = require('../buildInfo');
 
 const logger = consola.withTag('Jellyfin');
@@ -16,11 +17,18 @@ export interface PlayableStream {
   container: string | null;
   size: number | null;
   filename: string | null;
+  videoHash: string | null;
+  /** The file's own length when the addon knows it, ahead of the meta's runtime. */
+  durationMs: number | null;
+  /** Bits per second, when probed. */
+  bitrate: number | null;
+  /** Subtitle files the stream itself offers. */
+  subtitles: SubtitleTrack[];
   parsed?: any;
 }
 
 // The stream addon adds what it parsed from a release only for a user agent it knows.
-function streamUserAgent(): string {
+export function streamUserAgent(): string {
   return process.env.JELLYFIN_STREAM_USER_AGENT?.trim() || `AIOStreams/aiometadata-${buildInfo.version}`;
 }
 
@@ -77,6 +85,20 @@ function needsHeaders(stream: any): boolean {
 // one adding a marker once the file lands in the debrid cache, which starting
 // to play it is exactly what causes. Only the file itself names a release.
 export function mediaSourceIdFor(stream: any): string {
+  const data = stream?.streamData && typeof stream.streamData === 'object' ? stream.streamData : {};
+  // The release itself names the source where the addon says what it is: the
+  // torrent and file, the nzb, or its release key, under the service serving it.
+  const identity = data?.torrent?.infoHash
+    ? `${data.torrent.infoHash}:${data.torrent.fileIdx ?? ''}`
+    : typeof data?.nzbUrl === 'string' && data.nzbUrl
+      ? data.nzbUrl
+      : typeof data?.releaseKey === 'string' && data.releaseKey
+        ? data.releaseKey
+        : '';
+  if (identity) {
+    return createHash('md5').update([String(data?.service?.id ?? ''), identity].join('\u0000')).digest('hex');
+  }
+
   const size = Number(stream?.behaviorHints?.videoSize);
   const filename = String(stream?.behaviorHints?.filename || '');
   const parts = [filename, Number.isFinite(size) && size > 0 ? String(size) : ''];
@@ -154,8 +176,23 @@ export function toPlayable(stream: any): PlayableStream | null {
     container: containerOf(stream),
     size: Number.isFinite(size) && size > 0 ? size : null,
     filename: filename || null,
+    videoHash: typeof stream?.behaviorHints?.videoHash === 'string' && stream.behaviorHints.videoHash ? stream.behaviorHints.videoHash : null,
+    durationMs: Number.isFinite(Number(stream?.streamData?.duration)) && Number(stream.streamData.duration) > 0 ? Number(stream.streamData.duration) : null,
+    bitrate: Number.isFinite(Number(stream?.streamData?.bitrate)) && Number(stream.streamData.bitrate) > 0 ? Number(stream.streamData.bitrate) : null,
+    subtitles: streamSubtitleTracks(stream),
     parsed: stream?.streamData?.parsedFile && typeof stream.streamData.parsedFile === 'object' ? stream.streamData.parsedFile : undefined,
   };
+}
+
+// A source is renamed to its item's id when it is the default one, so what
+// belongs to the file is kept by the URL, which survives that.
+const fileOf = new LRUCache<string, { subtitles: SubtitleTrack[]; hints: FileHints }>({
+  max: envInt('JELLYFIN_STREAM_CACHE_MAX', 2000, 1),
+  ttl: envInt('JELLYFIN_SUBTITLE_TTL', 60 * 60, 60) * 1000,
+});
+
+export function fileFor(source: any): { subtitles: SubtitleTrack[]; hints: FileHints } {
+  return fileOf.get(String(source?.Path ?? '')) ?? { subtitles: [], hints: {} };
 }
 
 // A client resolves the same item twice: opening it, then pressing play.
@@ -260,7 +297,17 @@ const LANGUAGE_CODES: Record<string, string> = {
   latino: 'spa', 'brazilian portuguese': 'por',
 };
 
-function languageCode(name: unknown): string | undefined {
+const LANGUAGE_NAMES: Record<string, string> = Object.fromEntries(
+  Object.entries(LANGUAGE_CODES)
+    .filter(([name]) => !/ /.test(name) && name !== 'latino' && name !== 'mandarin' && name !== 'cantonese')
+    .map(([name, code]) => [code, name.charAt(0).toUpperCase() + name.slice(1)])
+);
+
+export function languageName(code: string): string | undefined {
+  return LANGUAGE_NAMES[code];
+}
+
+export function languageCode(name: unknown): string | undefined {
   if (typeof name !== 'string') return undefined;
   const key = name.trim().toLowerCase();
   if (/^[a-z]{3}$/.test(key)) return key;
@@ -328,6 +375,7 @@ function buildMediaStreams(playable: PlayableStream): any[] {
     Type: 'Video',
     Index: 0,
     Codec: codec ? codec[1] : undefined,
+    ...(playable.bitrate ? { BitRate: playable.bitrate } : {}),
     Width: resolution ? resolution[1] : undefined,
     Height: resolution ? resolution[2] : undefined,
     IsDefault: true,
@@ -391,6 +439,10 @@ export function mediaSourceFor(
   playable: PlayableStream,
   runtimeTicks: number | null
 ): any {
+  fileOf.set(playable.url, {
+    subtitles: playable.subtitles,
+    hints: { videoHash: playable.videoHash, videoSize: playable.size, filename: playable.filename },
+  });
   return {
     Protocol: 'Http',
     Id: playable.id,
@@ -402,7 +454,8 @@ export function mediaSourceFor(
     Name: playable.name,
     IsRemote: true,
     ETag: playable.id,
-    RunTimeTicks: runtimeTicks,
+    RunTimeTicks: playable.durationMs ? playable.durationMs * 10000 : runtimeTicks,
+    ...(playable.bitrate ? { Bitrate: playable.bitrate } : {}),
     ReadAtNativeFramerate: false,
     IgnoreDts: false,
     IgnoreIndex: false,

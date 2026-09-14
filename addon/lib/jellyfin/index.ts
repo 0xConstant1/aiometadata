@@ -25,7 +25,8 @@ import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSea
 import { decodeJellyfinId } from './ids';
 import { buildEpisodes, buildSeasons, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, mediaSourceFor, normaliseStreamBase, recallIssued, recallStreams, rememberStreams, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, recallIssued, recallStreams, rememberStreams, streamUserAgent, toPlayable } from './streams';
+import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { resumeSnapshot, resumeUserData } from './resume';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
@@ -833,6 +834,106 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     await Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, budget).unref?.())]);
   };
 
+  // Subtitle addons answer IMDb ids, so an anime id is spelled that way first,
+  // through the same anidb pivot the watch tracking uses.
+  const imdbVideoId = async (videoId: string, type: 'movie' | 'series'): Promise<string> => {
+    if (videoId.startsWith('tt')) return videoId;
+    const idMapper: any = require('../id-mapper');
+    const parsed = parseStremioId(videoId);
+    if (!parsed) return videoId;
+    if (type === 'series') {
+      const { videoIdAliases } = require('./aliases');
+      const imdb = (await videoIdAliases(videoId)).find((alias: string) => alias.startsWith('tt'));
+      return imdb ?? videoId;
+    }
+    const numeric = parseInt(parsed.base.split(':')[1], 10);
+    const mapping =
+      parsed.idType === 'kitsu' ? idMapper.getMappingByKitsuId(numeric)
+      : parsed.idType === 'mal' ? idMapper.getMappingByMalId(numeric)
+      : parsed.idType === 'anilist' ? idMapper.getMappingByAnilistId(numeric)
+      : null;
+    const imdb = mapping?.imdb_id || (mapping?.mal_id ? idMapper.getTraktAnimeMovieByMalId?.(mapping.mal_id)?.externals?.imdb : null);
+    return imdb ? String(imdb) : videoId;
+  };
+
+  const subtitleKey = (userUUID: string, itemId: string, sourceId: string): string =>
+    `${userUUID}:${normaliseJellyfinId(itemId)}:${normaliseJellyfinId(sourceId)}`;
+
+  /**
+   * Subtitle files a client can fetch, as external streams after the embedded
+   * ones: those the stream carries, and for the source being played, those the
+   * stream addon finds for that file. The route serves them by the index sent.
+   */
+  const attachExternalSubtitles = async (
+    req: any,
+    itemId: string,
+    sources: any[],
+    opts: { profile?: any; addonFor?: string | null }
+  ): Promise<void> => {
+    const userUUID = req.params.userUUID;
+    const token = req.jellyfin?.token ? `?api_key=${encodeURIComponent(req.jellyfin.token)}` : '';
+    const client = clientInfo(req).client;
+    const config = await loadConfig(req);
+    const base = normaliseStreamBase(config?.jellyfinStreamUrl || '');
+
+    for (const source of sources) {
+      const file = fileFor(source);
+      const tracks: SubtitleTrack[] = [...file.subtitles];
+      const wantsAddon = opts.addonFor && normaliseJellyfinId(source.Id) === normaliseJellyfinId(opts.addonFor);
+      if (wantsAddon && base) {
+        const descriptor = await decodeJellyfinId(itemId);
+        const videoId = descriptor ? stremioIdFor(descriptor) : null;
+        if (videoId) {
+          const type = descriptor.k === 'movie' ? 'movie' : 'series';
+          const seen = new Set(tracks.map((t) => t.url));
+          for (const track of await fetchAddonSubtitles(base, type, await imdbVideoId(videoId, type), file.hints, streamUserAgent())) {
+            if (!seen.has(track.url)) tracks.push(track);
+          }
+        }
+      }
+      if (!tracks.length) continue;
+
+      // A subtitle addon answers with dozens of files per language; a menu wants a few of each.
+      const kept = pickSubtitles(
+        tracks.map((track) => ({ ...track, language: subtitleLanguage(track.lang, languageCode) })),
+        envInt('JELLYFIN_SUBTITLES_PER_LANGUAGE', 3, 1),
+        envInt('JELLYFIN_SUBTITLES_MAX', 40, 1)
+      );
+
+      const streams: any[] = Array.isArray(source.MediaStreams) ? source.MediaStreams : [];
+      const start = streams.length;
+      kept.forEach((track, i) => {
+        const index = start + i;
+        const format = subtitleFormatFor(opts.profile, client, subtitleExtensionOf(track.url));
+        const url = `/Videos/${itemId}/${source.Id}/Subtitles/${index}/0/Stream.${format}${token}`;
+        const name = languageName(track.language) ?? track.lang;
+        const title = track.ordinal > 1 ? `${name} ${track.ordinal}` : name;
+        streams.push({
+          Type: 'Subtitle',
+          Index: index,
+          Codec: subtitleCodecFor(format),
+          Language: track.language,
+          Title: title,
+          DisplayTitle: `${title} (external)`,
+          IsDefault: false,
+          IsForced: false,
+          IsHearingImpaired: false,
+          IsOriginal: false,
+          IsInterlaced: false,
+          IsExternal: true,
+          IsExternalUrl: false,
+          IsTextSubtitleStream: true,
+          SupportsExternalStream: true,
+          DeliveryMethod: 'External',
+          DeliveryUrl: url,
+          Path: url,
+        });
+      });
+      source.MediaStreams = streams;
+      rememberOffered(subtitleKey(userUUID, itemId, source.Id), kept);
+    }
+  };
+
   const attachSources = async (
     req: any,
     item: any,
@@ -844,6 +945,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       itemId
     );
     if (!resolved.length) return;
+    await attachExternalSubtitles(req, itemId, resolved, {});
 
     item.MediaSources = resolved;
     item.MediaStreams = resolved[0].MediaStreams;
@@ -893,8 +995,60 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
+    await attachExternalSubtitles(req, itemId, sources, {
+      profile: req.body?.DeviceProfile,
+      addonFor: sources[0].Id,
+    });
     res.json({ MediaSources: sources, PlaySessionId: randomUUID() });
   };
+
+  const subtitleHandler = async (req: any, res: any) => {
+    const { itemId, descriptor } = await unwrapMarker(String(req.params.itemId));
+    if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) {
+      res.status(404).end();
+      return;
+    }
+    const userUUID = req.params.userUUID;
+    const sourceId = String(req.params.mediaSourceId);
+    const index = parseInt(String(req.params.index), 10);
+    const format = formatOf(String(req.params.format));
+
+    const sources = withDefaultSourceId(await resolveMediaSources(req, descriptor, null), itemId);
+    const source = sources.find((s: any) => normaliseJellyfinId(s.Id) === normaliseJellyfinId(sourceId));
+    if (!source) {
+      res.status(404).end();
+      return;
+    }
+    const embedded = Array.isArray(source.MediaStreams) ? source.MediaStreams.length : 0;
+    const key = subtitleKey(userUUID, itemId, sourceId);
+    let tracks = recallOffered(key);
+    if (!tracks) {
+      await attachExternalSubtitles(req, itemId, [source], { addonFor: source.Id });
+      tracks = recallOffered(key) ?? [];
+    }
+    const track = tracks[index - embedded];
+    if (!track) {
+      res.status(404).end();
+      return;
+    }
+
+    const converted = await subtitleBody(track.url, format);
+    if (!converted) {
+      res.status(502).end();
+      return;
+    }
+    res.set('Content-Type', converted.contentType);
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(converted.body);
+  };
+
+  router.get(
+    [
+      '/Videos/:itemId/:mediaSourceId/Subtitles/:index/Stream.:format',
+      '/Videos/:itemId/:mediaSourceId/Subtitles/:index/:start/Stream.:format',
+    ],
+    subtitleHandler
+  );
 
   // Some clients never fetch the URL a MediaSource carries: they ask the server
   // for the video and expect to be sent on.
