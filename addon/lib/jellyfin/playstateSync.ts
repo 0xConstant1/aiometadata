@@ -6,6 +6,7 @@ import { getPlaystatesAcross, upsertPlaystateEverywhere } from './aliases';
 const logger = consola.withTag('Jellyfin');
 
 const database: any = require('../database');
+const { runWithRequestContext }: any = require('../logBuffer');
 
 // Pulls tracker state into the playstate table. The table wins on anything it
 // already holds; only titles it has never seen are taken from the tracker.
@@ -110,7 +111,7 @@ export async function syncAllPlaystate(): Promise<void> {
       if (!config || !sourceFor(config)) continue;
 
       try {
-        const result = await syncPlaystateFor(userUUID, config);
+        const result = await runWithRequestContext(userUUID, () => syncPlaystateFor(userUUID, config));
         users += 1;
         added += result.added;
       } catch (error: any) {
