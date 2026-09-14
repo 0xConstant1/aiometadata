@@ -1562,6 +1562,16 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       }
     ];
 
+    // Search catalogs follow tags only once one of them is tagged, so an
+    // install naming tags keeps its search until the owner sorts search too.
+    const searchTags: Record<string, string[]> = config.search?.tags && typeof config.search.tags === 'object' ? config.search.tags : {};
+    const searchIsTagged = Object.values(searchTags).some((list) => Array.isArray(list) && list.length > 0);
+    const searchCarriesTag = (searchId: string): boolean => {
+      if (tagSet.size === 0 || !searchIsTagged) return true;
+      const own = Array.isArray(searchTags[searchId]) ? searchTags[searchId] : [];
+      return own.some((t) => tagSet.has(String(t).toLowerCase()));
+    };
+
     searchCatalogConfigs
       .sort((a, b) => {
         const aIndex = searchOrder.indexOf(a.id);
@@ -1570,7 +1580,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
         const bPos = bIndex === -1 ? Infinity : bIndex;
         return aPos - bPos;
       })
-      .filter(config => config.enabled)
+      .filter(config => config.enabled && searchCarriesTag(config.id))
       .forEach(config => {
         let catalogId: string;
         if (config.provider === 'gemini.search') {
@@ -1593,7 +1603,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
         providerId.startsWith('mal.search') &&
         engineEnabled[providerId] !== false
     );
-    if (isMalSearchInUse) {
+    if (isMalSearchInUse && (searchCarriesTag('anime_series') || searchCarriesTag('anime_movie'))) {
       const searchVAAnime = {
         id: "mal.va_search",
         type: "anime",

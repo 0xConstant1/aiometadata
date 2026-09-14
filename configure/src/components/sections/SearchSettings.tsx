@@ -27,6 +27,7 @@ import {
 import { Callout } from '@/components/settings/Callout';
 import { ProviderSelect, type SelectableOption } from '@/components/settings/ProviderSelect';
 import { SettingRow } from '@/components/settings/SettingRow';
+import { SearchTagRow } from '@/components/SearchTagRow';
 
 // Keep in sync with addon/utils/aiSearchTrigger.ts
 const MIN_AI_TRIGGER_KEYWORD_LENGTH = 2;
@@ -84,6 +85,7 @@ function EngineRow({
             <span className="text-muted-foreground/60 shrink-0">•</span>
             <span className="capitalize truncate">{displayType}</span>
           </div>
+          <SearchTagRow searchId={view.slot.id} title={displayName} className="mt-1.5" />
         </div>
       </div>
 
