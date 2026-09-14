@@ -3,6 +3,7 @@ import { envInt } from '../envNumber';
 
 const logger = consola.withTag('Recommendations');
 const redis: any = require('../../lib/redisClient');
+const { runWithRequestContext }: any = require('../../lib/logBuffer');
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let sweeping = false;
@@ -62,9 +63,9 @@ export async function sweepRecommendations(): Promise<{ checked: number; refresh
         const ttlMs = await redis.pttl(withGlobalEpoch(picksKey(config, user.id, kind)));
         if (!(ttlMs > 0 && ttlMs <= leadMs)) continue;
         try {
-          profile = profile ?? (await getTasteProfile(config, user.id));
+          profile = profile ?? (await runWithRequestContext(user.id, () => getTasteProfile(config, user.id)));
           if (!profile) break;
-          const picks = await runWithSourceRefetch(() => recommend(config, user.id, profile, kind));
+          const picks = await runWithRequestContext(user.id, () => runWithSourceRefetch(() => recommend(config, user.id, profile, kind)));
           out.refreshed += 1;
           logger.info(`Refreshed ${id} for ${user.id} ${Math.round(ttlMs / 60000)} min before it lapsed: ${picks.length} picks`);
         } catch (error: any) {
