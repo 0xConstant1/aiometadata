@@ -131,7 +131,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             />
           ) : (
             <p className="text-[11px] text-muted-foreground">
-              {main ? 'Your Continue Watching, watched marks and trackers.' : samePerson ? 'You on these catalogs: shares your Continue Watching, watched marks and trackers.' : 'Someone else: their own Continue Watching, watched marks and watchlist.'} Click the picture to change it.
+              {main ? 'Your Continue Watching, watched marks and trackers.' : samePerson ? 'You on these catalogs: shares your Continue Watching and watched marks, and writes your trackers; the picks below can still differ from your own card.' : 'Someone else: their own Continue Watching, watched marks and watchlist. Nothing they do reaches your trackers.'} Click the picture to change it.
             </p>
           )}
         </div>
@@ -156,56 +156,54 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
           </span>
         </div>
       ) : null}
-      {(main || !samePerson) && (
-        <div className="grid gap-4 border-t pt-3 md:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">{main ? 'Your trackers' : 'Trackers this user reads'}</Label>
-            <Select value={trackerValue} onValueChange={(v) => onChange({ trackerSource: v === 'inherit' ? undefined : (v as JellyfinUser['trackerSource']) })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {!main && <SelectItem value="inherit">Same as you</SelectItem>}
-                <SelectItem value="auto">Automatic</SelectItem>
-                {trackerOptions.map((opt) => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                <SelectItem value="off">This server only</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-muted-foreground">{trackerCaption}</p>
-            {main && (
-              <p className="text-[11px] text-muted-foreground">
-                Whatever is picked, what is played through this server is remembered here and always wins over a tracker's view of the same title. Only services that store a playback position are offered, so AniList and MyAnimeList are not.
-              </p>
-            )}
-            {main && trackerOptions.length === 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                No connected service stores playback positions, so only what is played through this server is shown. That is enough for a single client.
-              </p>
-            )}
-          </div>
-          {watchlistOptions.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Watchlist</Label>
-              <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel={main ? 'Every connected' : 'Same as you'} />
-              <p className="text-[11px] text-muted-foreground">
-                A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
-              </p>
-            </div>
+      <div className="grid gap-4 border-t pt-3 md:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">{main ? 'Your trackers' : 'Trackers this user reads'}</Label>
+          <Select value={trackerValue} onValueChange={(v) => onChange({ trackerSource: v === 'inherit' ? undefined : (v as JellyfinUser['trackerSource']) })}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {!main && <SelectItem value="inherit">Same as you</SelectItem>}
+              <SelectItem value="auto">Automatic</SelectItem>
+              {trackerOptions.map((opt) => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+              <SelectItem value="off">This server only</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">{trackerCaption}</p>
+          {main && (
+            <p className="text-[11px] text-muted-foreground">
+              Whatever is picked, what is played through this server is remembered here and always wins over a tracker's view of the same title. Only services that store a playback position are offered, so AniList and MyAnimeList are not.
+            </p>
           )}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Skip intro and credits</Label>
-            <Select value={skipValue} onValueChange={(v) => onChange({ skipSource: v === 'inherit' ? undefined : (v as JellyfinUser['skipSource']) })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {!main && <SelectItem value="inherit">Same as you</SelectItem>}
-                <SelectItem value="auto">Automatic</SelectItem>
-                {hasPmdb ? <SelectItem value="publicmetadb">PublicMetaDB</SelectItem> : null}
-                <SelectItem value="introdb">IntroDB</SelectItem>
-                <SelectItem value="off">Off</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-muted-foreground">{skipCaption}</p>
-          </div>
+          {main && trackerOptions.length === 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              No connected service stores playback positions, so only what is played through this server is shown. That is enough for a single client.
+            </p>
+          )}
         </div>
-      )}
+        {watchlistOptions.length > 0 && (
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Watchlist</Label>
+            <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel={main ? 'Every connected' : 'Same as you'} />
+            <p className="text-[11px] text-muted-foreground">
+              A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
+            </p>
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">Skip intro and credits</Label>
+          <Select value={skipValue} onValueChange={(v) => onChange({ skipSource: v === 'inherit' ? undefined : (v as JellyfinUser['skipSource']) })}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {!main && <SelectItem value="inherit">Same as you</SelectItem>}
+              <SelectItem value="auto">Automatic</SelectItem>
+              {hasPmdb ? <SelectItem value="publicmetadb">PublicMetaDB</SelectItem> : null}
+              <SelectItem value="introdb">IntroDB</SelectItem>
+              <SelectItem value="off">Off</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">{skipCaption}</p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1315,8 +1315,34 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.redirect(302, cached);
       return;
     }
+    if (kind === 'primary') {
+      await streamShaped(res, url);
+      return;
+    }
     await streamImage(res, url);
   });
+
+  // Without a cache the bytes pass through here anyway, so a poster is shaped on the way out.
+  const streamShaped = async (res: any, url: string): Promise<void> => {
+    try {
+      const { openImageStream } = require('../posterCache/upstream');
+      const { shapePoster } = require('../posterCache/shape');
+      const upstream = await openImageStream(url);
+      if (upstream.notModified) {
+        res.status(404).end();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of upstream.response.data) chunks.push(Buffer.from(chunk));
+      const shaped = await shapePoster(Buffer.concat(chunks), upstream.contentType);
+      res.set('Content-Type', shaped.contentType);
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.end(shaped.body);
+    } catch (error: any) {
+      logger.debug(`Image stream failed for ${url}: ${error?.message || error}`);
+      res.status(404).end();
+    }
+  };
 
   // A script fetching art needs a same-origin answer with CORS headers, which a
   // redirect straight to a CDN does not give it.

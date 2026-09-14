@@ -9,6 +9,7 @@ import {
   isNginxImportDisabled,
 } from './config.js';
 import * as store from './store.js';
+import { shapePoster } from './shape.js';
 
 const logger = consola.withTag('PosterCacheImport');
 
@@ -153,7 +154,8 @@ export async function runNginxImport(): Promise<void> {
         skipped += 1;
         continue;
       }
-      await store.put('poster', parsed.key, parsed.body, parsed.contentType);
+      const shaped = await shapePoster(parsed.body, parsed.contentType);
+      await store.put('poster', parsed.key, shaped.body, shaped.contentType);
       imported += 1;
     } catch (error: any) {
       logger.debug(`Skipping ${filePath}: ${error?.message}`);

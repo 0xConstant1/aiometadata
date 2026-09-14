@@ -1828,6 +1828,15 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: false,
   },
   {
+    key: 'POSTER_CACHE_SHAPE_POSTERS',
+    envVar: 'POSTER_CACHE_SHAPE_POSTERS',
+    label: 'Bring Posters to 2:3',
+    description: 'A poster that is not 2:3 is cropped to it, or set on a blurred copy of itself when it is wide. Applied once when an image is cached, and on the fly when no cache is in use. Clients draw a poster at its own shape inside a 2:3 cell, so a wrong one overlaps its neighbours.',
+    category: 'Images & Art',
+    type: 'boolean',
+    default: true,
+  },
+  {
     key: 'POSTER_CACHE_LANDSCAPE_POSTERS',
     envVar: 'POSTER_CACHE_LANDSCAPE_POSTERS',
     label: 'Cache Landscape Posters',
