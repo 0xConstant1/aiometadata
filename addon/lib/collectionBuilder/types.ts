@@ -47,6 +47,8 @@ export interface CollectionDraft {
   focusGlowEnabled?: boolean;
   viewMode?: CollectionViewMode;
   showAllTab?: boolean;
+  /** Server users holding one of these see it; none means every user. */
+  tags?: string[];
   folders: FolderDraft[];
 }
 
@@ -64,6 +66,7 @@ export interface ClassicRowDraft {
   badges: { providers: boolean; ratings: boolean };
   backgroundImageURL?: string;
   numbered?: boolean;
+  tags?: string[];
 }
 
 export type BuilderEntry = CollectionDraft | ClassicRowDraft;

@@ -61,25 +61,6 @@ function Avatar({ src, onClick, title, small }: { src?: string; onClick?: () => 
   );
 }
 
-function UserListRow({ name, avatar, note, selected, onSelect, onRemove }: { name: string; avatar?: string; note: string; selected: boolean; onSelect: () => void; onRemove?: () => void }) {
-  return (
-    <div className={cn('flex items-center gap-2 rounded-md border pr-1 transition-colors', selected ? 'border-primary/50 bg-primary/10' : 'border-transparent hover:bg-muted/50')}>
-      <button type="button" onClick={onSelect} aria-pressed={selected} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left">
-        <Avatar src={avatar} small />
-        <span className="min-w-0">
-          <span className="block truncate text-sm">{name || 'Unnamed user'}</span>
-          <span className="block text-[11px] text-muted-foreground">{note}</span>
-        </span>
-      </button>
-      {onRemove ? (
-        <Button variant="ghost" size="sm" className="h-7 w-7 shrink-0 p-0 text-muted-foreground" aria-label={`Remove ${name}`} onClick={onRemove}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      ) : null}
-    </div>
-  );
-}
-
 interface UserRowProps {
   name: string;
   avatar?: string;
@@ -88,12 +69,13 @@ interface UserRowProps {
   allTags: TagDef[];
   catalogCount: number;
   trackerOptions: Array<{ value: string; label: string }>;
-  watchlistOptions: Array<{ value: string; label: string }>;
+  watchlistOptions: WatchlistOption[];
   hasPmdb: boolean;
   onChange: (patch: Partial<JellyfinUser>) => void;
+  onRemove?: () => void;
 }
 
-function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, onChange }: UserRowProps) {
+function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, onChange, onRemove }: UserRowProps) {
   const chosen = user?.tags ?? [];
   const toggleTag = (tag: string) =>
     onChange({ tags: chosen.includes(tag) ? chosen.filter((t) => t !== tag) : [...chosen, tag] });
@@ -106,8 +88,13 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
   const scope = `${catalogCount} catalog${catalogCount === 1 ? '' : 's'}`;
   const capNote = caps.length ? <span className="rounded-full border border-amber-500/40 px-1.5 text-[11px] text-amber-400">{caps.join(', ')} and lower</span> : null;
 
+  const trackerValue = user?.trackerSource ?? (main ? 'auto' : 'inherit');
+  const skipValue = user?.skipSource ?? (main ? 'auto' : 'inherit');
+  const trackerCaption = trackerValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : resumeSourceCaption(trackerValue, trackerOptions);
+  const skipCaption = skipValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : skipSourceCaption(skipValue, hasPmdb);
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 rounded-md border p-3">
       <div className="flex items-start gap-3">
         <Avatar src={avatar} onClick={() => setPictureOpen((v) => !v)} title={`Picture of ${name}`} />
         <div className="min-w-0 flex-1 space-y-2">
@@ -127,6 +114,11 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
                 Same person as you
               </label>
             )}
+            {onRemove ? (
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground" aria-label={`Remove ${name}`} onClick={onRemove}>
+                <X className="h-4 w-4" />
+              </Button>
+            ) : null}
           </div>
           {pictureOpen || (avatar && !IMAGE_URL.test(avatar)) ? (
             <Input
@@ -164,56 +156,87 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
           </span>
         </div>
       ) : null}
-      {!samePerson && (
-        <div className="grid gap-2 border-t pt-2 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">Trackers this user reads</Label>
-            <Select value={user?.trackerSource ?? 'inherit'} onValueChange={(v) => onChange({ trackerSource: v === 'inherit' ? undefined : (v as JellyfinUser['trackerSource']) })}>
+      {(main || !samePerson) && (
+        <div className="grid gap-4 border-t pt-3 md:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">{main ? 'Your trackers' : 'Trackers this user reads'}</Label>
+            <Select value={trackerValue} onValueChange={(v) => onChange({ trackerSource: v === 'inherit' ? undefined : (v as JellyfinUser['trackerSource']) })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="inherit">Same as you</SelectItem>
+                {!main && <SelectItem value="inherit">Same as you</SelectItem>}
                 <SelectItem value="auto">Automatic</SelectItem>
                 {trackerOptions.map((opt) => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                 <SelectItem value="off">This server only</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-muted-foreground">{trackerCaption}</p>
+            {main && (
+              <p className="text-[11px] text-muted-foreground">
+                Whatever is picked, what is played through this server is remembered here and always wins over a tracker's view of the same title. Only services that store a playback position are offered, so AniList and MyAnimeList are not.
+              </p>
+            )}
+            {main && trackerOptions.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                No connected service stores playback positions, so only what is played through this server is shown. That is enough for a single client.
+              </p>
+            )}
           </div>
-          <div className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">Skip intro and credits</Label>
-            <Select value={user?.skipSource ?? 'inherit'} onValueChange={(v) => onChange({ skipSource: v === 'inherit' ? undefined : (v as JellyfinUser['skipSource']) })}>
+          {watchlistOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Watchlist</Label>
+              <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel={main ? 'Every connected' : 'Same as you'} />
+              <p className="text-[11px] text-muted-foreground">
+                A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
+              </p>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Skip intro and credits</Label>
+            <Select value={skipValue} onValueChange={(v) => onChange({ skipSource: v === 'inherit' ? undefined : (v as JellyfinUser['skipSource']) })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="inherit">Same as you</SelectItem>
+                {!main && <SelectItem value="inherit">Same as you</SelectItem>}
                 <SelectItem value="auto">Automatic</SelectItem>
                 {hasPmdb ? <SelectItem value="publicmetadb">PublicMetaDB</SelectItem> : null}
                 <SelectItem value="introdb">IntroDB</SelectItem>
                 <SelectItem value="off">Off</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-muted-foreground">{skipCaption}</p>
           </div>
-          {watchlistOptions.length > 0 && (
-            <div className="space-y-1 sm:col-span-2">
-              <Label className="text-[11px] text-muted-foreground">Watchlist services</Label>
-              <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel="Same as you" />
-            </div>
-          )}
         </div>
       )}
     </div>
   );
 }
 
-function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: string[]; options: Array<{ value: string; label: string }>; onChange: (next: string[] | undefined) => void; inheritLabel: string }) {
-  const picked = value ?? [];
-  const toggle = (service: string) => {
-    const next = picked.includes(service) ? picked.filter((s) => s !== service) : [...picked, service];
+type WatchlistShelf = 'movies' | 'series' | 'anime';
+type WatchlistOption = { value: string; label: string; shelves: WatchlistShelf[] };
+const SHELF_LABELS: Record<WatchlistShelf, string> = { movies: 'Movies', series: 'Series', anime: 'Anime' };
+
+/** A pick is `service:shelf`; none picked means every shelf of every connected service. */
+function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: string[]; options: WatchlistOption[]; onChange: (next: string[] | undefined) => void; inheritLabel: string }) {
+  const picked = (value ?? []).flatMap((token) => {
+    const [service, shelf] = token.split(':');
+    const option = options.find((o) => o.value === service);
+    if (!option) return [];
+    return shelf ? [token] : option.shelves.map((s) => `${service}:${s}`);
+  });
+  const toggle = (token: string) => {
+    const next = picked.includes(token) ? picked.filter((t) => t !== token) : [...picked, token];
     onChange(next.length ? next : undefined);
   };
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="space-y-1">
       <TagChip name={inheritLabel} onClick={() => onChange(undefined)} pressed={picked.length === 0} dimmed={picked.length > 0} />
       {options.map((opt) => (
-        <TagChip key={opt.value} name={opt.label} onClick={() => toggle(opt.value)} pressed={picked.includes(opt.value)} dimmed={!picked.includes(opt.value)} />
+        <div key={opt.value} className="flex flex-wrap items-center gap-1.5">
+          <span className="w-24 shrink-0 text-xs text-muted-foreground">{opt.label}</span>
+          {opt.shelves.map((shelf) => {
+            const token = `${opt.value}:${shelf}`;
+            return <TagChip key={token} name={SHELF_LABELS[shelf]} onClick={() => toggle(token)} pressed={picked.includes(token)} dimmed={!picked.includes(token)} />;
+          })}
+        </div>
       ))}
     </div>
   );
@@ -261,15 +284,15 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const tags = useMemo(() => config.tags ?? [], [config.tags]);
   const users = useMemo(() => config.jellyfinUsers ?? [], [config.jellyfinUsers]);
 
-  const watchlistOptions = useMemo(() => {
-    const candidates: Array<{ value: string; label: string; ready: boolean }> = [
-      { value: 'mdblist', label: 'MDBList', ready: Boolean(config.apiKeys?.mdblist) && config.mdblistWatchTracking !== false },
-      { value: 'trakt', label: 'Trakt', ready: Boolean(config.apiKeys?.traktTokenId) && config.traktWatchTracking !== false },
-      { value: 'simkl', label: 'Simkl', ready: Boolean(config.apiKeys?.simklTokenId) && config.simklWatchTracking !== false },
-      { value: 'anilist', label: 'AniList', ready: Boolean(config.apiKeys?.anilistTokenId) && config.anilistWatchTracking !== false },
-      { value: 'mal', label: 'MyAnimeList', ready: Boolean(config.apiKeys?.malTokenId) && config.malWatchTracking !== false },
+  const watchlistOptions = useMemo<WatchlistOption[]>(() => {
+    const candidates: Array<WatchlistOption & { ready: boolean }> = [
+      { value: 'mdblist', label: 'MDBList', shelves: ['movies', 'series'], ready: Boolean(config.apiKeys?.mdblist) && config.mdblistWatchTracking !== false },
+      { value: 'trakt', label: 'Trakt', shelves: ['movies', 'series'], ready: Boolean(config.apiKeys?.traktTokenId) && config.traktWatchTracking !== false },
+      { value: 'simkl', label: 'Simkl', shelves: ['movies', 'series', 'anime'], ready: Boolean(config.apiKeys?.simklTokenId) && config.simklWatchTracking !== false },
+      { value: 'anilist', label: 'AniList', shelves: ['anime'], ready: Boolean(config.apiKeys?.anilistTokenId) && config.anilistWatchTracking !== false },
+      { value: 'mal', label: 'MyAnimeList', shelves: ['anime'], ready: Boolean(config.apiKeys?.malTokenId) && config.malWatchTracking !== false },
     ];
-    return candidates.filter((c) => c.ready).map(({ value, label }) => ({ value, label }));
+    return candidates.filter((c) => c.ready).map(({ value, label, shelves }) => ({ value, label, shelves }));
   }, [config.apiKeys, config.mdblistWatchTracking, config.traktWatchTracking, config.simklWatchTracking, config.anilistWatchTracking, config.malWatchTracking]);
 
   const catalogCountFor = (chosen: string[]) => {
@@ -278,17 +301,13 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   };
 
   const [newUserName, setNewUserName] = useState('');
-  const [selectedUser, setSelectedUser] = useState('');
-  const selected = users.find((u) => u.id === selectedUser);
   const updateUser = (id: string, patch: Partial<JellyfinUser>) =>
     setConfig(prev => ({
       ...prev,
       jellyfinUsers: (prev.jellyfinUsers ?? []).map(u => (u.id === id ? { ...u, ...patch } : u)),
     }));
-  const removeUser = (id: string) => {
+  const removeUser = (id: string) =>
     setConfig(prev => ({ ...prev, jellyfinUsers: (prev.jellyfinUsers ?? []).filter(u => u.id !== id) }));
-    setSelectedUser((current) => (current === id ? '' : current));
-  };
   const addUser = () => {
     const clean = newUserName.trim();
     if (!clean) return;
@@ -298,7 +317,6 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
     }
     const id = newUserId();
     setConfig(prev => ({ ...prev, jellyfinUsers: [...(prev.jellyfinUsers ?? []), { id, name: clean, tags: [] }] }));
-    setSelectedUser(id);
     setNewUserName('');
   };
 
@@ -504,142 +522,62 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
             <p className="text-xs text-muted-foreground">
               Users appear on the client's sign-in screen. A user is made of the tags you pick for it: it sees the catalogs carrying any of them, under their rating limit. Someone else gets their own watch history and Continue Watching; a user that is you shares yours. Tags themselves are made in Catalogs.
             </p>
-            <div className="grid gap-4 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-              <div className="space-y-2">
-                <div className="space-y-1">
-                  <UserListRow
-                    name={mainName}
-                    avatar={config.jellyfinUserAvatar}
-                    note="You"
-                    selected={selectedUser === ''}
-                    onSelect={() => setSelectedUser('')}
-                  />
-                  {users.map((user) => (
-                    <UserListRow
-                      key={user.id}
-                      name={user.name}
-                      avatar={user.avatar}
-                      note={user.trackers === true ? 'Same person as you' : 'Own history'}
-                      selected={selectedUser === user.id}
-                      onSelect={() => setSelectedUser(user.id)}
-                      onRemove={() => removeUser(user.id)}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={newUserName}
-                    maxLength={MAX_TAG_NAME_LENGTH}
-                    placeholder="New user name"
-                    className="h-8 text-sm"
-                    aria-label="New user name"
-                    onChange={(e) => setNewUserName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') addUser(); }}
-                  />
-                  <Button size="sm" variant="outline" className="shrink-0 whitespace-nowrap" onClick={addUser} disabled={!newUserName.trim()}>
-                    <Plus className="mr-1 h-4 w-4" /> Add
-                  </Button>
-                </div>
-              </div>
-              <div className="rounded-md border p-3">
-                {selected ? (
-                  <UserRow
-                    key={selected.id}
-                    name={selected.name}
-                    avatar={selected.avatar}
-                    user={selected}
-                    allTags={tags}
-                    catalogCount={catalogCountFor(selected.tags)}
-                    trackerOptions={resumeSourceOptions}
-                    watchlistOptions={watchlistOptions}
-                    hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
-                    onChange={(patch) => updateUser(selected.id, patch)}
-                  />
-                ) : (
-                  <UserRow
-                    key="main"
-                    main
-                    name={mainName}
-                    avatar={config.jellyfinUserAvatar}
-                    user={{ id: '', name: mainName, tags: config.jellyfinUserTags ?? [] }}
-                    allTags={tags}
-                    catalogCount={catalogCountFor(config.jellyfinUserTags ?? [])}
-                    trackerOptions={resumeSourceOptions}
-                    watchlistOptions={watchlistOptions}
-                    hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
-                    onChange={(patch) => setConfig(prev => ({
-                      ...prev,
-                      ...('name' in patch ? { jellyfinUserName: patch.name } : {}),
-                      ...('avatar' in patch ? { jellyfinUserAvatar: patch.avatar } : {}),
-                      ...('tags' in patch ? { jellyfinUserTags: patch.tags?.length ? patch.tags : undefined } : {}),
-                    }))}
-                  />
-                )}
-              </div>
+            <UserRow
+              main
+              name={mainName}
+              avatar={config.jellyfinUserAvatar}
+              user={{
+                id: '',
+                name: mainName,
+                tags: config.jellyfinUserTags ?? [],
+                trackerSource: config.jellyfinResumeSource ?? 'auto',
+                skipSource: config.jellyfinSkipSource ?? 'auto',
+                watchlistServices: config.jellyfinWatchlistServices,
+              }}
+              allTags={tags}
+              catalogCount={catalogCountFor(config.jellyfinUserTags ?? [])}
+              trackerOptions={resumeSourceOptions}
+              watchlistOptions={watchlistOptions}
+              hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
+              onChange={(patch) => setConfig(prev => ({
+                ...prev,
+                ...('name' in patch ? { jellyfinUserName: patch.name } : {}),
+                ...('avatar' in patch ? { jellyfinUserAvatar: patch.avatar } : {}),
+                ...('tags' in patch ? { jellyfinUserTags: patch.tags?.length ? patch.tags : undefined } : {}),
+                ...('trackerSource' in patch ? { jellyfinResumeSource: patch.trackerSource as typeof prev.jellyfinResumeSource } : {}),
+                ...('skipSource' in patch ? { jellyfinSkipSource: patch.skipSource === 'auto' ? undefined : (patch.skipSource as typeof prev.jellyfinSkipSource) } : {}),
+                ...('watchlistServices' in patch ? { jellyfinWatchlistServices: patch.watchlistServices } : {}),
+              }))}
+            />
+            {users.map((user) => (
+              <UserRow
+                key={user.id}
+                name={user.name}
+                avatar={user.avatar}
+                user={user}
+                allTags={tags}
+                catalogCount={catalogCountFor(user.tags)}
+                trackerOptions={resumeSourceOptions}
+                watchlistOptions={watchlistOptions}
+                hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
+                onChange={(patch) => updateUser(user.id, patch)}
+                onRemove={() => removeUser(user.id)}
+              />
+            ))}
+            <div className="flex items-center gap-2">
+              <Input
+                value={newUserName}
+                maxLength={MAX_TAG_NAME_LENGTH}
+                placeholder="New user name"
+                className="h-8 text-sm"
+                aria-label="New user name"
+                onChange={(e) => setNewUserName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addUser(); }}
+              />
+              <Button size="sm" variant="outline" className="shrink-0 whitespace-nowrap" onClick={addUser} disabled={!newUserName.trim()}>
+                <Plus className="mr-1 h-4 w-4" /> Add user
+              </Button>
             </div>
-          </div>
-          <div className="grid gap-6 border-t pt-4 md:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="jellyfin-resume-source" className="text-sm font-medium">Your trackers</Label>
-              <Select
-                value={config.jellyfinResumeSource ?? 'auto'}
-                onValueChange={(value) => setConfig(prev => ({ ...prev, jellyfinResumeSource: value as NonNullable<typeof prev.jellyfinResumeSource> }))}
-              >
-                <SelectTrigger id="jellyfin-resume-source" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Automatic</SelectItem>
-                  {resumeSourceOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                  <SelectItem value="off">This server only</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {resumeSourceCaption(config.jellyfinResumeSource ?? 'auto', resumeSourceOptions)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Whatever is picked, what you play through this server is remembered here and always wins over a tracker's view of the same title. Only services that store a playback position are offered, so AniList and MyAnimeList are not.
-              </p>
-              {resumeSourceOptions.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No connected service stores playback positions, so only what is played through this server is shown. That is enough for a single client.
-                </p>
-              )}
-            </div>
-
-            {watchlistOptions.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Watchlist</Label>
-                <WatchlistPicker value={config.jellyfinWatchlistServices} options={watchlistOptions} onChange={(next) => setConfig(prev => ({ ...prev, jellyfinWatchlistServices: next }))} inheritLabel="Every connected" />
-                <p className="text-xs text-muted-foreground">
-                  A client's favourites are the watchlist: these services' watchlists merged, and a heart on a title in a client writes to them. AniList and MyAnimeList hold anime only.
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <Label htmlFor="jellyfin-skip-source" className="text-sm font-medium">Skip intro and credits</Label>
-              <Select
-                value={config.jellyfinSkipSource ?? 'auto'}
-                onValueChange={(value) => setConfig(prev => ({ ...prev, jellyfinSkipSource: value === 'auto' ? undefined : (value as NonNullable<typeof prev.jellyfinSkipSource>) }))}
-              >
-                <SelectTrigger id="jellyfin-skip-source" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Automatic</SelectItem>
-                  {config.apiKeys?.publicmetadb ? <SelectItem value="publicmetadb">PublicMetaDB</SelectItem> : null}
-                  <SelectItem value="introdb">IntroDB</SelectItem>
-                  <SelectItem value="off">Off</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {skipSourceCaption(config.jellyfinSkipSource ?? 'auto', Boolean(config.apiKeys?.publicmetadb))}
-              </p>
-            </div>
-
           </div>
         </div>
 

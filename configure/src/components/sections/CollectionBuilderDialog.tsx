@@ -1994,6 +1994,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       catalogs={sourceList.catalogs}
                       pendingKeys={pendingKeys}
                       target={target}
+                      userTags={config.tags ?? []}
                       onChange={updateEntry}
                       onUndoableChange={(label, apply, undo) =>
                         editEntryUndoable(label, selected.id, apply, undo)}
@@ -2023,6 +2024,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       catalogs={sourceList.catalogs}
                       pendingKeys={pendingKeys}
                       target={target}
+                      userTags={config.tags ?? []}
                       onChange={updateEntry}
                       onAddSource={() => setPickerTarget({ entryId: selected.id, folderId: null })}
                       onRenameCatalog={renameCatalog}

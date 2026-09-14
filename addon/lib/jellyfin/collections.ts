@@ -13,9 +13,20 @@ function imageOf(value: unknown): string | undefined {
   return typeof value === 'string' && IMAGE_URL.test(value.trim()) ? value.trim() : undefined;
 }
 
+/** An entry with tags is for the users holding one of them; the unrestricted user sees every entry. */
+export function entryVisible(entry: any, config: any): boolean {
+  const wanted = Array.isArray(entry?.tags) ? entry.tags.filter(Boolean) : [];
+  if (!wanted.length) return true;
+  const held = new Set(profileTags(config).map((t) => t.toLowerCase()));
+  if (!held.size) return true;
+  return wanted.some((t: string) => held.has(String(t).toLowerCase()));
+}
+
 export function builderCollections(config: any): CollectionDraft[] {
   const entries = Array.isArray(config?.collections) ? config.collections : [];
-  return entries.filter((e: any) => e?.kind === 'collection' && typeof e.id === 'string' && e.id && typeof e.title === 'string');
+  return entries.filter((e: any) =>
+    e?.kind === 'collection' && typeof e.id === 'string' && e.id && typeof e.title === 'string' && entryVisible(e, config)
+  );
 }
 
 export function collectionById(config: any, id: string): CollectionDraft | null {

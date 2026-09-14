@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { FolderPlus, Replace, Tv } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import type { TagDef } from '@/contexts/config';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +13,7 @@ import { hasNuvioCollectionSettings, type CollectionDraft, type FolderDraft, typ
 import { isNativeSource } from '@shared/catalogReconstruction';
 
 import { FolderCard } from './FolderCard';
+import { UserTagsField } from './UserTagsField';
 import { ImageUrlField } from './ImageUrlField';
 import { ScopeChip } from './ScopeChip';
 import { type TagOption } from './shared';
@@ -27,6 +29,7 @@ export function CollectionEditor({
   onReplaceSource,
   onRenameCatalog,
   tagOptions,
+  userTags = [],
   onAddByTag,
   nativeCount,
   onConvertNative,
@@ -54,6 +57,7 @@ export function CollectionEditor({
   /** Renames the catalog itself, everywhere it appears. */
   onRenameCatalog?: (source: SourceDraft, name: string) => void;
   tagOptions: TagOption[];
+  userTags?: TagDef[];
   onAddByTag: (folderId: string, tag: string) => void;
   /** Sources in this collection the app resolves itself and this addon could take over. */
   nativeCount: number;
@@ -112,6 +116,8 @@ export function CollectionEditor({
           <ScopeChip scope="fusion" />
         </div>
       </div>
+
+      <UserTagsField tags={userTags} value={entry.tags} onChange={next => update({ tags: next })} />
 
       {nuvioBoxVisible && (
       <div className="space-y-3 rounded-xl border border-cyan-400/20 bg-cyan-500/10 p-3">

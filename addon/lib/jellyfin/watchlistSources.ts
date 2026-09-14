@@ -6,22 +6,27 @@ import { credentialFor } from './trackerSource';
 
 const logger = consola.withTag('Jellyfin');
 
+export type WatchlistKind = 'movies' | 'series' | 'anime';
+
 export interface WatchlistEntry {
   metaId: string;
   mediaType: 'movie' | 'series' | 'anime';
+  /** The shelf the service files it under, which is what a pick names. */
+  kind: WatchlistKind;
   addedAt: number;
 }
 
 export type WatchlistIds = { imdb?: string; tmdb?: number | string; tvdb?: number | string; kitsu?: number | string; mal?: number | string };
 
 function metaIdFor(ids: Record<string, any>, kind: 'movie' | 'show', anime = false): WatchlistEntry | null {
+  const shelf: WatchlistKind = anime ? 'anime' : kind === 'movie' ? 'movies' : 'series';
   if (kind === 'movie') {
     const base = ids.imdb || (ids.tmdb ? `tmdb:${ids.tmdb}` : null);
-    return base ? { metaId: String(base), mediaType: 'movie', addedAt: 0 } : null;
+    return base ? { metaId: String(base), mediaType: 'movie', kind: shelf, addedAt: 0 } : null;
   }
-  if (anime && !ids.imdb && ids.kitsu) return { metaId: `kitsu:${ids.kitsu}`, mediaType: 'anime', addedAt: 0 };
+  if (anime && !ids.imdb && ids.kitsu) return { metaId: `kitsu:${ids.kitsu}`, mediaType: 'anime', kind: shelf, addedAt: 0 };
   const base = ids.imdb || (ids.tvdb ? `tvdb:${ids.tvdb}` : ids.tmdb ? `tmdb:${ids.tmdb}` : null);
-  return base ? { metaId: String(base), mediaType: anime ? 'anime' : 'series', addedAt: 0 } : null;
+  return base ? { metaId: String(base), mediaType: anime ? 'anime' : 'series', kind: shelf, addedAt: 0 } : null;
 }
 
 async function mdblistEntries(apiKey: string): Promise<WatchlistEntry[]> {
@@ -58,9 +63,12 @@ async function simklEntries(tokenId: string): Promise<WatchlistEntry[]> {
     const mapped = metaIdFor(entry?.show?.ids ?? {}, 'show');
     if (mapped) out.push({ ...mapped, addedAt: Date.parse(entry?.added_to_watchlist_at ?? '') || 0 });
   }
+  const idMapper: any = require('../id-mapper');
   for (const entry of Array.isArray(data?.anime) ? data.anime : []) {
     if (entry?.status !== 'plantowatch') continue;
-    const mapped = metaIdFor(entry?.show?.ids ?? {}, 'show', true);
+    const ids = { ...(entry?.show?.ids ?? {}) };
+    if (!ids.kitsu && ids.mal) ids.kitsu = idMapper.getMappingByMalId(Number(ids.mal))?.kitsu_id;
+    const mapped = metaIdFor(ids, entry?.anime_type === 'movie' ? 'movie' : 'show', true);
     if (mapped) out.push({ ...mapped, addedAt: Date.parse(entry?.added_to_watchlist_at ?? '') || 0 });
   }
   return out;
@@ -87,6 +95,13 @@ async function traktEntries(tokenId: string): Promise<WatchlistEntry[]> {
 
 export type WatchlistService = 'mdblist' | 'trakt' | 'simkl' | 'anilist' | 'mal';
 export const WATCHLIST_SERVICES: WatchlistService[] = ['mdblist', 'trakt', 'simkl', 'anilist', 'mal'];
+export const SERVICE_KINDS: Record<WatchlistService, WatchlistKind[]> = {
+  mdblist: ['movies', 'series'],
+  trakt: ['movies', 'series'],
+  simkl: ['movies', 'series', 'anime'],
+  anilist: ['anime'],
+  mal: ['anime'],
+};
 
 function connected(config: any, service: WatchlistService): boolean {
   switch (service) {
@@ -96,12 +111,33 @@ function connected(config: any, service: WatchlistService): boolean {
   }
 }
 
-/** The services the configuration's watchlist reads and writes; none picked means every connected one. */
+/**
+ * What the configuration's watchlist reads and writes, per service and shelf.
+ * A pick is `service` for every shelf or `service:shelf`; none means every
+ * connected service in full.
+ */
+export function watchlistPicks(config: any): Map<WatchlistService, Set<WatchlistKind>> {
+  const out = new Map<WatchlistService, Set<WatchlistKind>>();
+  if ((config?.jellyfinResumeSource ?? 'auto') === 'off') return out;
+  const picked: string[] = Array.isArray(config?.jellyfinWatchlistServices) ? config.jellyfinWatchlistServices.map(String) : [];
+  for (const service of WATCHLIST_SERVICES) {
+    if (!connected(config, service)) continue;
+    const kinds = new Set<WatchlistKind>();
+    for (const token of picked) {
+      const [name, shelf] = token.split(':');
+      if (name !== service) continue;
+      for (const kind of SERVICE_KINDS[service]) {
+        if (!shelf || shelf === kind) kinds.add(kind);
+      }
+    }
+    if (!picked.length) for (const kind of SERVICE_KINDS[service]) kinds.add(kind);
+    if (kinds.size) out.set(service, kinds);
+  }
+  return out;
+}
+
 export function watchlistServices(config: any): WatchlistService[] {
-  if ((config?.jellyfinResumeSource ?? 'auto') === 'off') return [];
-  const picked: string[] = Array.isArray(config?.jellyfinWatchlistServices) ? config.jellyfinWatchlistServices : [];
-  const wanted = picked.length ? WATCHLIST_SERVICES.filter((s) => picked.includes(s)) : WATCHLIST_SERVICES;
-  return wanted.filter((service) => connected(config, service));
+  return [...watchlistPicks(config).keys()];
 }
 
 async function anilistEntries(userUUID: string): Promise<WatchlistEntry[]> {
@@ -161,7 +197,10 @@ async function serviceEntries(config: any, userUUID: string, service: WatchlistS
 }
 
 export async function trackerWatchlist(config: any, userUUID: string): Promise<WatchlistEntry[]> {
-  const parts = await Promise.all(watchlistServices(config).map((service) => serviceEntries(config, userUUID, service)));
+  const picks = watchlistPicks(config);
+  const parts = await Promise.all([...picks].map(async ([service, kinds]) =>
+    (await serviceEntries(config, userUUID, service)).filter((row) => kinds.has(row.kind))
+  ));
   const merged = new Map<string, WatchlistEntry>();
   for (const row of parts.flat()) {
     const held = merged.get(row.metaId);
@@ -182,9 +221,13 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
   const { shouldTrackServiceMediaType } = require('../watchTracking');
   const mediaType = kind === 'movie' ? 'movie' : 'series';
   const body = kind === 'movie' ? { movies: [{ ids }] } : { shows: [{ ids }] };
-  const services = new Set(watchlistServices(config));
+  const picks = watchlistPicks(config);
+  const anime = Boolean(ids.kitsu || ids.mal);
+  const shelf: WatchlistKind = kind === 'movie' ? 'movies' : 'series';
+  // MDBList and Trakt file anime with films and shows; Simkl, AniList and MAL keep it apart.
+  const takes = (service: WatchlistService, own: WatchlistKind) => picks.get(service)?.has(own) ?? false;
 
-  if (services.has('mdblist') && shouldTrackServiceMediaType(config, 'mdblist', mediaType) && config?.apiKeys?.mdblist) {
+  if (takes('mdblist', shelf) && shouldTrackServiceMediaType(config, 'mdblist', mediaType) && config?.apiKeys?.mdblist) {
     try {
       await httpPost(`https://api.mdblist.com/watchlist/items/${listed ? 'add' : 'remove'}?apikey=${config.apiKeys.mdblist}`, body, {
         headers: { 'Content-Type': 'application/json' }, timeout: 10000,
@@ -194,7 +237,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     }
   }
 
-  if (services.has('trakt') && shouldTrackServiceMediaType(config, 'trakt', mediaType) && config?.apiKeys?.traktTokenId) {
+  if (takes('trakt', shelf) && shouldTrackServiceMediaType(config, 'trakt', mediaType) && config?.apiKeys?.traktTokenId) {
     try {
       const { getTraktToken } = require('../../utils/traktUtils');
       const token = await getTraktToken(config.apiKeys.traktTokenId);
@@ -207,7 +250,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     }
   }
 
-  if (services.has('simkl') && shouldTrackServiceMediaType(config, 'simkl', mediaType) && config?.apiKeys?.simklTokenId) {
+  if (takes('simkl', anime ? 'anime' : shelf) && shouldTrackServiceMediaType(config, 'simkl', mediaType) && config?.apiKeys?.simklTokenId) {
     try {
       const { getSimklToken, fetchSimklAllItems } = require('../../utils/simklUtils');
       const token = await getSimklToken(config.apiKeys.simklTokenId);
@@ -229,7 +272,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     }
   }
 
-  if (services.has('anilist') && ids.kitsu) {
+  if (takes('anilist', 'anime') && ids.kitsu) {
     try {
       const anilist = require('../anilistTracker');
       const idMapper: any = require('../id-mapper');
@@ -241,7 +284,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     }
   }
 
-  if (services.has('mal') && ids.mal) {
+  if (takes('mal', 'anime') && ids.mal) {
     try {
       const mal = require('../malTracker');
       const accessToken = await mal.getValidAccessToken(userUUID);

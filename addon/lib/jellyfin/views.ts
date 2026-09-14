@@ -95,7 +95,7 @@ export async function buildViews(
   serverId: string,
   config: any
 ): Promise<any[]> {
-  const { boxSetsFor, collectionView } = require('./collections');
+  const { boxSetsFor, collectionView, entryVisible } = require('./collections');
   const catalogs = (await getCatalogs(userUUID, config)).filter(isBrowsable);
   const catalogView = (catalog: CatalogRef) =>
     collectionFolder(viewIdFor(catalog), serverId, catalog.name, collectionTypeFor(catalog.type), null);
@@ -103,6 +103,7 @@ export async function buildViews(
   const views: any[] = [];
   const placed = new Set<CatalogRef>();
   for (const entry of Array.isArray(config?.collections) ? config.collections : []) {
+    if (!entryVisible(entry, config)) continue;
     if (entry?.kind === 'classicRow') {
       const source = entry.source;
       const catalog = catalogs.find(

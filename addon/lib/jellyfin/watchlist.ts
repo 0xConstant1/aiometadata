@@ -17,7 +17,8 @@ export async function watchlistEntries(userUUID: string, config: any): Promise<W
   for (const row of local) {
     const metaId = String(row.meta_id);
     if (Number(row.listed)) {
-      out.set(metaId, { metaId, mediaType: row.media_type, addedAt: Number(row.updated_at) || 0 });
+      const mediaType = row.media_type === 'movie' ? 'movie' : row.media_type === 'anime' ? 'anime' : 'series';
+      out.set(metaId, { metaId, mediaType, kind: mediaType === 'movie' ? 'movies' : mediaType, addedAt: Number(row.updated_at) || 0 });
     } else if (out.has(metaId)) {
       out.delete(metaId);
     }
@@ -76,6 +77,12 @@ export function idsFor(meta: any, stremioType: 'movie' | 'series'): WatchlistIds
     if (!ids.tmdb && mapping?.themoviedb_id) ids.tmdb = mapping.themoviedb_id;
     if (!ids.tvdb && mapping?.tvdb_id && stremioType === 'series') ids.tvdb = mapping.tvdb_id;
     if (mapping?.mal_id) ids.mal = mapping.mal_id;
+  } else if (ids.imdb) {
+    const mapping = idMapper.getMappingByImdbId(ids.imdb);
+    if (mapping && idMapper.mappingIsType(mapping, stremioType)) {
+      if (mapping.kitsu_id) ids.kitsu = mapping.kitsu_id;
+      if (mapping.mal_id) ids.mal = mapping.mal_id;
+    }
   }
   return ids;
 }
