@@ -49,7 +49,7 @@ import { parseDurationMs } from '../../../addon/lib/posterCache/duration';
 
 export { parseDurationMs };
 
-const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 
 export function normalizeDomain(value: string): string {
   return (value || '').trim().toLowerCase().replace(/^\.+/, '');
