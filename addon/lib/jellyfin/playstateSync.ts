@@ -40,8 +40,9 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   }
 
   // A row holding a resume point the tracker no longer has, on a title its
-  // history now lists as watched, was finished elsewhere: the tracker's last
-  // word on it is the watch. A resume point it still holds is a rewatch.
+  // history lists as watched after that point, was finished elsewhere: the
+  // tracker's last word on it is the watch. A watch older than the point, or
+  // one the tracker cannot date, is the earlier viewing this row is a rewatch of.
   const paused = new Set(resume.map((row) => row.videoId));
   const watched = await watchedSnapshot(userUUID, config);
   const finished = [...watched.episodes, ...watched.movies];
@@ -49,6 +50,10 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   for (const videoId of finished) {
     const row = known.get(videoId);
     if (row && (row.played || paused.has(videoId))) {
+      skipped += 1;
+      continue;
+    }
+    if (row && Number(row.position_ms) > 0 && !((watched.at.get(videoId) ?? 0) > Number(row.updated_at))) {
       skipped += 1;
       continue;
     }

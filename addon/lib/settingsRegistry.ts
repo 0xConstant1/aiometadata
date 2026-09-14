@@ -490,6 +490,17 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 30,
   },
   {
+    key: 'JELLYFIN_NEXTUP_MDBLIST_PAGES',
+    envVar: 'JELLYFIN_NEXTUP_MDBLIST_PAGES',
+    label: 'Jellyfin Next Up: MDBList Pages',
+    description: 'Pages of 100 shows read from MDBList\'s Up Next when it is the tracker behind Next Up. Read once per history change.',
+    category: 'Features',
+    type: 'number',
+    default: 5,
+    min: 1,
+    max: 20,
+  },
+  {
     key: 'JELLYFIN_UPCOMING_TTL',
     envVar: 'JELLYFIN_UPCOMING_TTL',
     label: 'Jellyfin Upcoming Tracker Cache (seconds)',

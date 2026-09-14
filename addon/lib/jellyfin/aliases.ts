@@ -9,6 +9,7 @@ const database: any = require('../database');
 // One episode is spelled differently by each provider: kitsu:50040:6 is also tt37614297:1:6.
 export async function videoIdAliases(videoId: string): Promise<string[]> {
   const parsed = parseStremioId(videoId);
+  // A film's other spelling comes from its meta at write time; Wikidata's pairing is not trusted for it.
   if (!parsed || parsed.episode === null || parsed.episode === undefined) return [];
 
   const out = new Set<string>();
@@ -68,9 +69,10 @@ export async function videoIdAliases(videoId: string): Promise<string[]> {
 }
 
 /** The same patch under every spelling of the episode. */
-export async function upsertPlaystateEverywhere(userUUID: string, videoId: string, patch: any, profile = ''): Promise<void> {
+export async function upsertPlaystateEverywhere(userUUID: string, videoId: string, patch: any, profile = '', known: string[] = []): Promise<void> {
   await database.upsertPlaystate(userUUID, videoId, patch, profile);
-  for (const alias of await videoIdAliases(videoId)) {
+  const aliases = new Set([...(await videoIdAliases(videoId)), ...known.filter((id) => id && id !== videoId)]);
+  for (const alias of aliases) {
     await database.upsertPlaystate(userUUID, alias, patch, profile);
   }
 }

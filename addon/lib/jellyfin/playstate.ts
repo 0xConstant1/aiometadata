@@ -77,6 +77,8 @@ export interface ResolvedSession {
   videoId: string;
   descriptor: any;
   runtimeMs: number | null;
+  /** The same film under the ids the meta carries, written alongside so any spelling reads back. */
+  aliases: string[];
 }
 
 // The runtime is not in any playstate payload, so it comes from the meta.
@@ -92,6 +94,7 @@ async function resolveSession(userUUID: string, itemId: string): Promise<Resolve
   const meta = await fetchMeta(userUUID, stremioType, descriptor.i);
 
   let runtimeMs: number | null = null;
+  const aliases: string[] = [];
   if (meta) {
     let runtime = meta.runtime;
     if (descriptor.k === 'episode' && Array.isArray(meta.videos)) {
@@ -99,9 +102,14 @@ async function resolveSession(userUUID: string, itemId: string): Promise<Resolve
       if (video?.runtime) runtime = video.runtime;
     }
     runtimeMs = parseRuntimeMs(runtime);
+    if (descriptor.k === 'movie') {
+      const imdb = meta._imdbId || meta.imdb_id;
+      if (imdb) aliases.push(String(imdb));
+      if (meta._tmdbId) aliases.push(`tmdb:${meta._tmdbId}`);
+    }
   }
 
-  return { stremioType, videoId, descriptor, runtimeMs };
+  return { stremioType, videoId, descriptor, runtimeMs, aliases: aliases.filter((id) => id !== videoId) };
 }
 
 function parseRuntimeMs(runtime: any): number | null {
@@ -157,18 +165,18 @@ async function recordPlaystate(
 
   try {
     if (event === 'unplayed') {
-      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, played: false, lastPlayedAt: null }, profile);
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, played: false, lastPlayedAt: null }, profile, session.aliases);
       return;
     }
     if (event === 'played') {
-      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now() }, profile);
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now() }, profile, session.aliases);
       return;
     }
     if (event === 'stop' && played === true) {
-      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now() }, profile);
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now() }, profile, session.aliases);
       return;
     }
-    await upsertPlaystateEverywhere(userUUID, videoId, { positionMs, runtimeMs, lastPlayedAt: Date.now() }, profile);
+    await upsertPlaystateEverywhere(userUUID, videoId, { positionMs, runtimeMs, lastPlayedAt: Date.now() }, profile, session.aliases);
   } catch (error: any) {
     logger.warn(`Playstate write failed for ${videoId}: ${error?.message || error}`);
   }
@@ -414,7 +422,7 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
   const { profileKey } = require('./profiles');
   const profile = profileKey(config);
   deletePosition(`${userUUID}:${profile}:${itemId}`);
-  await upsertPlaystateEverywhere(userUUID, session.videoId, { positionMs, runtimeMs: session.runtimeMs ?? 0 }, profile);
+  await upsertPlaystateEverywhere(userUUID, session.videoId, { positionMs, runtimeMs: session.runtimeMs ?? 0 }, profile, session.aliases);
 
   const { invalidateResume } = require('./resume');
   invalidateResume(userUUID);

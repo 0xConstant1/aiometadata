@@ -59,6 +59,8 @@ export interface WatchedSnapshot {
   nextUp: NextUpRow[];
   /** Shows the tracker lists as being watched, next episode aired or not. */
   following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
+  /** When a video was last watched, by video id, where the tracker says. */
+  at: Map<string, number>;
   fingerprint: string;
 }
 
@@ -68,6 +70,7 @@ const EMPTY: WatchedSnapshot = {
   series: new Map(),
   nextUp: [],
   following: [],
+  at: new Map(),
   fingerprint: '',
 };
 
@@ -150,8 +153,13 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
     for (const episode of Array.isArray(season?.episodes) ? season.episodes : []) {
       const number = Number(episode?.number);
       if (!Number.isFinite(number)) continue;
+      const watchedAt = Date.parse(episode?.watched_at ?? '') || 0;
+      const mark = (videoId: string) => {
+        snapshot.episodes.add(videoId);
+        if (watchedAt) snapshot.at.set(videoId, watchedAt);
+      };
 
-      if (absolute) snapshot.episodes.add(`${absolute}:${number}`);
+      if (absolute) mark(`${absolute}:${number}`);
 
       if (!seasoned.length) continue;
 
@@ -163,7 +171,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
 
       if (!Number.isFinite(broadcast.season) || !Number.isFinite(broadcast.episode)) continue;
       for (const base of seasoned) {
-        snapshot.episodes.add(`${base}:${broadcast.season}:${broadcast.episode}`);
+        mark(`${base}:${broadcast.season}:${broadcast.episode}`);
       }
     }
   }
@@ -172,6 +180,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
 interface RawSnapshot {
   episodes: string[];
   movies: string[];
+  at?: Array<[string, number]>;
   series: Array<[string, { watched: number; total: number; at?: number }]>;
   nextUp: NextUpRow[];
   following?: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
@@ -192,14 +201,18 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     series: new Map(),
     nextUp: [],
     following: [],
+    at: new Map(),
     fingerprint: '',
   };
 
   for (const entry of Array.isArray(data?.movies) ? data.movies : []) {
     if (entry?.status !== 'completed') continue;
     const ids = entry?.movie?.ids ?? {};
+    const at = Date.parse(entry?.last_watched_at ?? '') || 0;
     if (ids.imdb) snapshot.movies.add(String(ids.imdb));
     if (ids.tmdb) snapshot.movies.add(`tmdb:${ids.tmdb}`);
+    if (at && ids.imdb) snapshot.at.set(String(ids.imdb), at);
+    if (at && ids.tmdb) snapshot.at.set(`tmdb:${ids.tmdb}`, at);
   }
 
   for (const entry of Array.isArray(data?.shows) ? data.shows : []) collectShow(entry, snapshot, false);
@@ -208,6 +221,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
   return {
     episodes: [...snapshot.episodes],
     movies: [...snapshot.movies],
+    at: [...snapshot.at],
     series: [...snapshot.series],
     nextUp: snapshot.nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
     following: snapshot.following,
@@ -254,10 +268,14 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
     throw new Error('The watched history could not be read');
   }
 
+  const at = new Map<string, number>();
   for (const entry of movieRows) {
     const ids = entry?.movie?.ids ?? {};
+    const seen = Date.parse(entry?.last_watched_at ?? '') || 0;
     if (ids.imdb) movies.add(String(ids.imdb));
     if (ids.tmdb) movies.add(`tmdb:${ids.tmdb}`);
+    if (seen && ids.imdb) at.set(String(ids.imdb), seen);
+    if (seen && ids.tmdb) at.set(`tmdb:${ids.tmdb}`, seen);
   }
 
   const latest = new Map<string, { resolved: any; season: number; number: number; at: number }>();
@@ -273,34 +291,66 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
 
     episodes.add(resolved.videoId);
 
-    const at = Date.parse(entry?.last_watched_at ?? '') || 0;
+    const seen = Date.parse(entry?.last_watched_at ?? '') || 0;
+    if (seen) at.set(resolved.videoId, seen);
     const counts = series.get(resolved.metaId) ?? { watched: 0, total: 0 };
     counts.watched += 1;
-    if (at && (!counts.at || at > counts.at)) counts.at = at;
+    if (seen && (!counts.at || seen > counts.at)) counts.at = seen;
     series.set(resolved.metaId, counts);
 
     const held = latest.get(resolved.metaId);
-    if (!held || at > held.at || (at === held.at && (season > held.season || (season === held.season && number > held.number)))) {
-      latest.set(resolved.metaId, { resolved, season, number, at });
+    if (!held || seen > held.at || (seen === held.at && (season > held.season || (season === held.season && number > held.number)))) {
+      latest.set(resolved.metaId, { resolved, season, number, at: seen });
     }
   }
 
-  // Seeded with the last episode watched, not the earliest gap; the shelf moves on from it.
+  // MDBList names the next episode itself, the one its own app shows. The
+  // history seeds it only when that call fails: the last episode watched, from
+  // which the shelf moves on.
   const nextUp: NextUpRow[] = [];
-  for (const [metaId, { resolved, season, number, at }] of latest) {
+  const upNext: any[] = [];
+  try {
+    const { fetchMDBListUpNext } = require('../../utils/mdbList');
+    for (let page = 1; page <= envInt('JELLYFIN_NEXTUP_MDBLIST_PAGES', 5, 1); page++) {
+      const batch = await fetchMDBListUpNext(apiKey, page, 100);
+      upNext.push(...batch.items);
+      if (!batch.hasMore || !batch.items.length) break;
+    }
+  } catch (error: any) {
+    logger.warn(`MDBList up next failed, seeding from history: ${error?.message || error}`);
+  }
+  for (const item of upNext) {
+    const season = Number(item?.next_episode?.season);
+    const number = Number(item?.next_episode?.episode);
+    if (!Number.isFinite(season) || !Number.isFinite(number)) continue;
+    const resolved = await videoIdFor(item?.show?.ids ?? {}, season, number);
+    if (!resolved) continue;
     nextUp.push({
-      metaId,
+      metaId: resolved.metaId,
       videoId: resolved.mediaType === 'anime' ? resolved.videoId : null,
       season: resolved.mediaType === 'anime' ? null : season,
       episode: resolved.mediaType === 'anime' ? Number(String(resolved.videoId).split(':').pop()) : number,
       mediaType: resolved.mediaType,
-      lastWatchedAt: at,
+      lastWatchedAt: Date.parse(item?.last_watched_at ?? '') || 0,
     });
+  }
+  if (!upNext.length) {
+    for (const [metaId, { resolved, season, number, at }] of latest) {
+      nextUp.push({
+        metaId,
+        videoId: resolved.mediaType === 'anime' ? resolved.videoId : null,
+        season: resolved.mediaType === 'anime' ? null : season,
+        episode: resolved.mediaType === 'anime' ? Number(String(resolved.videoId).split(':').pop()) : number,
+        mediaType: resolved.mediaType,
+        lastWatchedAt: at,
+      });
+    }
   }
 
   return {
     episodes: [...episodes],
     movies: [...movies],
+    at: [...at],
     series: [...series],
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
   };
@@ -348,7 +398,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
 
     const { cacheWrapGlobal } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_v2:${key}`,
+      `jellyfin_watched_v3:${key}`,
       () => build(accessToken),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true }
@@ -357,6 +407,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
     const snapshot: WatchedSnapshot = {
       episodes: new Set(raw?.episodes ?? []),
       movies: new Set(raw?.movies ?? []),
+      at: new Map(raw?.at ?? []),
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
       following: raw?.following ?? [],
@@ -440,6 +491,7 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
 
   const episodes = new Set<string>();
   const movies = new Set<string>();
+  const seen = new Map<string, number>();
   const series = new Map<string, { watched: number; total: number; at?: number }>();
   const latest = new Map<string, { row: any; at: number }>();
   const followedSince = Date.now() - envInt('JELLYFIN_NEXTUP_OWN_DAYS', 120, 1) * 24 * 60 * 60 * 1000;
@@ -450,6 +502,10 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
     if (row.media_type === 'movie') {
       movies.add(movieBase(row.tmdb_id));
       movies.add(`tmdb:${row.tmdb_id}`);
+      if (at) {
+        seen.set(movieBase(row.tmdb_id), at);
+        seen.set(`tmdb:${row.tmdb_id}`, at);
+      }
       continue;
     }
     const season = Number(row?.season);
@@ -459,6 +515,7 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
     if (!resolved) continue;
     if (episodes.has(resolved.videoId)) continue;
     episodes.add(resolved.videoId);
+    if (at) seen.set(resolved.videoId, at);
 
     const counts = series.get(resolved.metaId) ?? { watched: 0, total: 0 };
     counts.watched += 1;
@@ -485,6 +542,7 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
   return {
     episodes: [...episodes],
     movies: [...movies],
+    at: [...seen],
     series: [...series],
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
     following,
@@ -507,7 +565,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string): Promise<WatchedSn
   try {
     const { cacheWrapGlobal } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_pmdb_v1:${key}`,
+      `jellyfin_watched_pmdb_v2:${key}`,
       () => buildPmdb(apiKey),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true }
@@ -516,6 +574,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string): Promise<WatchedSn
     const snapshot: WatchedSnapshot = {
       episodes: new Set(raw?.episodes ?? []),
       movies: new Set(raw?.movies ?? []),
+      at: new Map(raw?.at ?? []),
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
       following: raw?.following ?? [],
@@ -573,7 +632,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string): Promise<Watche
   try {
     const { cacheWrapGlobal } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_mdblist_v1:${key}`,
+      `jellyfin_watched_mdblist_v3:${key}`,
       () => buildMdblist(apiKey),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true }
@@ -582,6 +641,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string): Promise<Watche
     const snapshot: WatchedSnapshot = {
       episodes: new Set(raw?.episodes ?? []),
       movies: new Set(raw?.movies ?? []),
+      at: new Map(raw?.at ?? []),
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
       following: [],

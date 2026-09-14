@@ -1651,13 +1651,26 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const serverId = serverIdFor(userUUID);
-    const window = rows.slice(startIndex, startIndex + limit);
 
+    // A candidate can yield nothing: its episode is numbered another way, its
+    // next one is not out, or it is played here. The page is filled from the
+    // candidates that follow rather than left short, since a short page reads
+    // to a client as the end of the shelf.
+    const wanted = startIndex + limit;
     const items: any[] = [];
     const identity: string[] = [];
-    await mapWithConcurrency(window, shelfConcurrency(), async (row, index) => {
+    let taken = 0;
+    while (taken < rows.length && items.filter(Boolean).length < wanted) {
+      const window = rows.slice(taken, taken + limit);
+      const offset = taken;
+      taken += window.length;
+      await mapWithConcurrency(window, shelfConcurrency(), async (row, at) => {
+        const index = offset + at;
         const meta = await fetchMeta(userUUID, 'series', row.metaId);
-        if (!meta) return;
+        if (!meta) {
+          logger.debug(`Next Up skipped ${row.metaId}: no meta`);
+          return;
+        }
 
         // The table and a tracker can name one show in different id spaces.
         identity[index] = meta._tmdbId ? `tmdb:${meta._tmdbId}` : meta._imdbId ? `imdb:${meta._imdbId}` : String(meta.id);
@@ -1685,7 +1698,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
                 (row.season === null || episode.ParentIndexNumber === row.season)
             );
 
-        if (!target) return;
+        if (!target) {
+          logger.debug(`Next Up skipped ${row.metaId}: ${row.videoId ?? `S${row.season ?? '?'}E${row.episode}`} is not among its ${episodes.length} episodes`);
+          return;
+        }
 
         // The tracker's next episode may already be played here; the table wins.
         await applyWatchedState(episodes, snapshot, userUUID, profileKey(config));
@@ -1695,8 +1711,17 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           .slice(from)
           .find((episode: any, i: number) => episode.UserData?.Played !== true && (i === 0 || episode.ParentIndexNumber !== 0));
         const airedAt = Date.parse(next?.PremiereDate || '');
-        if (next && !(Number.isFinite(airedAt) && airedAt > nowMs)) items[index] = next;
-    });
+        if (!next) {
+          logger.debug(`Next Up skipped ${row.metaId}: every episode from ${target.Name} on is played`);
+          return;
+        }
+        if (Number.isFinite(airedAt) && airedAt > nowMs) {
+          logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} airs ${next.PremiereDate}`);
+          return;
+        }
+        items[index] = next;
+      });
+    }
 
     const shown = new Set<string>();
     const found = items
@@ -1706,7 +1731,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return true;
       })
       .filter(keepsUnderProfileCap(config));
-    res.json(itemList(found, rows.length, startIndex));
+    const page = found.slice(startIndex, startIndex + limit);
+    const total = taken < rows.length && page.length >= limit ? found.length + limit : found.length;
+    res.json(itemList(page, total, startIndex));
   });
 
   // A new season of a show the user follows, and a watchlist film not out yet.
