@@ -328,6 +328,15 @@ async function resolveSuggestion(pick: Suggestion, config: any, genres: Genres):
  * The recommendation pass. Cached per user, kind and day so a catalog refresh
  * does not spend a model call, and so the list is stable while someone browses.
  */
+/** Keyed by every input that changes the answer. */
+export function picksKey(config: any, userUUID: string, kind: RecommendKind, want = DEFAULT_WANT): string {
+  const { resolveProvider, reasoningEffort, RECOMMENDATION_EPOCH }: any = require('./provider');
+  const chosen = resolveProvider(config);
+  const { resolveSources }: any = require('./history');
+  const sources = resolveSources(config).choice;
+  return `recommendations:picks:v${RECOMMENDATION_EPOCH}:${userUUID}:${kind}:${want}:${sources}:${chosen?.provider || 'none'}:${chosen?.model || 'none'}:${chosen?.webSearch ? 'web' : 'offline'}:${reasoningEffort(config)}`;
+}
+
 export async function recommend(
   config: any,
   userUUID: string,
@@ -336,15 +345,9 @@ export async function recommend(
   want = DEFAULT_WANT
 ): Promise<any[]> {
   const { cacheWrapGlobal }: any = require('../../lib/getCache');
-  // Keyed by every input that changes the answer. Without the model, changing
-  // provider or model returns the previous model's picks until the TTL lapses,
-  // which reads as the setting having no effect; web search needs its own term
-  // because on Gemini it is a request flag, so the model string does not move.
-  const { resolveProvider, reasoningEffort, RECOMMENDATION_EPOCH, refreshTtl }: any = require('./provider');
+  const { resolveProvider, reasoningEffort, refreshTtl }: any = require('./provider');
   const chosen = resolveProvider(config);
-  const { resolveSources }: any = require('./history');
-  const sources = resolveSources(config).choice;
-  const key = `recommendations:picks:v${RECOMMENDATION_EPOCH}:${userUUID}:${kind}:${want}:${sources}:${chosen?.provider || 'none'}:${chosen?.model || 'none'}:${chosen?.webSearch ? 'web' : 'offline'}:${reasoningEffort(config)}`;
+  const key = picksKey(config, userUUID, kind, want);
   const ttl = refreshTtl(config);
 
   const build = async () => {
@@ -453,4 +456,4 @@ export async function recommend(
   return cacheWrapGlobal(key, build, ttl, { sourceList: true });
 }
 
-module.exports = { recommend, parsePicks, eraBrief };
+module.exports = { recommend, parsePicks, eraBrief, picksKey };

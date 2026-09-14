@@ -1172,13 +1172,16 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       }
       if (userCatalog.id.startsWith('recommendations.')) {
           logger.debug(`Processing recommendation catalog: ${userCatalog.id}`);
-          // No genre filter: the selection is the whole point, and one page of it.
+          // No genre filter; off the home board a required extra keeps it to Discover.
           return {
             id: userCatalog.id,
             type: userCatalog.displayType || userCatalog.type,
             name: `${showPrefix ? `${prefixName} - ` : ""}${userCatalog.name}`,
             pageSize: parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20,
-            extra: [{ name: 'skip' }],
+            extra: [
+              ...(userCatalog.showInHome ? [] : [{ name: 'genre', options: ['None'], isRequired: true }]),
+              { name: 'skip' },
+            ],
             showInHome: userCatalog.showInHome
           };
       }

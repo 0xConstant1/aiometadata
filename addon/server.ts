@@ -282,6 +282,9 @@ async function startServer(): Promise<void> {
   const { startComprehensiveCatalogWarming } = require('./lib/comprehensiveCatalogWarmer.js');
   startComprehensiveCatalogWarming();
 
+  const { startRecommendationRefresh } = require('./utils/recommendations/refresh.js');
+  startRecommendationRefresh();
+
   const { startCacheCleanupScheduler } = require('./lib/cacheCleanupScheduler.js');
   const indexModule = require('./index.js');
   startCacheCleanupScheduler(indexModule.getDashboardAPI());
