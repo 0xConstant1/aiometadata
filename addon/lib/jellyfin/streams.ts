@@ -386,10 +386,12 @@ function buildMediaStreams(playable: PlayableStream): any[] {
     AspectRatio: resolution ? '16:9' : undefined,
   }];
 
+  const audioTags: string[] = Array.isArray(parsed.audioTags) ? parsed.audioTags.map(String) : [];
+  const atmosTagged = audioTags.some((t) => /atmos/i.test(t)) || /atmos/i.test(label);
   const audioTracks: any[] = Array.isArray(parsed.audioTracks) && parsed.audioTracks.length
     ? parsed.audioTracks
     : [{
-        codec: Array.isArray(parsed.audioTags) ? parsed.audioTags[0] : undefined,
+        codec: audioTags.find((t) => !/atmos/i.test(t)) ?? audioTags[0],
         channels: Array.isArray(parsed.audioChannels) ? parsed.audioChannels[0] : undefined,
         language: Array.isArray(parsed.languages) ? parsed.languages.find((l: unknown) => languageCode(l)) : undefined,
       }];
@@ -397,17 +399,25 @@ function buildMediaStreams(playable: PlayableStream): any[] {
     const language = languageCode(track?.language ?? track?.lang);
     const codecName = audioCodec(track?.codec ?? track?.format) ?? (typeof track?.codec === 'string' ? track.codec.toLowerCase() : undefined);
     const channels = channelCount(track?.channels ?? track?.channelLayout);
+    // Atmos is a layer on TrueHD or DD+, which is how a real server's probe reports it.
+    const atmos = track?.atmos === true || /atmos/i.test(String(track?.codec ?? track?.title ?? '')) || (i === 0 && atmosTagged && (codecName === 'truehd' || codecName === 'eac3'));
+    const profile = atmos
+      ? (codecName === 'truehd' ? 'Dolby TrueHD + Dolby Atmos' : 'Dolby Digital Plus + Dolby Atmos')
+      : codecName === 'dts' && /dts:?x/i.test(String(track?.codec ?? '') + label) ? 'DTS:X'
+      : codecName === 'dts' && /dts-?hd ?ma/i.test(String(track?.codec ?? '') + label) ? 'DTS-HD MA'
+      : undefined;
     streams.push({
       Type: 'Audio',
       Index: streams.length,
       Codec: codecName,
+      ...(profile ? { Profile: profile } : {}),
       Language: language,
       Channels: channels,
       ChannelLayout: typeof track?.channelLayout === 'string' ? track.channelLayout : typeof track?.channels === 'string' ? track.channels : undefined,
       Title: typeof track?.title === 'string' ? track.title : typeof track?.name === 'string' ? track.name : undefined,
       IsDefault: track?.default === true || track?.isDefault === true || i === 0,
       ...STREAM_FLAGS,
-      DisplayTitle: [track?.language ?? track?.lang, track?.codec ?? track?.format, track?.channels].filter(Boolean).join(' ') || 'Audio',
+      DisplayTitle: [track?.language ?? track?.lang, profile ?? (track?.codec ?? track?.format), track?.channels].filter(Boolean).join(' ') || 'Audio',
     });
   });
 
