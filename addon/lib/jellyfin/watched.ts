@@ -709,6 +709,27 @@ export function isWatched(snapshot: WatchedSnapshot, stremioId: string): boolean
  * item's own guid, so this stays one pass over a finished list rather than a
  * parameter threaded through every builder.
  */
+const airedCounts = new LRUCache<string, number>({
+  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) * 10,
+  ttl: envInt('JELLYFIN_WATCHED_TTL', 3600, 1) * 1000,
+});
+
+async function airedEpisodeCount(userUUID: string, descriptor: any): Promise<number> {
+  const key = `${descriptor.t}:${descriptor.i}`;
+  const held = airedCounts.get(key);
+  if (held !== undefined) return held;
+  const { fetchMeta } = require('./items');
+  const meta = await fetchMeta(userUUID, 'series', String(descriptor.i)).catch(() => null);
+  const now = Date.now();
+  const aired = (Array.isArray(meta?.videos) ? meta.videos : []).filter((v: any) => {
+    if (Number(v?.season) === 0) return false;
+    const at = Date.parse(v?.released ?? v?.firstAired ?? '');
+    return !Number.isFinite(at) || at <= now;
+  }).length;
+  airedCounts.set(key, aired);
+  return aired;
+}
+
 export async function applyWatchedState(
   items: any[],
   snapshot: WatchedSnapshot,
@@ -753,15 +774,18 @@ export async function applyWatchedState(
 
       if (descriptor.k === 'series') {
         const counts = snapshot.series.get(String(descriptor.i));
-        // Without a total there is no unplayed count to state, and claiming
-        // zero would read as a series fully watched.
-        if (!counts || counts.total <= 0) return;
-        const unplayed = Math.max(0, counts.total - counts.watched);
+        if (!counts) return;
+        // A history-only tracker counts what was watched and not what exists;
+        // the aired episodes of the meta stand in for the total. Without one
+        // nothing is claimed, since zero unplayed reads as fully watched.
+        const total = counts.total > 0 ? counts.total : counts.watched > 0 && userUUID ? await airedEpisodeCount(userUUID, descriptor) : 0;
+        if (total <= 0) return;
+        const unplayed = Math.max(0, total - counts.watched);
         item.UserData = {
           ...item.UserData,
           UnplayedItemCount: unplayed,
-          Played: counts.total > 0 && unplayed === 0,
-          PlayedPercentage: counts.total > 0 ? (counts.watched / counts.total) * 100 : 0,
+          Played: unplayed === 0,
+          PlayedPercentage: Math.min(100, (counts.watched / total) * 100),
         };
         return;
       }

@@ -562,6 +562,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           includeItemTypes
         );
         const page = found.slice(startIndex, startIndex + limit);
+        await applyWatchedState(page, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
         res.json(itemList(page, found.length, startIndex));
         return;
       }
@@ -1598,9 +1599,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       .filter((meta: any) => meta && meta.id)
       .map((meta: any) => metaToBaseItem(meta, catalog.type, serverId, String(parentId)));
 
-    res.json(
-      filterByIncludeTypes(items, includeItemTypes ? String(includeItemTypes) : undefined).slice(0, limit)
-    );
+    const latest = filterByIncludeTypes(items, includeItemTypes ? String(includeItemTypes) : undefined).slice(0, limit);
+    await applyWatchedState(latest, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
+    res.json(latest);
   });
 
   router.get(['/UserItems/Resume', '/Users/:userId/Items/Resume'], async (req: any, res: any) => {
