@@ -709,24 +709,28 @@ export function isWatched(snapshot: WatchedSnapshot, stremioId: string): boolean
  * item's own guid, so this stays one pass over a finished list rather than a
  * parameter threaded through every builder.
  */
-const airedCounts = new LRUCache<string, number>({
+const airedIds = new LRUCache<string, string[]>({
   max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) * 10,
   ttl: envInt('JELLYFIN_WATCHED_TTL', 3600, 1) * 1000,
 });
 
-async function airedEpisodeCount(userUUID: string, descriptor: any): Promise<number> {
+/** The ids of a show's aired episodes, specials left out: what a progress bar counts. */
+async function airedEpisodeIds(userUUID: string, descriptor: any): Promise<string[]> {
   const key = `${descriptor.t}:${descriptor.i}`;
-  const held = airedCounts.get(key);
-  if (held !== undefined) return held;
+  const held = airedIds.get(key);
+  if (held) return held;
   const { fetchMeta } = require('./items');
   const meta = await fetchMeta(userUUID, 'series', String(descriptor.i)).catch(() => null);
   const now = Date.now();
-  const aired = (Array.isArray(meta?.videos) ? meta.videos : []).filter((v: any) => {
-    if (Number(v?.season) === 0) return false;
-    const at = Date.parse(v?.released ?? v?.firstAired ?? '');
-    return !Number.isFinite(at) || at <= now;
-  }).length;
-  airedCounts.set(key, aired);
+  const aired = (Array.isArray(meta?.videos) ? meta.videos : [])
+    .filter((v: any) => {
+      if (Number(v?.season) === 0) return false;
+      const at = Date.parse(v?.released ?? v?.firstAired ?? '');
+      return !Number.isFinite(at) || at <= now;
+    })
+    .map((v: any) => String(v?.id ?? ''))
+    .filter(Boolean);
+  airedIds.set(key, aired);
   return aired;
 }
 
@@ -775,17 +779,22 @@ export async function applyWatchedState(
       if (descriptor.k === 'series') {
         const counts = snapshot.series.get(String(descriptor.i));
         if (!counts) return;
-        // A history-only tracker counts what was watched and not what exists;
-        // the aired episodes of the meta stand in for the total. Without one
-        // nothing is claimed, since zero unplayed reads as fully watched.
-        const total = counts.total > 0 ? counts.total : counts.watched > 0 && userUUID ? await airedEpisodeCount(userUUID, descriptor) : 0;
+        // The show's aired episodes are the whole, specials and what has not
+        // aired left out; a tracker's own counts stand in only when the meta
+        // has none. Without either nothing is claimed, since zero unplayed
+        // reads as fully watched.
+        const aired = userUUID ? await airedEpisodeIds(userUUID, descriptor) : [];
+        const total = aired.length || counts.total;
         if (total <= 0) return;
-        const unplayed = Math.max(0, total - counts.watched);
+        const watched = aired.length
+          ? aired.filter((videoId) => snapshot.episodes.has(videoId)).length
+          : counts.watched;
+        const unplayed = Math.max(0, total - watched);
         item.UserData = {
           ...item.UserData,
           UnplayedItemCount: unplayed,
           Played: unplayed === 0,
-          PlayedPercentage: Math.min(100, (counts.watched / total) * 100),
+          PlayedPercentage: Math.min(100, (watched / total) * 100),
         };
         return;
       }
