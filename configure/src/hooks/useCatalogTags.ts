@@ -7,6 +7,19 @@ const catalogKey = (c: CatalogConfig) => `${c.id}-${c.type}`;
 
 const sameTag = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+const mapSearchTags = (
+  bySearch: Record<string, string[]> | undefined,
+  fn: (list: string[]) => string[]
+): Record<string, string[]> | undefined => {
+  if (!bySearch) return undefined;
+  const out: Record<string, string[]> = {};
+  for (const [id, list] of Object.entries(bySearch)) {
+    const next = fn(list);
+    if (next.length) out[id] = next;
+  }
+  return Object.keys(out).length ? out : undefined;
+};
+
 type TagFilters = Partial<Pick<TagDef, 'ageRating' | 'allowUnratedContent'>>;
 
 /** Drops 'None' and the undefined half so a tag without a limit stores no filter keys. */
@@ -55,6 +68,7 @@ export function useCatalogTags() {
             ? { ...c, tags: c.tags.map(t => (sameTag(t, oldName) ? clean : t)) }
             : c
         ),
+        search: { ...prev.search, tags: mapSearchTags(prev.search?.tags, list => list.map(t => (sameTag(t, oldName) ? clean : t))) },
       };
     });
   }, [setConfig]);
@@ -80,6 +94,7 @@ export function useCatalogTags() {
       catalogs: prev.catalogs.map(c =>
         c.tags?.some(t => sameTag(t, name)) ? { ...c, tags: c.tags.filter(t => !sameTag(t, name)) } : c
       ),
+      search: { ...prev.search, tags: mapSearchTags(prev.search?.tags, list => list.filter(t => !sameTag(t, name))) },
     }));
   }, [setConfig]);
 
@@ -115,9 +130,26 @@ export function useCatalogTags() {
     }));
   }, [setConfig]);
 
+  const setSearchTag = useCallback((searchId: string, name: string, applied: boolean) => {
+    setConfig(prev => {
+      const registry = prev.tags ?? [];
+      const canonical = registry.find(t => sameTag(t.name, name))?.name;
+      if (!canonical) return prev;
+      const current = prev.search?.tags?.[searchId] ?? [];
+      const next = applied
+        ? current.some(t => sameTag(t, canonical)) ? current : [...current, canonical]
+        : current.filter(t => !sameTag(t, canonical));
+      const tagsBySearch = { ...(prev.search?.tags ?? {}) };
+      if (next.length) tagsBySearch[searchId] = next;
+      else delete tagsBySearch[searchId];
+      return { ...prev, search: { ...prev.search, tags: Object.keys(tagsBySearch).length ? tagsBySearch : undefined } };
+    });
+  }, [setConfig]);
+
   return {
     tags,
     tagCounts,
+    setSearchTag,
     createTag,
     renameTag,
     recolorTag,

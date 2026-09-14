@@ -385,6 +385,10 @@ export interface AppConfig {
     };
     // Order of search catalogs
     searchOrder?: string[];
+    /** Tags per search catalog; an install naming tags carries only the search catalogs tagged with one. */
+    tags?: {
+      [searchType: string]: string[];
+    };
   };
   streaming: string[];
   displayTypeOverrides?: {
