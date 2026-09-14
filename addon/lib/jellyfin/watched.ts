@@ -119,7 +119,9 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
     snapshot.following.push({ metaId, mediaType: isAnime && ids.kitsu ? 'anime' : 'series' });
   }
 
-  const next = parseNextToWatch(entry?.next_to_watch);
+  // Simkl names a next episode for every listed show, a planned or dropped one
+  // included; only a show being watched belongs on the shelf.
+  const next = entry?.status === 'watching' ? parseNextToWatch(entry?.next_to_watch) : null;
   if (next) {
     if (metaId) {
       snapshot.nextUp.push({
@@ -398,7 +400,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
 
     const { cacheWrapGlobal } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_v3:${key}`,
+      `jellyfin_watched_v4:${key}`,
       () => build(accessToken),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true }
