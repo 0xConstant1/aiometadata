@@ -46,6 +46,8 @@ const USER_SPECIFIC_PATTERNS = [
   'anilist.paused',
   'anilist.repeating',
   'stremthru.',
+  'recommendations.',
+  'movielens.',
 ];
 
 export function isUserSpecific(catalogId: string): boolean {

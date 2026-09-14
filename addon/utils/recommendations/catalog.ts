@@ -114,6 +114,8 @@ export async function getRecommendationCatalog(
     // background looks broken, and on a paged catalog it also makes pages
     // disagree, since each request races the clock separately.
     const picks = await recommend(config, userUUID, profile, kindFor(id));
+    const { markSeen }: any = require('./refresh');
+    void markSeen(userUUID);
 
     // Ordered here rather than when the row is written, so changing the setting
     // rearranges what already exists instead of paying a model to write it again.
