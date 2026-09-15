@@ -351,7 +351,8 @@ async function serviceSnapshot(userUUID: string, config: any, service: Capable):
       logger.debug(`Resume snapshot for ${userUUID} from ${service}: ${rows.length} rows`);
       return rows;
     } catch (error: any) {
-      logger.warn(`Resume snapshot from ${service} failed: ${error?.message || error}`);
+      snapshots.set(key, []);
+      logger.warn(`Resume snapshot from ${service} failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_RESUME_TTL', 60, 1)}s`);
       return [];
     } finally {
       inFlight.delete(key);

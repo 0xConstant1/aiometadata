@@ -2,8 +2,30 @@ import consola from 'consola';
 import { readTokenSession } from './tokens';
 import { scopeConfigToProfile } from './profiles';
 import { normaliseJellyfinId } from './idsCodec';
+import { LRUCache } from 'lru-cache';
 
 const database: any = require('../database');
+const redis: any = require('../redisClient');
+const { envInt } = require('../../utils/envNumber');
+
+const seenRecently = new LRUCache<string, true>({ max: 10000, ttl: 60 * 60 * 1000 });
+
+// A configuration a client signed in to recently; background work is spent on those alone.
+function markSeen(userUUID: string): void {
+  if (!redis || seenRecently.has(userUUID)) return;
+  seenRecently.set(userUUID, true);
+  redis.set(`jf:seen:${userUUID}`, '1', 'EX', envInt('JELLYFIN_ACTIVE_DAYS', 7, 1) * 24 * 60 * 60).catch(() => undefined);
+}
+
+export async function seenRecentlyBy(userUUID: string): Promise<boolean> {
+  if (seenRecently.has(userUUID)) return true;
+  if (!redis) return false;
+  try {
+    return (await redis.exists(`jf:seen:${userUUID}`)) === 1;
+  } catch {
+    return false;
+  }
+}
 
 const logger = consola.withTag('JellyfinAuth');
 
@@ -76,6 +98,7 @@ export async function attachJellyfinContext(req: any, _res: any, next: any): Pro
     if (session && session.userUUID === userUUID) {
       req.jellyfin.authenticated = true;
       req.jellyfin.profileId = session.profileId;
+      markSeen(userUUID);
     }
   } catch (error: any) {
     logger.debug(`Token resolution failed: ${error.message}`);

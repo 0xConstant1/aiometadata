@@ -73,6 +73,21 @@ function localBase(): string {
   return `http://127.0.0.1:${process.env.PORT || '3232'}`;
 }
 
+// Past the cap, loopback calls queue rather than fail on the socket.
+let loopbackActive = 0;
+const loopbackQueue: Array<() => void> = [];
+async function loopbackFetch(url: string): Promise<Response> {
+  const cap = envInt('JELLYFIN_LOOPBACK_CONCURRENCY', 16, 1);
+  if (loopbackActive >= cap) await new Promise<void>((resolve) => loopbackQueue.push(resolve));
+  loopbackActive += 1;
+  try {
+    return await fetch(url, { headers: { accept: 'application/json' } });
+  } finally {
+    loopbackActive -= 1;
+    loopbackQueue.shift()?.();
+  }
+}
+
 /**
  * The catalog route owns id normalisation, per-source dispatch, cursors and
  * poster resolution. Going through it over loopback keeps the Jellyfin surface
@@ -93,19 +108,28 @@ export async function fetchCatalogPage(
   const profile = tags.length ? `?${tags.map((t) => `tag=${encodeURIComponent(t)}`).join('&')}` : '';
   const url = `${localBase()}/stremio/${encodeURIComponent(userUUID)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraSegment}.json${profile}`;
 
+  if (failedPages.has(url)) return [];
   try {
-    const response = await fetch(url, { headers: { accept: 'application/json' } });
+    const response = await loopbackFetch(url);
     if (!response.ok) {
+      failedPages.set(url, true);
       logger.debug(`Catalog ${type}/${catalogId} returned ${response.status}`);
       return [];
     }
     const body: any = await response.json();
     return Array.isArray(body?.metas) ? body.metas : [];
   } catch (error: any) {
-    logger.warn(`Catalog ${type}/${catalogId} failed: ${error?.message || error}`);
+    failedPages.set(url, true);
+    logger.warn(`Catalog ${type}/${catalogId} failed: ${error?.message || error}; not asked again for ${envInt('JELLYFIN_CATALOG_RETRY', 60, 1)}s`);
     return [];
   }
 }
+
+// A page that failed is not asked again on the next open of the same row.
+const failedPages = new LRUCache<string, true>({
+  max: envInt('JELLYFIN_PAGE_LENGTH_CACHE_MAX', 2000, 1),
+  ttl: envInt('JELLYFIN_CATALOG_RETRY', 60, 1) * 1000,
+});
 
 export interface Window {
   items: any[];
@@ -390,7 +414,7 @@ export async function fetchMeta(
 ): Promise<any | null> {
   const url = `${localBase()}/stremio/${encodeURIComponent(userUUID)}/meta/${encodeURIComponent(stremioType)}/${encodeURIComponent(id)}.json`;
   try {
-    const response = await fetch(url, { headers: { accept: 'application/json' } });
+    const response = await loopbackFetch(url);
     if (!response.ok) {
       logger.debug(`Meta ${stremioType}/${id} returned ${response.status}`);
       return null;

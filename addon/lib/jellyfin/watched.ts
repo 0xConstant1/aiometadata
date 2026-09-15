@@ -89,6 +89,12 @@ const hydrated = new LRUCache<string, WatchedSnapshot>({
   ttl: envInt('JELLYFIN_WATCHED_TTL', 3600, 1) * 1000,
 });
 
+// A failed read is held for a while; a dead token must not pull the library per request.
+const failed = new LRUCache<string, string>({
+  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1),
+  ttl: envInt('JELLYFIN_WATCHED_RETRY', 300, 1) * 1000,
+});
+
 /** Every id a series might be addressed by, so a lookup needs no id space. */
 function seriesKeys(ids: Record<string, any>): string[] {
   const keys: string[] = [];
@@ -383,6 +389,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
   if (service !== 'simkl') return EMPTY;
 
   const tokenId = credential;
+  if (failed.has(`simkl:${tokenId}`)) return EMPTY;
 
   try {
     const { getSimklToken, getSimklActivityFingerprint } = require('../../utils/simklUtils');
@@ -425,7 +432,8 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
     );
     return snapshot;
   } catch (error: any) {
-    logger.warn(`Watched snapshot failed: ${error?.message || error}`);
+    failed.set(`simkl:${tokenId}`, String(error?.message || error));
+    logger.warn(`Watched snapshot failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
     return EMPTY;
   }
 }
@@ -557,6 +565,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
 
 async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Promise<WatchedSnapshot> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  if (failed.has(`pmdb:${keyHash}`)) return EMPTY;
   let key: string;
   try {
     key = `${keyHash}:${await pmdbFingerprint(apiKey)}`;
@@ -592,7 +601,8 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Prom
     );
     return snapshot;
   } catch (error: any) {
-    logger.warn(`Watched snapshot from publicmetadb failed: ${error?.message || error}`);
+    failed.set(`pmdb:${keyHash}`, String(error?.message || error));
+    logger.warn(`Watched snapshot from publicmetadb failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
     return EMPTY;
   }
 }
@@ -627,6 +637,7 @@ async function mdblistFingerprint(apiKey: string): Promise<string> {
 
 async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): Promise<WatchedSnapshot> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  if (failed.has(`mdblist:${keyHash}`)) return EMPTY;
   const key = `${keyHash}:${await mdblistFingerprint(apiKey)}`;
 
   const memo = hydrated.get(key);
@@ -656,7 +667,8 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): P
     );
     return snapshot;
   } catch (error: any) {
-    logger.warn(`Watched snapshot from mdblist failed: ${error?.message || error}`);
+    failed.set(`mdblist:${keyHash}`, String(error?.message || error));
+    logger.warn(`Watched snapshot from mdblist failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
     return EMPTY;
   }
 }

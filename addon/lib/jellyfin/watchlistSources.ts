@@ -193,7 +193,9 @@ async function serviceEntries(config: any, userUUID: string, service: WatchlistS
     cache.set(key, { at: Date.now(), rows });
     return rows;
   } catch (error: any) {
-    logger.warn(`Watchlist from ${service} failed: ${error?.message || error}`);
+    // The last good rows stand until the next window; the service is not asked again before it.
+    cache.set(key, { at: Date.now(), rows: held?.rows ?? [] });
+    logger.warn(`Watchlist from ${service} failed: ${error?.message || error}; not read again for ${ttl / 1000}s`);
     return held?.rows ?? [];
   }
 }
