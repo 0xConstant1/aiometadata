@@ -822,7 +822,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   // client builds its picker from them and asks PlaybackInfo only to play. The
   // page is not held past the budget; the placeholder stays when it runs out.
   const attachSourcesInTime = async (req: any, item: any, descriptor: any, itemId: string): Promise<void> => {
-    const budget = envInt('JELLYFIN_ITEM_SOURCES_WAIT_MS', 15000, 0);
+    const budget = envInt('JELLYFIN_ITEM_SOURCES_WAIT_MS', 0, 0);
     if (req.params?.listed) return;
     if (budget === 0 && !req.params?.forceSources) return;
     const work = attachSources(req, item, descriptor, itemId).catch((error: any) =>

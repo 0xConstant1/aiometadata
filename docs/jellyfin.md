@@ -77,7 +77,7 @@ Search catalogs are tagged too, from the tag chip on each row under **Search**. 
 
 ### The version picker
 
-Opening a title asks the stream addon for its streams and returns them as the item's media sources, so the client builds the same version picker it would for a server holding several files. The server waits up to `JELLYFIN_ITEM_SOURCES_WAIT_MS` for the addon; past that the title opens with a placeholder version that loads the list when chosen. The most versions offered is `JELLYFIN_MAX_MEDIA_SOURCES` (50).
+A title's versions are the stream addon's streams, returned as the item's media sources, so the client builds the same version picker it would for a server holding several files. By default a title opens at once with a placeholder version and the addon is asked when the picker is opened or play is pressed. A client that shows versions or quality badges on the title page itself needs them inline: `JELLYFIN_ITEM_SOURCES_WAIT_MS` makes the item request wait that long for the addon, and past it the title opens with the placeholder as before. The most versions offered is `JELLYFIN_MAX_MEDIA_SOURCES` (50).
 
 Each version carries what can be read from the stream: resolution and dynamic range, video codec, audio codec, channels and a profile such as Dolby TrueHD with Atmos or DTS:X, languages, file size, bitrate and runtime. Where the stream addon sends parsed release data the picture is complete; where it does not, the release name is parsed on the server. Clients render this as the badges on their title pages.
 
@@ -223,7 +223,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | Setting | Default | What it does |
 |---|---|---|
 | `JELLYFIN_STREAM_USER_AGENT` | | User agent sent to the stream addon. AIOStreams attaches parsed release data only for one it recognises. |
-| `JELLYFIN_ITEM_SOURCES_WAIT_MS` | `15000` | How long opening a title waits for the stream addon before the title opens with a placeholder version. |
+| `JELLYFIN_ITEM_SOURCES_WAIT_MS` | `0` | How long opening a title waits for the stream addon so the versions are on the page itself. 0 opens at once and resolves them from the version picker or play. |
 | `JELLYFIN_STREAM_TIMEOUT_MS` (env) | `15000` | How long a stream request may take. |
 | `JELLYFIN_STREAM_CACHE_TTL` (env) | `60` | How long a title's stream list is reused, in seconds. |
 | `JELLYFIN_MAX_MEDIA_SOURCES` (env) | `50` | The most versions offered for a title. |
@@ -294,6 +294,6 @@ Clients differ in what they ask for, and a few things are worth knowing when a r
 
 **Posters overlap in a grid.** One of them is landscape. Make sure **Bring Posters to 2:3** is on in the image cache settings, or switch the poster source for that title's provider.
 
-**A title opens but the version list is empty.** The stream addon returned nothing or took longer than `JELLYFIN_ITEM_SOURCES_WAIT_MS`; choosing the placeholder version retries. The log shows the addon's answer.
+**A title opens but the version list is empty.** The stream addon returned nothing when the picker asked; opening the picker again retries. The log shows the addon's answer.
 
 **Subtitles from a subtitle addon do not appear.** The addon must declare a subtitle resource in its manifest and be part of this configuration. Anime titles are also asked under their IMDb id; a title with no IMDb mapping gets only the subtitles its stream carries.
