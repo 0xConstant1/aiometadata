@@ -70,7 +70,8 @@ jobs:
           PREVIEW_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           DATE=$(date -u +'%Y%m%d')
-          export SEMVER="0.0.0-preview.${PREVIEW_TAG}.${DATE}"
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          export SEMVER="0.0.0-preview.${PREVIEW_TAG}.${DATE}.${SHORT_SHA}"
           node -e "
             const fs = require('fs');
             const version = process.env.SEMVER;
