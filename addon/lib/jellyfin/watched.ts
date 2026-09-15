@@ -266,9 +266,7 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
 
   const movieRows = await read('movie');
   const episodeRows = await read('episode');
-  if (!movieRows.length && !episodeRows.length) {
-    throw new Error('The watched history could not be read');
-  }
+  if (!movieRows.length && !episodeRows.length) logger.debug('No watched history on MDBList');
 
   const at = new Map<string, number>();
   for (const entry of movieRows) {
@@ -489,7 +487,7 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
     rows.push(...result.items);
     if (page >= result.totalPages || !result.items.length) break;
   }
-  if (!rows.length) throw new Error('The watched history could not be read');
+  if (!rows.length) logger.debug('No watched history on PublicMetaDB');
 
   const episodes = new Set<string>();
   const movies = new Set<string>();
