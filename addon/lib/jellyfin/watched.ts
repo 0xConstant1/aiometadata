@@ -234,7 +234,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
 // a season number, so an anime row needs the same anidb pivot the resume path
 // uses before it matches what the meta publishes.
 async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
-  const { httpGet } = require('../../utils/httpClient');
+  const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
   const pageSize = envInt('JELLYFIN_WATCHED_PAGE_SIZE', 1000, 1);
   const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
 
@@ -251,7 +251,7 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
         `https://api.mdblist.com/sync/watched?mediatype=${mediatype}` +
         `&limit=${pageSize}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` +
         `&apikey=${apiKey}`;
-      const response = await httpGet(url, { timeout: envInt('JELLYFIN_RESUME_TIMEOUT_MS', 10000, 1000) });
+      const response = await makeRateLimitedMDBListRequest(url, apiKey, `MDBList watched ${mediatype} page ${page + 1}`);
       const body = response?.data ?? {};
       const batch = mediatype === 'episode' ? body.episodes : body.movies;
       if (!Array.isArray(batch) || !batch.length) break;
@@ -599,17 +599,14 @@ async function pmdbSnapshot(userUUID: string, apiKey: string): Promise<WatchedSn
  * than a clock: a watch marked elsewhere lands on the next request.
  */
 async function mdblistFingerprint(apiKey: string): Promise<string> {
-  const { httpGet } = require('../../utils/httpClient');
   const { cacheWrapGlobal } = require('../getCache');
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
 
   const activities = await cacheWrapGlobal(
     `mdblist_last_activities:${keyHash}`,
     async () => {
-      const response = await httpGet(
-        `https://api.mdblist.com/sync/last_activities?apikey=${apiKey}`,
-        { timeout: envInt('JELLYFIN_RESUME_TIMEOUT_MS', 10000, 1000) }
-      );
+      const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
+      const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/last_activities?apikey=${apiKey}`, apiKey, 'MDBList activities');
       return response?.data ?? {};
     },
     envInt('MDBLIST_ACTIVITIES_TTL', 300, 30),

@@ -1348,6 +1348,14 @@ async function makeRateLimitedMDBListRequest(url: string, apiKey: string, contex
   );
 }
 
+async function makeRateLimitedMDBListPost(url: string, body: any, apiKey: string, context: string = 'MDBList Proxy'): Promise<any> {
+  return await makeRateLimitedRequest(
+    () => httpPost(url, body, { headers: { 'Content-Type': 'application/json' }, timeout: 10000, dispatcher: mdblistDispatcher }),
+    apiKey,
+    context
+  );
+}
+
 /**
  * Validate an MDBList API key using the rate-limited path with no retries.
  */
@@ -1891,6 +1899,7 @@ export {
   fetchMDBListGenres,
   convertGenreToSlug,
   makeRateLimitedMDBListRequest,
+  makeRateLimitedMDBListPost,
   testMdblistKey,
   fetchMDBListUpNext,
   parseMDBListUpNextItems,

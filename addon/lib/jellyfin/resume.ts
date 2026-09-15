@@ -94,11 +94,8 @@ export async function videoIdFor(
 }
 
 async function mdblistRows(apiKey: string): Promise<ResumeRow[]> {
-  const { httpGet } = require('../../utils/httpClient');
-  const response = await httpGet(
-    `https://api.mdblist.com/sync/playback?apikey=${apiKey}`,
-    { timeout: envInt('JELLYFIN_RESUME_TIMEOUT_MS', 10000, 1000) }
-  );
+  const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
+  const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/playback?apikey=${apiKey}`, apiKey, 'MDBList resume');
 
   const rows: ResumeRow[] = [];
   for (const entry of Array.isArray(response?.data) ? response.data : []) {

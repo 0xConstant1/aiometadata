@@ -33,9 +33,11 @@ async function mdblistEntries(apiKey: string): Promise<WatchlistEntry[]> {
   const out: WatchlistEntry[] = [];
   const pageSize = 500;
   for (let offset = 0; offset < envInt('JELLYFIN_WATCHLIST_MAX_ITEMS', 5000, 100); offset += pageSize) {
-    const response = await httpGet(
+    const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
+    const response = await makeRateLimitedMDBListRequest(
       `https://api.mdblist.com/watchlist/items?limit=${pageSize}&offset=${offset}&unified=true&apikey=${apiKey}`,
-      { timeout: envInt('JELLYFIN_RESUME_TIMEOUT_MS', 10000, 1000) }
+      apiKey,
+      `MDBList watchlist page ${offset / pageSize + 1}`
     );
     const items = Array.isArray(response?.data) ? response.data : [];
     for (const item of items) {
@@ -229,9 +231,8 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
 
   if (takes('mdblist', shelf) && shouldTrackServiceMediaType(config, 'mdblist', mediaType) && config?.apiKeys?.mdblist) {
     try {
-      await httpPost(`https://api.mdblist.com/watchlist/items/${listed ? 'add' : 'remove'}?apikey=${config.apiKeys.mdblist}`, body, {
-        headers: { 'Content-Type': 'application/json' }, timeout: 10000,
-      });
+      const { makeRateLimitedMDBListPost } = require('../../utils/mdbList');
+      await makeRateLimitedMDBListPost(`https://api.mdblist.com/watchlist/items/${listed ? 'add' : 'remove'}?apikey=${config.apiKeys.mdblist}`, body, config.apiKeys.mdblist, `MDBList watchlist ${listed ? 'add' : 'remove'}`);
     } catch (error: any) {
       logger.warn(`MDBList watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);
     }
@@ -252,19 +253,18 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
 
   if (takes('simkl', anime ? 'anime' : shelf) && shouldTrackServiceMediaType(config, 'simkl', mediaType) && config?.apiKeys?.simklTokenId) {
     try {
-      const { getSimklToken, fetchSimklAllItems } = require('../../utils/simklUtils');
+      const { getSimklToken, fetchSimklAllItems, makeAuthenticatedSimklRequest } = require('../../utils/simklUtils');
       const token = await getSimklToken(config.apiKeys.simklTokenId);
       if (token?.access_token) {
-        const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token.access_token}`, 'simkl-api-key': process.env.SIMKL_CLIENT_ID || '' };
         if (listed) {
           const planned = kind === 'movie' ? { movies: [{ ids, to: 'plantowatch' }] } : { shows: [{ ids, to: 'plantowatch' }] };
-          await httpPost('https://api.simkl.com/sync/add-to-list', planned, { headers, timeout: 10000 });
+          await makeAuthenticatedSimklRequest('https://api.simkl.com/sync/add-to-list', token.access_token, 'Simkl watchlist add', 'POST', planned);
         } else {
           // Simkl's removal drops the whole entry, history included.
           const all = await fetchSimklAllItems(token.access_token);
           const lists = kind === 'movie' ? [all?.movies] : [all?.shows, all?.anime];
           const planned = lists.flat().some((entry: any) => entry?.status === 'plantowatch' && matches(entry?.movie?.ids ?? entry?.show?.ids ?? {}, ids));
-          if (planned) await httpPost('https://api.simkl.com/sync/history/remove', body, { headers, timeout: 10000 });
+          if (planned) await makeAuthenticatedSimklRequest('https://api.simkl.com/sync/history/remove', token.access_token, 'Simkl watchlist remove', 'POST', body);
         }
       }
     } catch (error: any) {
