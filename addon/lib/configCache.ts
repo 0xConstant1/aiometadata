@@ -1,3 +1,4 @@
+import { LRUCache } from 'lru-cache';
 const consola: any = require('consola');
 const redis: any = require('./redisClient');
 const { encodeCachePayload, decodeCachePayload }: any = require('./cacheCodec');
@@ -21,20 +22,39 @@ function redisKey(id: string): string {
 }
 
 const pendingLoads = new Map<string, Promise<any>>();
+// Decoded once per short window; every request otherwise reads and parses it from Redis.
+const decoded = new LRUCache<string, any>({ max: 2000, ttl: parsePositiveIntEnv(process.env.CONFIG_MEMORY_TTL_SEC, 30, 1) * 1000 });
+const missing = new LRUCache<string, true>({ max: 5000, ttl: parsePositiveIntEnv(process.env.CONFIG_MISSING_TTL_SEC, 60, 1) * 1000 });
 
 class ConfigCache {
   async get(key: string): Promise<any> {
+    const held = decoded.get(key);
+    if (held !== undefined) return held;
     if (!redis || redis.status !== 'ready') return null;
     try {
       const raw = await redis.getBuffer(redisKey(key));
-      return raw ? await decodeCachePayload(raw) : null;
+      const value = raw ? await decodeCachePayload(raw) : null;
+      if (value !== null) decoded.set(key, value);
+      return value;
     } catch (err: any) {
       logger.warn(`get failed for ${String(key).substring(0, 8)}...: ${err.message}`);
       return null;
     }
   }
 
+  /** A key the loader found nothing for; asked again only after the window, without a load. */
+  rememberMissing(key: string): void {
+    missing.set(key, true);
+  }
+
+  isMissing(key: string): boolean {
+    return missing.has(key);
+  }
+
   async set(key: string, value: any): Promise<void> {
+    missing.delete(key);
+    if (value === undefined || value === null) decoded.delete(key);
+    else decoded.set(key, value);
     if (!redis || redis.status !== 'ready' || value === undefined) return;
     try {
       const payload = await encodeCachePayload(value, {
@@ -47,6 +67,8 @@ class ConfigCache {
   }
 
   async del(key: string): Promise<void> {
+    missing.delete(key);
+    decoded.delete(key);
     pendingLoads.delete(redisKey(key));
     if (!redis || redis.status !== 'ready') return;
     try {
@@ -57,6 +79,7 @@ class ConfigCache {
   }
 
   async clear(): Promise<void> {
+    decoded.clear();
     pendingLoads.clear();
     if (!redis || redis.status !== 'ready') return;
     try {

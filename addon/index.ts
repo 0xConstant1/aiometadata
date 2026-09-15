@@ -8239,6 +8239,9 @@ addon.post('/api/dashboard/restart', requireDashboardAdmin, (req, res) => {
 
 addon.use((err, req, res, next) => {
   if (respondIfSigninRequired(err, res)) return;
+  if (err?.code === 'CONFIG_NOT_FOUND' && !res.headersSent) {
+    return res.status(404).json({ error: 'User configuration not found' });
+  }
   next(err);
 });
 

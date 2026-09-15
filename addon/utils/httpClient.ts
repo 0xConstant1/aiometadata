@@ -18,11 +18,17 @@ const getProxyUrl = (): string | null => {
   return null;
 };
 
+// Idle connections outlive undici's 4 s default, so bursts reuse their TLS sessions.
+export const KEEP_ALIVE = {
+  keepAliveTimeout: parseInt(process.env.HTTP_KEEPALIVE_TIMEOUT_MS || '', 10) || 60_000,
+  keepAliveMaxTimeout: parseInt(process.env.HTTP_KEEPALIVE_MAX_TIMEOUT_MS || '', 10) || 600_000,
+};
+
 const proxyUrl = getProxyUrl();
 if (proxyUrl) {
   setGlobalDispatcher(new ProxyAgent({ uri: proxyUrl, allowH2: false }));
 } else {
-  setGlobalDispatcher(new Agent({ allowH2: false }));
+  setGlobalDispatcher(new Agent({ allowH2: false, ...KEEP_ALIVE }));
 }
 
 const DEFAULT_RETRY_ATTEMPTS = 1;

@@ -7,12 +7,13 @@ export function imageProxySigningSecret(): string {
 const SIGNING_PURPOSE = 'image-proxy-url';
 
 let derivedFrom: string | null = null;
-let derivedKey: Buffer | null = null;
+let derivedKey: crypto.KeyObject | null = null;
 
-function signingKey(secret: string): Buffer {
+// A KeyObject is handed to createHmac as is; a Buffer key is re-validated on every call.
+function signingKey(secret: string): crypto.KeyObject {
   if (secret !== derivedFrom) {
     derivedFrom = secret;
-    derivedKey = crypto.createHash('sha256').update(`${secret}|${SIGNING_PURPOSE}`).digest();
+    derivedKey = crypto.createSecretKey(crypto.createHash('sha256').update(`${secret}|${SIGNING_PURPOSE}`).digest());
   }
   return derivedKey!;
 }

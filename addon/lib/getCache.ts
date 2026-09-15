@@ -1,3 +1,4 @@
+import { LRUCache } from 'lru-cache';
 const redis: any = require('./redisClient');
 const { loadConfigFromDatabase }: any = require('./configApi');
 const consola: any = require('consola');
@@ -27,9 +28,16 @@ const {
   normalizeCreditsInPayload,
 }: any = require('../utils/metaCredits');
 
+// The same few profiles are hashed for every component of every meta.
+const hashedProfiles = new LRUCache<string, string>({ max: 2000 });
+
 function hashConfig(configObj: any): string {
   const str = typeof configObj === 'string' ? configObj : stableStringify(configObj);
-  return crypto.createHash('md5').update(str).digest('hex').substring(0, 10);
+  const held = hashedProfiles.get(str);
+  if (held) return held;
+  const hash = crypto.createHash('md5').update(str).digest('hex').substring(0, 10);
+  hashedProfiles.set(str, hash);
+  return hash;
 }
 
 const cacheLogger = consola.withTag('Cache');
