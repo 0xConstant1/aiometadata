@@ -42,6 +42,8 @@ export function rememberImages(scope: string, itemId: string, images: ItemImages
   if (!images.primary && !images.backdrop && !images.logo && !images.thumb) return;
 
   const key = imageKey(scope, itemId);
+  const held = imageCache.get(key);
+  if (held && held.primary === images.primary && held.backdrop === images.backdrop && held.logo === images.logo && held.thumb === images.thumb) return;
   imageCache.set(key, images);
 
   if (redis) {
@@ -81,7 +83,7 @@ async function loopbackFetch(url: string): Promise<Response> {
   if (loopbackActive >= cap) await new Promise<void>((resolve) => loopbackQueue.push(resolve));
   loopbackActive += 1;
   try {
-    return await fetch(url, { headers: { accept: 'application/json' } });
+    return await fetch(url, { headers: { accept: 'application/json', 'accept-encoding': 'identity' } });
   } finally {
     loopbackActive -= 1;
     loopbackQueue.shift()?.();

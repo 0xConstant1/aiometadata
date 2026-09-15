@@ -17,6 +17,23 @@ function markSeen(userUUID: string): void {
   redis.set(`jf:seen:${userUUID}`, '1', 'EX', envInt('JELLYFIN_ACTIVE_DAYS', 7, 1) * 24 * 60 * 60).catch(() => undefined);
 }
 
+/** Every configuration a client signed in to within the active window. */
+export async function seenConfigurations(): Promise<string[] | null> {
+  if (!redis) return null;
+  const out: string[] = [];
+  try {
+    let cursor = '0';
+    do {
+      const [next, keys]: [string, string[]] = await redis.scan(cursor, 'MATCH', 'jf:seen:*', 'COUNT', 500);
+      cursor = next;
+      for (const key of keys) out.push(key.slice('jf:seen:'.length));
+    } while (cursor !== '0');
+  } catch {
+    return null;
+  }
+  return out;
+}
+
 export async function seenRecentlyBy(userUUID: string): Promise<boolean> {
   if (seenRecently.has(userUUID)) return true;
   if (!redis) return false;

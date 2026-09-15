@@ -700,13 +700,15 @@ export async function invalidateWatched(config: any): Promise<void> {
       if (String(key).startsWith(`${keyHash}:`)) hydrated.delete(key);
     }
 
-    const { deleteKeysByPattern } = require('../getCache');
-    const pattern = service === 'simkl'
-      ? `*simkl-api-last-activities:${keyHash}`
+    // An upstream key is stored as global:<key>, so it is deleted by name; a
+    // pattern with a leading wildcard walked the whole keyspace per watch.
+    const name = service === 'simkl'
+      ? `simkl-api-last-activities:${keyHash}`
       : service === 'publicmetadb'
-        ? `*pmdb_watched_head:${keyHash}`
-        : `*mdblist_last_activities:${keyHash}`;
-    await deleteKeysByPattern(pattern);
+        ? `pmdb_watched_head:${keyHash}`
+        : `mdblist_last_activities:${keyHash}`;
+    const redis: any = require('../redisClient');
+    if (redis) await redis.del(`global:${name}`);
   } catch (error: any) {
     logger.debug(`Could not invalidate the watched snapshot: ${error?.message || error}`);
   }

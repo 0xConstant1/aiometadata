@@ -1990,6 +1990,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
+    const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
+    const memoKey = `${userUUID}:${profileKey(config)}:upcoming:${digest}`;
+    const ordered = await memoNextUp(userUUID, memoKey, () => buildUpcoming(userUUID, config));
+    res.json(itemList(ordered.slice(startIndex, startIndex + limit), ordered.length, startIndex));
+  });
+
+  const buildUpcoming = async (userUUID: string, config: any): Promise<any[]> => {
     const now = Date.now();
     const days = envInt('JELLYFIN_UPCOMING_DAYS', 90, 1);
     const horizon = now + days * 24 * 60 * 60 * 1000;
@@ -2023,28 +2030,48 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const seen = new Set<string>();
     const premieres: any[] = [];
+    await warmSeriesIndex(userUUID, followed.map(([metaId]) => metaId));
     await mapWithConcurrency(followed, shelfConcurrency(), async ([metaId, mediaType]) => {
-      const meta = await fetchMeta(userUUID, 'series', metaId);
+      const meta = await seriesIndex(userUUID, metaId);
       if (!meta) return;
       const identity = meta._tmdbId ? `tmdb:${meta._tmdbId}` : meta._imdbId ? `imdb:${meta._imdbId}` : String(meta.id);
       if (seen.has(identity)) return;
       seen.add(identity);
       const seriesId = encodeJellyfinId({ k: 'series', t: mediaType, i: String(meta.id) });
-      // Only a show the user is caught up on: an aired episode still unwatched is Next Up's business.
       const episodes = buildEpisodes(meta, mediaType, seriesId, serverId, null)
         .filter((episode: any) => episode.ParentIndexNumber !== 0);
-      await applyWatchedState(episodes, snapshot, userUUID, profile);
-      const unplayed = (episode: any) => episode.UserData?.Played !== true;
+      const next = episodes
+        .filter((episode: any) => within(premiereAt(episode)))
+        .sort((a: any, b: any) => premiereAt(a) - premiereAt(b))[0];
+      if (!next) return;
+      // Only a show the user is caught up on: an aired episode still unwatched
+      // is Next Up's business. The snapshot answers for most; the table is
+      // asked only about aired episodes it does not hold.
       const aired = episodes.filter((episode: any) => {
         const at = premiereAt(episode);
         return Number.isFinite(at) && at < today;
       });
-      if (aired.some(unplayed)) return;
-
-      const next = episodes
-        .filter((episode: any) => within(premiereAt(episode)) && unplayed(episode))
-        .sort((a: any, b: any) => premiereAt(a) - premiereAt(b))[0];
-      if (next) premieres.push(next);
+      const { stremioIdFor } = require('./idsCodec');
+      const unknown: any[] = [];
+      const held: string[] = [];
+      for (const episode of aired) {
+        const d = await decodeJellyfinId(String(episode.Id));
+        const videoId = d ? stremioIdFor(d) : null;
+        if (!videoId || !isWatched(snapshot, videoId)) unknown.push(episode);
+        else held.push(videoId);
+      }
+      if (unknown.length) {
+        await applyWatchedState(unknown, snapshot, userUUID, profile);
+        if (unknown.some((episode: any) => episode.UserData?.Played !== true)) return;
+      }
+      // A watch the tracker holds that the table unmarked by hand still counts as unplayed.
+      if (held.length) {
+        const database: any = require('../database');
+        const rows: Map<string, any> = await database.getPlaystates(userUUID, held, profile);
+        for (const row of rows.values()) if (row && !row.played) return;
+      }
+      await applyWatchedState([next], snapshot, userUUID, profile);
+      if (next.UserData?.Played !== true) premieres.push(next);
     });
 
     const watchlists = (await getCatalogs(userUUID, config)).filter(
@@ -2063,11 +2090,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
     });
 
-    const ordered = [...premieres, ...films]
+    return [...premieres, ...films]
       .filter(keepsUnderProfileCap(config))
       .sort((a, b) => premiereAt(a) - premiereAt(b));
-    res.json(itemList(ordered.slice(startIndex, startIndex + limit), ordered.length, startIndex));
-  });
+  };
 
   router.get(['/Items/:itemId/Similar', '/Movies/:itemId/Similar', '/Shows/:itemId/Similar'], async (req: any, res: any) => {
     const userUUID = req.params.userUUID;

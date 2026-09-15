@@ -42,18 +42,28 @@ export async function sweepRecommendations(): Promise<{ checked: number; refresh
     const { getTasteProfile }: any = require('./profile');
     const leadMs = envInt('RECOMMENDATION_REFRESH_LEAD', 3600, 60) * 1000;
 
-    for (const user of await database.getAllUsers()) {
+    const seen: string[] = [];
+    let cursor = '0';
+    do {
+      const [next, keys]: [string, string[]] = await redis.scan(cursor, 'MATCH', 'recommendations:seen:*', 'COUNT', 500);
+      cursor = next;
+      for (const key of keys) seen.push(key.slice('recommendations:seen:'.length));
+    } while (cursor !== '0');
+
+    for (const userId of seen) {
+      await new Promise((resolve) => setImmediate(resolve));
       let config: any;
       try {
-        config = JSON.parse(user.config);
+        config = await database.getUserConfig(userId);
       } catch {
         continue;
       }
+      if (!config) continue;
+      const user = { id: userId };
       const wanted = (config?.catalogs || [])
         .filter((catalog: any) => catalog?.enabled && isRecommendationCatalog(catalog.id))
         .map((catalog: any) => catalog.id);
       if (!wanted.length || !usable(config)) continue;
-      if (!(await redis.exists(seenKey(user.id)))) continue;
 
       let profile: any = null;
       for (const id of wanted) {

@@ -102,6 +102,7 @@ export async function syncAllPlaystate(): Promise<void> {
     let added = 0;
 
     for (const userUUID of uuids) {
+      await new Promise((resolve) => setImmediate(resolve));
       let config: any;
       try {
         config = await database.getUserConfig(userUUID);
@@ -117,11 +118,9 @@ export async function syncAllPlaystate(): Promise<void> {
       } catch (error: any) {
         logger.debug(`Playstate sync failed for ${userUUID}: ${error?.message || error}`);
       }
-      // Keeps the Next Up episode index warm off the request path, for configurations a client uses.
+      // Keeps the Next Up episode index warm off the request path.
       try {
         const { warmNextUpIndex } = require('./episodeIndex');
-        const { seenRecentlyBy } = require('./context');
-        if (!(await seenRecentlyBy(userUUID))) continue;
         const built = await runWithRequestContext(userUUID, () => warmNextUpIndex(userUUID, config));
         if (built) logger.debug(`Episode index built for ${built} show(s) of ${userUUID}`);
       } catch (error: any) {
