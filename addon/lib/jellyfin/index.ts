@@ -28,6 +28,7 @@ import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stre
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, recallDuration, recallIssued, recallStreams, rememberDuration, rememberStreams, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
+import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
 import { segmentId, segmentsFor, type SegmentType } from './segments';
@@ -48,6 +49,40 @@ function maxMediaSources(): number {
 
 function encodeSeriesId(descriptor: any): string {
   return encodeJellyfinId({ k: 'series', t: descriptor.t, i: descriptor.i });
+}
+
+/**
+ * The episode a tracker row names, among a meta's episodes: by the row's own
+ * id, by its aliases, by the meta's own id with the row's numbering, and last
+ * by season and episode number alone.
+ */
+async function locateEpisode(episodes: any[], videoId: string, mediaType: string, metaId: string): Promise<any | undefined> {
+  const byId = (id: string) => {
+    const parsed = parseStremioId(id);
+    if (!parsed) return undefined;
+    const wanted = encodeJellyfinId({ k: 'episode', t: mediaType, i: parsed.base, s: parsed.season, e: parsed.episode as number });
+    return episodes.find((episode: any) => episode.Id === wanted);
+  };
+  const parsed = parseStremioId(videoId);
+  if (!parsed) return undefined;
+  let found = byId(videoId);
+  if (found) return found;
+  const { videoIdAliases } = require('./aliases');
+  for (const alias of await videoIdAliases(videoId)) {
+    found = byId(alias);
+    if (found) return found;
+  }
+  if (parsed.base !== metaId) {
+    found = byId(parsed.season === null || parsed.season === undefined ? `${metaId}:${parsed.episode}` : `${metaId}:${parsed.season}:${parsed.episode}`);
+    if (found) return found;
+  }
+  // An absolute number only matches an absolute list.
+  const absolute = parsed.season === null || parsed.season === undefined;
+  return episodes.find(
+    (episode: any) =>
+      episode.IndexNumber === parsed.episode &&
+      (absolute ? episode.ParentIndexNumber === null || episode.ParentIndexNumber === undefined : episode.ParentIndexNumber === parsed.season)
+  );
 }
 
 // An anime episode's id names its own entry; the library may group the show under an IMDb id.
@@ -1230,6 +1265,23 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return filterByIncludeTypes(items, includeItemTypes ? String(includeItemTypes) : undefined);
   };
 
+  // A client's search asks for people alongside titles; the best match by name is the one shown.
+  router.get('/Persons', async (req: any, res: any) => {
+    const term = String(req.query.SearchTerm ?? req.query.searchTerm ?? '').trim();
+    const config = await loadConfig(req);
+    if (!term || !config) {
+      res.json(itemList([], 0, 0));
+      return;
+    }
+    const person = await personByName(config, term).catch(() => null);
+    if (!person) {
+      res.json(itemList([], 0, 0));
+      return;
+    }
+    const id = encodeJellyfinId({ k: 'person', n: person.name });
+    res.json(itemList([personItem(id, serverIdFor(req.params.userUUID), person.name, person)], 1, 0));
+  });
+
   router.get('/Search/Hints', async (req: any, res: any) => {
     const term = String(req.query.SearchTerm ?? req.query.searchTerm ?? '').trim();
     const limit = Math.min(Math.max(1, qInt(req, 'Limit', 20)), 50);
@@ -1631,16 +1683,18 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     // One meta per title, not per row: a show with several part-watched
     // episodes is the normal shape of this list.
+    // A film reads its meta; a show reads the episode index, the way Next Up does.
     const metas = new Map<string, any>();
+    await warmSeriesIndex(userUUID, window.filter((row) => row.kind !== 'movie').map((row) => row.metaId));
     await mapWithConcurrency([...new Set(window.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
       const row = window.find((r) => r.metaId === metaId)!;
-      const meta = await fetchMeta(userUUID, row.kind === 'movie' ? 'movie' : 'series', metaId);
+      const meta = row.kind === 'movie' ? await fetchMeta(userUUID, 'movie', metaId) : await seriesIndex(userUUID, metaId);
       if (meta) metas.set(metaId, meta);
     });
 
     const items: any[] = [];
     for (const row of window) {
-      const meta = metas.get(row.metaId);
+      let meta = metas.get(row.metaId);
       if (!meta) continue;
 
       if (row.kind === 'movie') {
@@ -1653,18 +1707,17 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const parsed = parseStremioId(row.videoId);
       if (!parsed) continue;
 
-      const seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
-      const wantedId = encodeJellyfinId({
-        k: 'episode',
-        t: row.mediaType,
-        i: parsed.base,
-        s: parsed.season,
-        e: parsed.episode as number,
-      });
-
-      const episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
-      const target = episodes.find((episode: any) => episode.Id === wantedId);
-
+      // An episode the index lacks may have aired since it was read.
+      let episodes = buildEpisodes(meta, row.mediaType, encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) }), serverId, null);
+      let target = await locateEpisode(episodes, row.videoId, row.mediaType, String(meta.id));
+      if (!target) {
+        const fresh = await refreshSeriesIndex(userUUID, row.metaId);
+        if (fresh) {
+          meta = fresh;
+          episodes = buildEpisodes(meta, row.mediaType, encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) }), serverId, null);
+          target = await locateEpisode(episodes, row.videoId, row.mediaType, String(meta.id));
+        }
+      }
       if (!target) {
         logger.debug(`Resume row ${row.videoId} is not in its meta`);
         continue;
@@ -1750,15 +1803,19 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
-    // A client asks for the shelf more than once while it opens, and a slow
-    // scan is asked again before it answers; one build serves them all.
-    const memoKey = `${userUUID}:${profileKey(config)}:${req.originalUrl}`;
-    const { page, total } = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config, startIndex, limit));
-    res.json(itemList(page, total, startIndex));
+    // Built once per shelf shape; every page is cut from it.
+    const q = (name: string) => String(req.query[name] ?? req.query[name.charAt(0).toLowerCase() + name.slice(1)] ?? '');
+    const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
+    const memoKey = `${userUUID}:${profileKey(config)}:${digest}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
+    const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config));
+    res.json(itemList(found.slice(startIndex, startIndex + limit), found.length, startIndex));
   });
 
-  const buildNextUp = async (req: any, userUUID: string, config: any, startIndex: number, limit: number): Promise<{ page: any[]; total: number }> => {
+  const buildNextUp = async (req: any, userUUID: string, config: any): Promise<any[]> => {
+    const t0 = Date.now();
+    const lap = { snapshot: 0, resumable: 0, own: 0, meta: 0, episodes: 0, state: 0 };
     const snapshot = await watchedSnapshot(userUUID, config);
+    lap.snapshot = Date.now() - t0;
 
     // The client's recency cutoff is deliberately not applied: the tracker's own
     // view of what is in progress is the one people expect to see.
@@ -1770,6 +1827,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const includeRewatching = flag('EnableRewatching', false);
 
     let resumable: Set<string> | null = null;
+    const t1 = Date.now();
     if (!includeResumable) {
       const { videoIdAliases } = require('./aliases');
       resumable = new Set<string>();
@@ -1782,8 +1840,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
     }
 
+    lap.resumable = Date.now() - t1;
     // The table first; a tracker adds the shows it knows that the table does not.
+    const t2 = Date.now();
     const own = await ownNextUpRows(userUUID, profileKey(config));
+    lap.own = Date.now() - t2;
     const known = new Set(own.map((row) => row.metaId));
     const merged = [...own, ...snapshot.nextUp.filter((row) => !known.has(row.metaId))]
       .sort((a, b) => b.lastWatchedAt - a.lastWatchedAt);
@@ -1794,7 +1855,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (seriesParam) {
       const wanted = await decodeJellyfinId(String(seriesParam));
       if (!wanted || wanted.k !== 'series') {
-        return { page: [], total: 0 };
+        return [];
       }
       const meta = await fetchMeta(userUUID, 'series', wanted.i);
       const matches = (row: any) => row.metaId === wanted.i || (meta && row.metaId === String(meta.id));
@@ -1813,91 +1874,88 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return true;
     });
     if (!rows.length) {
-      return { page: [], total: 0 };
+      return [];
     }
 
     const serverId = serverIdFor(userUUID);
 
-    // A candidate can yield nothing: its episode is numbered another way, its
-    // next one is not out, or it is played here. The page is filled from the
-    // candidates that follow rather than left short, since a short page reads
-    // to a client as the end of the shelf.
-    const wanted = startIndex + limit;
+    // Every candidate is tried once; a page needs no second scan.
     const items: any[] = [];
     const identity: string[] = [];
-    let taken = 0;
-    while (taken < rows.length && items.filter(Boolean).length < wanted) {
-      const window = rows.slice(taken, taken + limit);
-      const offset = taken;
-      taken += window.length;
-      await mapWithConcurrency(window, shelfConcurrency(), async (row, at) => {
-        const index = offset + at;
-        const meta = await fetchMeta(userUUID, 'series', row.metaId);
-        if (!meta) {
-          logger.debug(`Next Up skipped ${row.metaId}: no meta`);
-          return;
-        }
-
-        // The table and a tracker can name one show in different id spaces.
-        identity[index] = meta._tmdbId ? `tmdb:${meta._tmdbId}` : meta._imdbId ? `imdb:${meta._imdbId}` : String(meta.id);
-        const seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
-        const episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
-
-        // Matched on the video id where the tracker gave one, and on the
-        // numbering otherwise, because a season is not always in the same
-        // space as the id the meta publishes.
-        const byVideoId = (videoId: string) =>
-          episodes.find((episode: any) => {
-            const parsed = parseStremioId(videoId);
-            if (!parsed) return false;
-            return episode.Id === encodeJellyfinId({
-              k: 'episode',
-              t: row.mediaType,
-              i: parsed.base,
-              s: parsed.season,
-              e: parsed.episode as number,
-            });
-          });
-        let target = row.videoId
-          ? byVideoId(row.videoId)
+    let skipped = 0;
+    await warmSeriesIndex(userUUID, rows.map((row) => row.metaId));
+    await mapWithConcurrency(rows, shelfConcurrency(), async (row, index) => {
+      const locate = async (episodes: any[], metaId: string): Promise<any | undefined> =>
+        row.videoId
+          ? locateEpisode(episodes, row.videoId, row.mediaType, metaId)
           : episodes.find(
               (episode: any) =>
                 episode.IndexNumber === row.episode &&
                 (row.season === null || episode.ParentIndexNumber === row.season)
             );
-        // The row may be spelled in another id space than the meta's episodes.
-        if (!target && row.videoId) {
-          const { videoIdAliases } = require('./aliases');
-          for (const alias of await videoIdAliases(row.videoId)) {
-            target = byVideoId(alias);
-            if (target) break;
-          }
-        }
 
-        if (!target) {
-          logger.debug(`Next Up skipped ${row.metaId}: ${row.videoId ?? `S${row.season ?? '?'}E${row.episode}`} is not among its ${episodes.length} episodes`);
-          return;
+      // An episode the index lacks that the tracker names means it has moved on.
+      const tm = Date.now();
+      let meta = await seriesIndex(userUUID, row.metaId);
+      lap.meta += Date.now() - tm;
+      if (!meta) {
+        skipped += 1;
+        logger.debug(`Next Up skipped ${row.metaId}: no meta`);
+        return;
+      }
+      let seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
+      const te = Date.now();
+      let episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
+      lap.episodes += Date.now() - te;
+      let target = await locate(episodes, String(meta.id));
+      if (!target) {
+        const fresh = await refreshSeriesIndex(userUUID, row.metaId);
+        if (fresh) {
+          meta = fresh;
+          seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
+          episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
+          target = await locate(episodes, String(meta.id));
         }
+      }
 
-        // The tracker's next episode may already be played here; the table wins.
-        await applyWatchedState(episodes, snapshot, userUUID, profileKey(config));
-        const from = episodes.indexOf(target);
-        const nowMs = Date.now();
-        const next = episodes
-          .slice(from)
-          .find((episode: any, i: number) => episode.UserData?.Played !== true && (i === 0 || episode.ParentIndexNumber !== 0));
-        const airedAt = Date.parse(next?.PremiereDate || '');
-        if (!next) {
-          logger.debug(`Next Up skipped ${row.metaId}: every episode from ${target.Name} on is played`);
-          return;
+      // The table and a tracker can name one show in different id spaces.
+      identity[index] = meta._tmdbId ? `tmdb:${meta._tmdbId}` : meta._imdbId ? `imdb:${meta._imdbId}` : String(meta.id);
+
+      if (!target) {
+        skipped += 1;
+        logger.debug(`Next Up skipped ${row.metaId}: ${row.videoId ?? `S${row.season ?? '?'}E${row.episode}`} is not among its ${episodes.length} episodes`);
+        return;
+      }
+
+      // The table wins; walked one episode at a time since the first is nearly always it.
+      const from = episodes.indexOf(target);
+      const onward = episodes.slice(from);
+      const ts = Date.now();
+      let next: any = null;
+      for (let i = 0; i < onward.length; i++) {
+        const episode = onward[i];
+        if (i > 0 && episode.ParentIndexNumber === 0) continue;
+        await applyWatchedState([episode], snapshot, userUUID, profileKey(config));
+        if (episode.UserData?.Played !== true) {
+          next = episode;
+          break;
         }
-        if (Number.isFinite(airedAt) && airedAt > nowMs) {
-          logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} airs ${next.PremiereDate}`);
-          return;
-        }
-        items[index] = next;
-      });
-    }
+      }
+      lap.state += Date.now() - ts;
+      const nowMs = Date.now();
+      const airedAt = Date.parse(next?.PremiereDate || '');
+      if (!next) {
+        skipped += 1;
+        logger.debug(`Next Up skipped ${row.metaId}: every episode from ${target.Name} on is played`);
+        return;
+      }
+      if (Number.isFinite(airedAt) && airedAt > nowMs) {
+        skipped += 1;
+        logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} airs ${next.PremiereDate}`);
+        return;
+      }
+      items[index] = next;
+    });
 
     const shown = new Set<string>();
     const found = items
@@ -1907,9 +1965,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return true;
       })
       .filter(keepsUnderProfileCap(config));
-    const page = found.slice(startIndex, startIndex + limit);
-    const total = taken < rows.length && page.length >= limit ? found.length + limit : found.length;
-    return { page, total };
+    logger.info(`Next Up built for ${userUUID}: ${found.length} of ${rows.length} candidates (${own.length} own, ${snapshot.nextUp.length} tracker), ${skipped} skipped, in ${Date.now() - t0}ms (snapshot ${lap.snapshot}, resumable ${lap.resumable}, own rows ${lap.own}, meta ${lap.meta}, episodes ${lap.episodes}, state ${lap.state}, summed over ${shelfConcurrency()} lanes)`);
+    return found;
   };
 
   // A new season of a show the user follows, and a watchlist film not out yet.

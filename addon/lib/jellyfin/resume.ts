@@ -375,14 +375,14 @@ export function invalidateResume(userUUID: string): void {
   }
 }
 
-const nextUpPages = new LRUCache<string, { page: any[]; total: number }>({
+const nextUpPages = new LRUCache<string, any[]>({
   max: envInt('JELLYFIN_NEXTUP_CACHE_MAX', 500, 1),
-  ttl: envInt('JELLYFIN_NEXTUP_TTL', 60, 1) * 1000,
+  ttl: envInt('JELLYFIN_NEXTUP_TTL', 900, 1) * 1000,
 });
-const nextUpInFlight = new Map<string, Promise<{ page: any[]; total: number }>>();
+const nextUpInFlight = new Map<string, Promise<any[]>>();
 
-/** One Next Up build per shelf request shape, shared by concurrent asks and kept briefly; a play drops it. */
-export async function memoNextUp(userUUID: string, key: string, build: () => Promise<{ page: any[]; total: number }>): Promise<{ page: any[]; total: number }> {
+/** One Next Up list per shelf shape, shared by concurrent asks and kept briefly; a play drops it. */
+export async function memoNextUp(userUUID: string, key: string, build: () => Promise<any[]>): Promise<any[]> {
   const held = nextUpPages.get(key);
   if (held) return held;
   const running = nextUpInFlight.get(key);
