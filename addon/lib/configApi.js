@@ -1056,6 +1056,12 @@ class ConfigApi {
         throw new Error('userUUID is required');
       }
 
+      if (configCache.isMissing(userUUID)) {
+        const gone = new Error(`No configuration found for userUUID: ${userUUID}`);
+        gone.code = 'CONFIG_NOT_FOUND';
+        throw gone;
+      }
+
       // Use getOrLoad for stampede protection - only one DB load per expired key
       const cachedConfig = await configCache.getOrLoad(userUUID, async () => {
         logger.debug(`❌ Config cache MISS for user ${userUUID.substring(0, 8)}..., loading from database`);
@@ -1063,7 +1069,10 @@ class ConfigApi {
         // Load from database
         const config = await database.getUserConfig(userUUID);
         if (!config) {
-          throw new Error(`No configuration found for userUUID: ${userUUID}`);
+          configCache.rememberMissing(userUUID);
+          const gone = new Error(`No configuration found for userUUID: ${userUUID}`);
+          gone.code = 'CONFIG_NOT_FOUND';
+          throw gone;
         }
         
         // Migrate old property names to new ones
@@ -1114,7 +1123,11 @@ class ConfigApi {
 
       return JSON.parse(JSON.stringify(cachedConfig));
     } catch (error) {
-      logger.error('loadConfigFromDatabase error:', error);
+      if (error?.code === 'CONFIG_NOT_FOUND') {
+        logger.debug(`No configuration for ${String(userUUID).substring(0, 8)}...`);
+      } else {
+        logger.error('loadConfigFromDatabase error:', error);
+      }
       throw error;
     }
   }

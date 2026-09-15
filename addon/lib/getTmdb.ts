@@ -116,7 +116,8 @@ if (!dispatcher) {
       dispatcher = new Agent({ allowH2: false, connect: { timeout: 10000 } });
     }
   } else {
-    dispatcher = new Agent({ allowH2: false, connect: { timeout: 10000 } });
+    const { KEEP_ALIVE } = require('../utils/httpClient');
+    dispatcher = new Agent({ allowH2: false, connect: { timeout: 10000 }, ...KEEP_ALIVE });
     consola.debug('[TMDB] undici agent is enabled for direct connections.');
   }
 }

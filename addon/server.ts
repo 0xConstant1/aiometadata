@@ -189,6 +189,7 @@ async function startServer(): Promise<void> {
 
   // Storage
   await database.initialize();
+  shutdownSequence.register('metrics', () => require('./lib/metricsBatch').flushMetrics(), { phase: 'traffic' });
   shutdownSequence.register('database', () => database.close());
   readiness.markReady('database');
   ok('database');

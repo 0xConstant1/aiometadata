@@ -212,6 +212,7 @@ class Database {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(content_type, tmdb_id, tvdb_id, imdb_id, tvmaze_id)
       )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_configs_created_at ON user_configs(created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_id_mappings_tmdb ON id_mappings(tmdb_id)`,
       `CREATE INDEX IF NOT EXISTS idx_id_mappings_tvdb ON id_mappings(tvdb_id)`,
       `CREATE INDEX IF NOT EXISTS idx_id_mappings_imdb ON id_mappings(imdb_id)`,
@@ -295,6 +296,7 @@ class Database {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(content_type, tmdb_id, tvdb_id, imdb_id, tvmaze_id)
       )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_configs_created_at ON user_configs(created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_id_mappings_tmdb ON id_mappings(tmdb_id)`,
       `CREATE INDEX IF NOT EXISTS idx_id_mappings_tvdb ON id_mappings(tvdb_id)`,
       `CREATE INDEX IF NOT EXISTS idx_id_mappings_imdb ON id_mappings(imdb_id)`,
@@ -460,6 +462,8 @@ class Database {
       );
     }
 
+    await require('./configCache').del(userUUID).catch(() => undefined);
+
     try {
       return JSON.parse(configJson);
     } catch {
@@ -502,10 +506,11 @@ class Database {
 
   async getUsersCreatedToday(): Promise<number> {
     const today = new Date().toISOString().substring(0, 10);
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
     const query = this.type === 'sqlite'
-      ? 'SELECT COUNT(*) as count FROM user_configs WHERE DATE(created_at) = ?'
-      : 'SELECT COUNT(*) as count FROM user_configs WHERE DATE(created_at) = $1';
-    const row = await this.getQuery(query, [today]);
+      ? 'SELECT COUNT(*) as count FROM user_configs WHERE created_at >= ? AND created_at < ?'
+      : 'SELECT COUNT(*) as count FROM user_configs WHERE created_at >= $1 AND created_at < $2';
+    const row = await this.getQuery(query, [today, tomorrow]);
     return row ? parseInt(row.count) : 0;
   }
 
@@ -636,10 +641,12 @@ class Database {
       : 'DELETE FROM user_configs WHERE user_uuid = $1';
     await this.runQuery(query, [userUUID]);
     await this.unlinkConfigFromAllAccounts(userUUID);
+    await require('./configCache').del(userUUID).catch(() => undefined);
   }
 
   async deleteUser(userUUID: string): Promise<boolean> {
     try {
+      await require('./configCache').del(userUUID).catch(() => undefined);
       const query = this.type === 'sqlite'
         ? 'DELETE FROM user_configs WHERE user_uuid = ?'
         : 'DELETE FROM user_configs WHERE user_uuid = $1';
