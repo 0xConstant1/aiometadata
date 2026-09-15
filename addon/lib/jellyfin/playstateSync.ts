@@ -117,6 +117,14 @@ export async function syncAllPlaystate(): Promise<void> {
       } catch (error: any) {
         logger.debug(`Playstate sync failed for ${userUUID}: ${error?.message || error}`);
       }
+      // Keeps the Next Up episode index warm off the request path.
+      try {
+        const { warmNextUpIndex } = require('./episodeIndex');
+        const built = await runWithRequestContext(userUUID, () => warmNextUpIndex(userUUID, config));
+        if (built) logger.debug(`Episode index built for ${built} show(s) of ${userUUID}`);
+      } catch (error: any) {
+        logger.debug(`Episode index warm failed for ${userUUID}: ${error?.message || error}`);
+      }
     }
 
     if (added) logger.info(`Playstate sync: ${added} title(s) taken from trackers across ${users} configuration(s)`);
