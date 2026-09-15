@@ -1733,7 +1733,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       items.push(target);
     }
 
-    res.json(itemList(items.filter(keepsUnderProfileCap(config)), rows.length, startIndex));
+    // A play is held under every spelling of its title; the spellings build one item.
+    const shown = new Set<string>();
+    const distinct = items.filter((item) => !shown.has(item.Id) && shown.add(item.Id));
+    res.json(itemList(distinct.filter(keepsUnderProfileCap(config)), rows.length, startIndex));
   });
 
   const seriesMetaFor = async (req: any) => {
