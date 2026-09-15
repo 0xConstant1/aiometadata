@@ -21,12 +21,18 @@ export async function ownNextUpRows(userUUID: string, profile: string): Promise<
     return [];
   }
 
+  // A play is stored under every spelling of the episode; one show, one candidate.
+  const { videoIdAliases } = require('./aliases');
   const rows: NextUpRow[] = [];
   const seen = new Set<string>();
   for (const r of records) {
     const parsed = parseStremioId(String(r.video_id));
     if (!parsed || parsed.episode === null || parsed.episode === undefined || seen.has(parsed.base)) continue;
     seen.add(parsed.base);
+    for (const alias of await videoIdAliases(String(r.video_id))) {
+      const base = parseStremioId(alias)?.base;
+      if (base) seen.add(base);
+    }
     rows.push({
       metaId: parsed.base,
       videoId: String(r.video_id),

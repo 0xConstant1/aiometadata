@@ -553,6 +553,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 30,
   },
   {
+    key: 'JELLYFIN_NEXTUP_TTL',
+    envVar: 'JELLYFIN_NEXTUP_TTL',
+    label: 'Jellyfin Next Up Cache (seconds)',
+    description: 'How long a built Next Up page is kept for the same request, so a client asking for the row twice as it opens, or again after a timeout, gets the first answer. A play or a mark through this server drops it at once.',
+    category: 'Features',
+    type: 'number',
+    default: 60,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_NEXTUP_MDBLIST_PAGES',
     envVar: 'JELLYFIN_NEXTUP_MDBLIST_PAGES',
     label: 'Jellyfin Next Up: MDBList Pages',

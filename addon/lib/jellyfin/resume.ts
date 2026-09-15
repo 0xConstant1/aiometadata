@@ -370,6 +370,31 @@ export function invalidateResume(userUUID: string): void {
   for (const key of [...snapshots.keys()]) {
     if (String(key).startsWith(`${userUUID}:`)) snapshots.delete(key);
   }
+  for (const key of [...nextUpPages.keys()]) {
+    if (String(key).startsWith(`${userUUID}:`)) nextUpPages.delete(key);
+  }
+}
+
+const nextUpPages = new LRUCache<string, { page: any[]; total: number }>({
+  max: envInt('JELLYFIN_NEXTUP_CACHE_MAX', 500, 1),
+  ttl: envInt('JELLYFIN_NEXTUP_TTL', 60, 1) * 1000,
+});
+const nextUpInFlight = new Map<string, Promise<{ page: any[]; total: number }>>();
+
+/** One Next Up build per shelf request shape, shared by concurrent asks and kept briefly; a play drops it. */
+export async function memoNextUp(userUUID: string, key: string, build: () => Promise<{ page: any[]; total: number }>): Promise<{ page: any[]; total: number }> {
+  const held = nextUpPages.get(key);
+  if (held) return held;
+  const running = nextUpInFlight.get(key);
+  if (running) return running;
+  const work = build()
+    .then((result) => {
+      nextUpPages.set(key, result);
+      return result;
+    })
+    .finally(() => nextUpInFlight.delete(key));
+  nextUpInFlight.set(key, work);
+  return work;
 }
 
 export function resumeUserData(

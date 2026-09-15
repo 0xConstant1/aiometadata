@@ -27,7 +27,7 @@ import { buildEpisodes, buildSeasons, fetchMeta, fetchWindow, filterByIncludeTyp
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, recallDuration, recallIssued, recallStreams, rememberDuration, rememberStreams, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
-import { resumeSnapshot, resumeUserData } from './resume';
+import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
 import { segmentId, segmentsFor, type SegmentType } from './segments';
@@ -1750,6 +1750,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
+    // A client asks for the shelf more than once while it opens, and a slow
+    // scan is asked again before it answers; one build serves them all.
+    const memoKey = `${userUUID}:${profileKey(config)}:${req.originalUrl}`;
+    const { page, total } = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config, startIndex, limit));
+    res.json(itemList(page, total, startIndex));
+  });
+
+  const buildNextUp = async (req: any, userUUID: string, config: any, startIndex: number, limit: number): Promise<{ page: any[]; total: number }> => {
     const snapshot = await watchedSnapshot(userUUID, config);
 
     // The client's recency cutoff is deliberately not applied: the tracker's own
@@ -1786,8 +1794,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (seriesParam) {
       const wanted = await decodeJellyfinId(String(seriesParam));
       if (!wanted || wanted.k !== 'series') {
-        res.json(itemList([], 0, startIndex));
-        return;
+        return { page: [], total: 0 };
       }
       const meta = await fetchMeta(userUUID, 'series', wanted.i);
       const matches = (row: any) => row.metaId === wanted.i || (meta && row.metaId === String(meta.id));
@@ -1806,8 +1813,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return true;
     });
     if (!rows.length) {
-      res.json(itemList([], 0, startIndex));
-      return;
+      return { page: [], total: 0 };
     }
 
     const serverId = serverIdFor(userUUID);
@@ -1840,23 +1846,33 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         // Matched on the video id where the tracker gave one, and on the
         // numbering otherwise, because a season is not always in the same
         // space as the id the meta publishes.
-        const target = row.videoId
-          ? episodes.find((episode: any) => {
-              const parsed = parseStremioId(row.videoId as string);
-              if (!parsed) return false;
-              return episode.Id === encodeJellyfinId({
-                k: 'episode',
-                t: row.mediaType,
-                i: parsed.base,
-                s: parsed.season,
-                e: parsed.episode as number,
-              });
-            })
+        const byVideoId = (videoId: string) =>
+          episodes.find((episode: any) => {
+            const parsed = parseStremioId(videoId);
+            if (!parsed) return false;
+            return episode.Id === encodeJellyfinId({
+              k: 'episode',
+              t: row.mediaType,
+              i: parsed.base,
+              s: parsed.season,
+              e: parsed.episode as number,
+            });
+          });
+        let target = row.videoId
+          ? byVideoId(row.videoId)
           : episodes.find(
               (episode: any) =>
                 episode.IndexNumber === row.episode &&
                 (row.season === null || episode.ParentIndexNumber === row.season)
             );
+        // The row may be spelled in another id space than the meta's episodes.
+        if (!target && row.videoId) {
+          const { videoIdAliases } = require('./aliases');
+          for (const alias of await videoIdAliases(row.videoId)) {
+            target = byVideoId(alias);
+            if (target) break;
+          }
+        }
 
         if (!target) {
           logger.debug(`Next Up skipped ${row.metaId}: ${row.videoId ?? `S${row.season ?? '?'}E${row.episode}`} is not among its ${episodes.length} episodes`);
@@ -1893,8 +1909,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       .filter(keepsUnderProfileCap(config));
     const page = found.slice(startIndex, startIndex + limit);
     const total = taken < rows.length && page.length >= limit ? found.length + limit : found.length;
-    res.json(itemList(page, total, startIndex));
-  });
+    return { page, total };
+  };
 
   // A new season of a show the user follows, and a watchlist film not out yet.
   router.get('/Shows/Upcoming', async (req: any, res: any) => {
