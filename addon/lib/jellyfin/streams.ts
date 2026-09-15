@@ -130,15 +130,40 @@ const issued = new LRUCache<string, string>({
   ttl: envInt('JELLYFIN_ISSUED_SOURCE_TTL', 12 * 60 * 60, 60) * 1000,
 });
 
+const issuedDuration = new LRUCache<string, number>({
+  max: envInt('JELLYFIN_ISSUED_SOURCE_MAX', 5000, 1),
+  ttl: envInt('JELLYFIN_ISSUED_SOURCE_TTL', 12 * 60 * 60, 60) * 1000,
+});
+
 function issuedTtlSeconds(): number {
   return envInt('JELLYFIN_ISSUED_SOURCE_TTL', 12 * 60 * 60, 60);
 }
 
-export function rememberIssued(id: string, url: string): void {
+export function rememberIssued(id: string, url: string, durationMs: number | null = null): void {
   if (!id || !url) return;
   issued.set(id, url);
-  if (redis) {
-    redis.set(`jf:src:${id}`, url, 'EX', issuedTtlSeconds()).catch(() => undefined);
+  if (durationMs) rememberDuration(id, durationMs);
+  if (redis) redis.set(`jf:src:${id}`, url, 'EX', issuedTtlSeconds()).catch(() => undefined);
+}
+
+export function rememberDuration(id: string, durationMs: number): void {
+  if (!id || !durationMs) return;
+  issuedDuration.set(id, durationMs);
+  if (redis) redis.set(`jf:dur:${id}`, String(durationMs), 'EX', issuedTtlSeconds()).catch(() => undefined);
+}
+
+/** The file's own length, when the stream addon reported one for this source. */
+export async function recallDuration(id: string | undefined): Promise<number | null> {
+  if (!id) return null;
+  const local = issuedDuration.get(id);
+  if (local) return local;
+  if (!redis) return null;
+  try {
+    const stored = Number(await redis.get(`jf:dur:${id}`));
+    if (stored > 0) issuedDuration.set(id, stored);
+    return stored > 0 ? stored : null;
+  } catch {
+    return null;
   }
 }
 
@@ -167,7 +192,8 @@ export function toPlayable(stream: any): PlayableStream | null {
   const size = Number(stream?.behaviorHints?.videoSize);
   const id = mediaSourceIdFor(stream);
   const filename = String(stream?.behaviorHints?.filename || '');
-  rememberIssued(id, stream.url);
+  const durationMs = Number.isFinite(Number(stream?.streamData?.duration)) && Number(stream.streamData.duration) > 0 ? Number(stream.streamData.duration) : null;
+  rememberIssued(id, stream.url, durationMs);
 
   return {
     id,
@@ -177,7 +203,7 @@ export function toPlayable(stream: any): PlayableStream | null {
     size: Number.isFinite(size) && size > 0 ? size : null,
     filename: filename || null,
     videoHash: typeof stream?.behaviorHints?.videoHash === 'string' && stream.behaviorHints.videoHash ? stream.behaviorHints.videoHash : null,
-    durationMs: Number.isFinite(Number(stream?.streamData?.duration)) && Number(stream.streamData.duration) > 0 ? Number(stream.streamData.duration) : null,
+    durationMs,
     bitrate: Number.isFinite(Number(stream?.streamData?.bitrate)) && Number(stream.streamData.bitrate) > 0 ? Number(stream.streamData.bitrate) : null,
     subtitles: streamSubtitleTracks(stream),
     parsed: stream?.streamData?.parsedFile && typeof stream.streamData.parsedFile === 'object' ? stream.streamData.parsedFile : undefined,

@@ -25,7 +25,7 @@ import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSea
 import { decodeJellyfinId } from './ids';
 import { buildEpisodes, buildSeasons, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, recallIssued, recallStreams, rememberStreams, streamUserAgent, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, recallDuration, recallIssued, recallStreams, rememberDuration, rememberStreams, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { resumeSnapshot, resumeUserData } from './resume';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
@@ -962,6 +962,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const withDefaultSourceId = (sources: any[], itemId: string): any[] => {
     if (!sources.length) return sources;
     const id = normaliseJellyfinId(itemId);
+    // A play report then names the item, not the hash the duration sits under.
+    recallDuration(sources[0].Id).then((ms) => ms && rememberDuration(id, ms)).catch(() => undefined);
     return sources.map((source, index) =>
       index === 0 ? { ...source, Id: id, ETag: id } : source
     );

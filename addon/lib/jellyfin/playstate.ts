@@ -12,7 +12,7 @@ const logger = consola.withTag('JellyfinPlaystate');
 const TICKS_PER_MS = 10000;
 
 function watchedAtPercent(): number {
-  return envInt('JELLYFIN_PLAYED_THRESHOLD', 90, 1);
+  return envInt('JELLYFIN_PLAYED_THRESHOLD', 80, 1);
 }
 
 interface SessionPosition {
@@ -77,6 +77,7 @@ export interface ResolvedSession {
   videoId: string;
   descriptor: any;
   runtimeMs: number | null;
+  runtimeFrom?: 'client' | 'file';
   /** The same film under the ids the meta carries, written alongside so any spelling reads back. */
   aliases: string[];
 }
@@ -110,6 +111,18 @@ async function resolveSession(userUUID: string, itemId: string): Promise<Resolve
   }
 
   return { stremioType, videoId, descriptor, runtimeMs, aliases: aliases.filter((id) => id !== videoId) };
+}
+
+// The percentage is over the file's own length: the player's if the client
+// sends one, else what the stream addon reported, else the metadata's.
+async function resolvePlaying(userUUID: string, itemId: string, body: any): Promise<ResolvedSession | null> {
+  const session = await resolveSession(userUUID, itemId);
+  if (!session) return null;
+  const reported = ticksToMs(body?.Item?.RunTimeTicks ?? body?.NowPlayingItem?.RunTimeTicks ?? body?.RunTimeTicks);
+  if (reported && reported > 0) return { ...session, runtimeMs: reported, runtimeFrom: 'client' };
+  const { recallDuration } = require('./streams');
+  const fileDuration = await recallDuration(body?.MediaSourceId ?? body?.mediaSourceId);
+  return fileDuration ? { ...session, runtimeMs: fileDuration, runtimeFrom: 'file' } : session;
 }
 
 function parseRuntimeMs(runtime: any): number | null {
@@ -195,11 +208,12 @@ async function report(
   const config = await loadConfig(req);
   if (!config?.playbackReporting) return;
 
-  const session = await resolveSession(userUUID, itemId);
+  const session = await resolvePlaying(userUUID, itemId, body);
   if (!session) {
     logger.debug(`No playable session for ${itemId}`);
     return;
   }
+  logger.debug(`${event} from ${String(req.get?.('user-agent') || '').split(' ')[0] || 'unknown client'} for ${session.videoId} source ${body?.MediaSourceId ?? '?'}: runtime ${session.runtimeMs ?? 0}ms from the ${session.runtimeFrom ?? 'metadata'}`);
 
   const { profileKey, writesTrackers } = require('./profiles');
   const profile = profileKey(config);
@@ -379,7 +393,7 @@ export async function recordProgress(req: any, body: any): Promise<void> {
     const moved = positionMs !== (previous?.writtenMs ?? -1);
     if (interval > 0 && !paused && moved && now - (previous?.writtenAt ?? 0) >= interval) {
       const config = await loadConfig(req);
-      const session = config?.playbackReporting ? await resolveSession(userUUID, itemId) : null;
+      const session = config?.playbackReporting ? await resolvePlaying(userUUID, itemId, body) : null;
       if (session) {
         await recordPlaystate(userUUID, profileKey(config), session, 'start', positionMs, null);
         next.writtenAt = now;

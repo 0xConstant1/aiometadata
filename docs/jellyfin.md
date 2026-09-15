@@ -113,7 +113,7 @@ Each lookup sends the title, season and episode to the service asked. Other user
 
 ### What the server records
 
-Clients report playback the way they would to Jellyfin: a start, progress every few seconds, pauses, and a stop. The server writes the position to the playstate table and reports the play to every tracker with watch tracking on, through the same path the addon uses for its own playback reporting. A title is marked played once it passes `JELLYFIN_PLAYED_THRESHOLD` percent (90).
+Clients report playback the way they would to Jellyfin: a start, progress every few seconds, pauses, and a stop. The server writes the position to the playstate table and reports the play to every tracker with watch tracking on, through the same path the addon uses for its own playback reporting. A title is marked played once a stop lands at or past `JELLYFIN_PLAYED_THRESHOLD` percent of its runtime (80, the same point the trackers mark a watch); the runtime is the player's own length when the client reports one in the play state's `Item.RunTimeTicks`, else the file's length as the stream addon reported it, else the metadata's. A stop before that keeps the position for Continue Watching.
 
 A tracker records a play only when all three hold:
 
@@ -190,7 +190,7 @@ The watchlist is the client's favourites. Marking a title favourite adds it to t
 
 AIOStreams has a Jellyfin server of its own. In that setup the client signs in to AIOStreams, not to this addon, and AIOMetadata is one of the addons installed in it, supplying the catalogs and title pages. Nothing in this guide's sign-in, users or shelves sections applies then; AIOStreams builds those. What AIOMetadata still does is the tracking, through two resources it declares in its manifest once **Playback reporting** under **General** is set to **When playback starts and stops**:
 
-- **playback.** AIOStreams sends the plays its clients report as start, stop, mark-played and mark-unplayed events, with the title known under every id it holds, so a show keyed on MyAnimeList with episodes keyed on Kitsu is still recorded once. A stop past 90 percent counts as a watch; an earlier one is a resume point. Each event is reported to every tracker with watch tracking on, the same way a play through this addon's own server is. A repeated event within `PLAYBACK_MARK_REPEAT_WINDOW` is an echo and dropped.
+- **playback.** AIOStreams sends the plays its clients report as start, stop, mark-played and mark-unplayed events, with the title known under every id it holds, so a show keyed on MyAnimeList with episodes keyed on Kitsu is still recorded once. A stop past the trackers' 80 percent counts as a watch; an earlier one is a resume point. Each event is reported to every tracker with watch tracking on, the same way a play through this addon's own server is. A repeated event within `PLAYBACK_MARK_REPEAT_WINDOW` is an echo and dropped.
 - **watch_state.** AIOStreams reads back what the trackers and this addon hold, so its Continue Watching reflects other devices. The answer is the same merged view this addon's own resume shelf uses, following the **Trackers** pick, newest first, `WATCH_STATE_PULL_ITEMS` titles at a time, and may be reused for `WATCH_STATE_PULL_TTL` seconds before AIOStreams asks again.
 
 AIOStreams sends and reads these only with its `WATCH_STATE_HANDOFF_ENABLED` switched on. With **Playback reporting** left on **When a title is opened**, neither resource is declared and AIOStreams records nothing through this addon; opening a title is then the only signal, as for any other client.
@@ -244,7 +244,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 
 | Setting | Default | What it does |
 |---|---|---|
-| `JELLYFIN_PLAYED_THRESHOLD` (env) | `90` | Percent watched at which a title is marked played. |
+| `JELLYFIN_PLAYED_THRESHOLD` | `80` | Share of the runtime a stop must reach to mark a title played. The trackers mark a watch at 80, so a higher value leaves a title finished on them yet still resumable here. |
 | `JELLYFIN_PROGRESS_WRITE_INTERVAL` | `60` | Seconds between position writes while playing. `0` writes on pause and stop only. |
 | `PLAYBACK_MARK_REPEAT_WINDOW` | `300` | A repeated mark within this window is not sent to the trackers again. |
 | `JELLYFIN_PLAYSTATE_SYNC_INTERVAL` | `1800` | Seconds between pulls of tracker state into the playstate table. |
@@ -281,6 +281,8 @@ Clients differ in what they ask for, and a few things are worth knowing when a r
 **A client says the server is unavailable right after signing in.** Usually a tracker read that failed while building the first shelves. The log, filtered by the configuration id, names the tracker and the status: `401` is a wrong or revoked key or token, `429` is the tracker's rate limit, and both are retried on the next request.
 
 **A play was not recorded on one tracker.** Check the three conditions under [What the server records](#what-the-server-records): the service must be connected, its switch under **Watch Tracking** in **General** must be on for that media type, and the play must have gone through this server or AIOStreams' handoff. A tracker that was connected after the play, or whose switch is off, has no way to hear about it; the log filtered by the configuration id shows each event as it arrives and any tracker that refused it. A user that is not you never writes to trackers at all.
+
+**A finished episode stays in Continue Watching with a few minutes left.** The client's last position fell short of the threshold against the runtime the server knows. That runtime comes from the metadata unless the client or the stream addon reported the file's own length, and a file that cuts the credits ends a few percent early by the metadata's count. Setting the stream addon's user agent so it reports durations fixes the count; `JELLYFIN_PLAYED_THRESHOLD` moves the line.
 
 **Continue Watching lost titles.** Trackers expire paused sessions, and MDBList completes a session that was started but never stopped; a title played here keeps its position in the playstate table regardless. Check the tracker's own site first: if the title is gone there, it is gone from the shelf.
 
