@@ -424,14 +424,23 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
   }
 
   const positionMs = ticksToMs(body?.PlaybackPositionTicks ?? body?.playbackPositionTicks);
-  if (positionMs === null) return null;
+  if (positionMs === null) {
+    logger.debug(`User data for ${itemId} carries neither Played nor a position: ${Object.keys(body || {}).join(',') || 'empty body'} (${req.get?.('content-type') || 'no content type'})`);
+    return null;
+  }
 
   const { loadConfig } = require('./context');
   const config = await loadConfig(req);
-  if (!config?.playbackReporting) return null;
+  if (!config?.playbackReporting) {
+    logger.debug(`User data for ${itemId} ignored: playback reporting is off`);
+    return null;
+  }
 
   const session = await resolveSession(userUUID, itemId);
-  if (!session) return null;
+  if (!session) {
+    logger.debug(`No playable session for ${itemId}`);
+    return null;
+  }
 
   const { profileKey } = require('./profiles');
   const profile = profileKey(config);
