@@ -1220,7 +1220,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         if (seen.has(String(meta.id)) || (meta.name && seen.has(title))) continue;
         seen.add(String(meta.id));
         if (meta.name) seen.add(title);
-        items.push(metaToBaseItem(meta, page.catalog.type, serverId, null));
+        // An untyped catalog such as AI search would give the same film a
+        // second id, and a client merging two calls then shows it twice.
+        const kind = collectionTypeFor(page.catalog.type) ? page.catalog.type : meta.type === 'movie' ? 'movie' : 'series';
+        items.push(metaToBaseItem(meta, kind, serverId, null));
       }
     }
 
