@@ -39,11 +39,12 @@ const inFlight = new Map<string, Promise<ResumeRow[]>>();
 export async function videoIdFor(
   ids: Record<string, any>,
   season: number,
-  episode: number
+  episode: number,
+  config: any = {}
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
   // MDBList and PublicMetaDB number episodes the way TMDB does.
   if (ids.tmdb) {
-    const viaTmdb = await fromTmdbNumbering(ids, season, episode);
+    const viaTmdb = await fromTmdbNumbering(ids, season, episode, config);
     if (viaTmdb) return viaTmdb;
   }
 
@@ -93,7 +94,7 @@ export async function videoIdFor(
   return { metaId: base, videoId: `${base}:${season}:${episode}`, mediaType: 'series' };
 }
 
-async function mdblistRows(apiKey: string): Promise<ResumeRow[]> {
+async function mdblistRows(apiKey: string, config: any): Promise<ResumeRow[]> {
   const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
   const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/playback?apikey=${apiKey}`, apiKey, 'MDBList resume');
 
@@ -118,7 +119,7 @@ async function mdblistRows(apiKey: string): Promise<ResumeRow[]> {
     const episode = Number(entry?.episode?.number);
     if (!show || !Number.isFinite(season) || !Number.isFinite(episode)) continue;
 
-    const resolved = await videoIdFor(show.ids ?? {}, season, episode);
+    const resolved = await videoIdFor(show.ids ?? {}, season, episode, config);
     if (!resolved) {
       logger.debug(`No id for a resume row: ${show.title} S${season}E${episode}`);
       continue;
@@ -194,17 +195,18 @@ async function simklRows(tokenId: string): Promise<ResumeRow[]> {
 async function fromTmdbNumbering(
   ids: Record<string, any>,
   season: number,
-  episode: number
+  episode: number,
+  config: any = {}
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
   const tmdb = String(ids.tmdb);
   try {
     if (idMapper.getMappingByTmdbId(tmdb, 'series')) {
-      const kitsu = await idMapper.resolveKitsuEpisodeFromTmdb(Number(tmdb), season, episode);
+      const kitsu = await idMapper.resolveKitsuEpisodeFromTmdb(Number(tmdb), season, episode, config);
       if (kitsu?.kitsuId) {
         return { metaId: `kitsu:${kitsu.kitsuId}`, videoId: `kitsu:${kitsu.kitsuId}:${kitsu.episodeNumber}`, mediaType: 'anime' };
       }
     }
-    const position = await idMapper.tmdbEpisodePosition(Number(tmdb), season, episode);
+    const position = await idMapper.tmdbEpisodePosition(Number(tmdb), season, episode, config);
     if (position === episode) return null;
     const base = ids.imdb || (ids.tvdb ? `tvdb:${ids.tvdb}` : `tmdb:${tmdb}`);
     return { metaId: base, videoId: `${base}:${season}:${position}`, mediaType: 'series' };
@@ -214,7 +216,7 @@ async function fromTmdbNumbering(
   }
 }
 
-async function pmdbRows(apiKey: string): Promise<ResumeRow[]> {
+async function pmdbRows(apiKey: string, config: any): Promise<ResumeRow[]> {
   const { fetchResume } = require('../../utils/publicmetadbUtils');
   const rows: ResumeRow[] = [];
   for (const entry of await fetchResume(apiKey)) {
@@ -231,7 +233,7 @@ async function pmdbRows(apiKey: string): Promise<ResumeRow[]> {
     const season = Number(entry?.season);
     const episode = Number(entry?.episode);
     if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
-    const resolved = await videoIdFor({ tmdb: entry.tmdb_id }, season, episode);
+    const resolved = await videoIdFor({ tmdb: entry.tmdb_id }, season, episode, config);
     if (resolved) rows.push({ ...resolved, kind: 'episode', progress, runtimeMinutes, updatedAt });
   }
   return rows.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -243,10 +245,10 @@ export function movieBase(tmdbId: string | number): string {
   return imdb ? String(imdb) : `tmdb:${tmdbId}`;
 }
 
-async function rowsFrom(service: Capable, credential: string): Promise<ResumeRow[]> {
-  if (service === 'mdblist') return mdblistRows(credential);
+async function rowsFrom(service: Capable, credential: string, config: any): Promise<ResumeRow[]> {
+  if (service === 'mdblist') return mdblistRows(credential, config);
   if (service === 'simkl') return simklRows(credential);
-  if (service === 'publicmetadb') return pmdbRows(credential);
+  if (service === 'publicmetadb') return pmdbRows(credential, config);
 
   logger.debug(`Resume source ${service} has no reader yet`);
   return [];
@@ -344,7 +346,7 @@ async function serviceSnapshot(userUUID: string, config: any, service: Capable):
 
   const started = (async () => {
     try {
-      const rows = await rowsFrom(service, credential);
+      const rows = await rowsFrom(service, credential, config);
       snapshots.set(key, rows);
       logger.debug(`Resume snapshot for ${userUUID} from ${service}: ${rows.length} rows`);
       return rows;

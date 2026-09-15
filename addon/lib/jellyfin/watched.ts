@@ -233,7 +233,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
 // MDBList pages its watched history and names an episode by its show's ids and
 // a season number, so an anime row needs the same anidb pivot the resume path
 // uses before it matches what the meta publishes.
-async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
+async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
   const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
   const pageSize = envInt('JELLYFIN_WATCHED_PAGE_SIZE', 1000, 1);
   const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
@@ -286,7 +286,7 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
     const ids = episode?.show?.ids ?? {};
     if (!Number.isFinite(season) || !Number.isFinite(number)) continue;
 
-    const resolved = await videoIdFor(ids, season, number);
+    const resolved = await videoIdFor(ids, season, number, config);
     if (!resolved) continue;
 
     episodes.add(resolved.videoId);
@@ -323,7 +323,7 @@ async function buildMdblist(apiKey: string): Promise<RawSnapshot> {
     const season = Number(item?.next_episode?.season);
     const number = Number(item?.next_episode?.episode);
     if (!Number.isFinite(season) || !Number.isFinite(number)) continue;
-    const resolved = await videoIdFor(item?.show?.ids ?? {}, season, number);
+    const resolved = await videoIdFor(item?.show?.ids ?? {}, season, number, config);
     if (!resolved) continue;
     nextUp.push({
       metaId: resolved.metaId,
@@ -372,8 +372,8 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
   const credential = credentialFor(config, service);
   if (!credential) return EMPTY;
 
-  if (service === 'mdblist') return mdblistSnapshot(userUUID, credential);
-  if (service === 'publicmetadb') return pmdbSnapshot(userUUID, credential);
+  if (service === 'mdblist') return mdblistSnapshot(userUUID, credential, config);
+  if (service === 'publicmetadb') return pmdbSnapshot(userUUID, credential, config);
   if (service !== 'simkl') return EMPTY;
 
   const tokenId = credential;
@@ -443,7 +443,7 @@ export async function upcomingFollowed(config: any, days: number): Promise<Array
           const season = Number(item?.next_episode?.season);
           const episode = Number(item?.next_episode?.episode);
           if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
-          const resolved = await videoIdFor(item?.show?.ids ?? {}, season, episode);
+          const resolved = await videoIdFor(item?.show?.ids ?? {}, season, episode, config);
           if (resolved) out.push({ metaId: resolved.metaId, mediaType: resolved.mediaType });
         }
         return out;
@@ -476,7 +476,7 @@ async function pmdbFingerprint(apiKey: string): Promise<string> {
 }
 
 // The newest play of a show seeds Next Up, which moves on from it.
-async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
+async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
   const { fetchWatched } = require('../../utils/publicmetadbUtils');
   const { movieBase } = require('./resume');
   const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
@@ -511,7 +511,7 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
     const season = Number(row?.season);
     const episode = Number(row?.episode);
     if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
-    const resolved = await videoIdFor({ tmdb: row.tmdb_id }, season, episode);
+    const resolved = await videoIdFor({ tmdb: row.tmdb_id }, season, episode, config);
     if (!resolved) continue;
     if (episodes.has(resolved.videoId)) continue;
     episodes.add(resolved.videoId);
@@ -549,7 +549,7 @@ async function buildPmdb(apiKey: string): Promise<RawSnapshot> {
   };
 }
 
-async function pmdbSnapshot(userUUID: string, apiKey: string): Promise<WatchedSnapshot> {
+async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Promise<WatchedSnapshot> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   let key: string;
   try {
@@ -566,7 +566,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string): Promise<WatchedSn
     const { cacheWrapGlobal } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
       `jellyfin_watched_pmdb_v2:${key}`,
-      () => buildPmdb(apiKey),
+      () => buildPmdb(apiKey, config),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true }
     );
@@ -619,7 +619,7 @@ async function mdblistFingerprint(apiKey: string): Promise<string> {
   return createHash('sha256').update(parts).digest('hex').substring(0, 16);
 }
 
-async function mdblistSnapshot(userUUID: string, apiKey: string): Promise<WatchedSnapshot> {
+async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): Promise<WatchedSnapshot> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   const key = `${keyHash}:${await mdblistFingerprint(apiKey)}`;
 
@@ -630,7 +630,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string): Promise<Watche
     const { cacheWrapGlobal } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
       `jellyfin_watched_mdblist_v3:${key}`,
-      () => buildMdblist(apiKey),
+      () => buildMdblist(apiKey, config),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true }
     );
