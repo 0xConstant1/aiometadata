@@ -111,6 +111,10 @@ Two optional pieces of infrastructure have guides of their own, since neither is
 
 Let people sign in with an existing account instead of a UUID and password, and reach their saved configurations from the list. See **[Sign-in with an identity provider](docs/sso.md)**.
 
+### 5. Jellyfin server (Optional)
+
+Present a configuration as a Jellyfin server, so Jellyfin clients browse your catalogs and collections, play through your stream addon and keep Continue Watching, Next Up and watched state in step with your trackers. See **[Jellyfin server](docs/jellyfin.md)**.
+
 
 ## ⚙️ Configuration
 
