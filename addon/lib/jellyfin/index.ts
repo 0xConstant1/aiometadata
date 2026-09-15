@@ -856,14 +856,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   // A single item carries its versions inline, as a real server's does: a
   // client builds its picker from them and asks PlaybackInfo only to play. The
   // page is not held past the budget; the placeholder stays when it runs out.
+  // A client naming MediaSources in Fields builds its picker from the item and
+  // plays nothing without them, so it is answered in full whatever the wait.
+  const asksForSources = (req: any): boolean =>
+    /\bMediaSources\b/i.test(String(req.query?.Fields ?? req.query?.fields ?? ''));
+
   const attachSourcesInTime = async (req: any, item: any, descriptor: any, itemId: string): Promise<void> => {
     const budget = envInt('JELLYFIN_ITEM_SOURCES_WAIT_MS', 0, 0);
     if (req.params?.listed) return;
-    if (budget === 0 && !req.params?.forceSources) return;
+    const inFull = req.params?.forceSources || asksForSources(req);
+    if (budget === 0 && !inFull) return;
     const work = attachSources(req, item, descriptor, itemId).catch((error: any) =>
       logger.debug(`Sources for ${itemId} unavailable: ${error?.message || error}`)
     );
-    if (req.params?.forceSources) {
+    if (inFull) {
       await work;
       return;
     }

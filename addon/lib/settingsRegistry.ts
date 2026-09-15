@@ -464,7 +464,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'JELLYFIN_ITEM_SOURCES_WAIT_MS',
     envVar: 'JELLYFIN_ITEM_SOURCES_WAIT_MS',
     label: 'Jellyfin Item Sources Wait (ms)',
-    description: 'How long opening a title waits for the stream addon so the item carries its versions inline, for a client that shows them on the page itself. At 0 a title opens at once with a placeholder version, and the list is resolved when the version picker is opened or play is pressed. Past the wait the title opens the same way.',
+    description: 'How long opening a title waits for the stream addon so the item carries its versions inline. At 0 a title opens at once with a placeholder version and the list is resolved from the version picker or play. A client that asks for MediaSources on the item, as Infuse does, is answered in full whatever this says, since it plays nothing without them.',
     category: 'Features',
     type: 'number',
     default: 0,
