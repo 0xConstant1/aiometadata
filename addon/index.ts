@@ -6466,10 +6466,15 @@ addon.post('/api/admin/prune-id-mappings', requireDashboardAdmin, async (req, re
 
 // Get all users with basic info
 addon.get('/api/admin/users', requireDashboardAdmin, async (req, res) => {
-  
   try {
-    const users = await database.getAllUsersWithStats();
-    res.json({ users });
+    const limit = parseInt(String(req.query.limit ?? ''), 10);
+    const offset = parseInt(String(req.query.offset ?? ''), 10);
+    const page = await database.listUsersWithStats({
+      query: typeof req.query.q === 'string' ? req.query.q : '',
+      limit: Number.isFinite(limit) ? limit : 100,
+      offset: Number.isFinite(offset) ? offset : 0,
+    });
+    res.json(page);
   } catch (error) {
     consola.error('[Admin API] Error fetching users:', error);
     res.status(500).json({ error: 'Failed to fetch users' });

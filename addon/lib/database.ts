@@ -1201,54 +1201,76 @@ class Database {
     }
   }
 
-  async getAllUsersWithStats(): Promise<any[]> {
-    try {
-      const query = this.type === 'sqlite'
-        ? `SELECT
-             user_uuid,
-             created_at,
-             updated_at,
-             CASE WHEN json_extract(config_data, '$.apiKeys.tmdb') IS NOT NULL
-                    OR json_extract(config_data, '$.apiKeys.tvdb') IS NOT NULL
-                    OR json_extract(config_data, '$.apiKeys.imdb') IS NOT NULL
-                    OR json_extract(config_data, '$.apiKeys.kitsu') IS NOT NULL
-               THEN 1 ELSE 0 END AS has_api_keys,
-             CASE WHEN updated_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END AS is_active
-           FROM user_configs
-           ORDER BY created_at DESC`
-        : `SELECT
-             user_uuid,
-             created_at,
-             updated_at,
-             CASE WHEN (config_data::jsonb->'apiKeys'->>'tmdb') IS NOT NULL
-                    OR (config_data::jsonb->'apiKeys'->>'tvdb') IS NOT NULL
-                    OR (config_data::jsonb->'apiKeys'->>'imdb') IS NOT NULL
-                    OR (config_data::jsonb->'apiKeys'->>'kitsu') IS NOT NULL
-               THEN true ELSE false END AS has_api_keys,
-             CASE WHEN updated_at >= NOW() - INTERVAL '7 days' THEN true ELSE false END AS is_active
-           FROM user_configs
-           ORDER BY created_at DESC`;
+  /** A page of configurations, newest first, matched on the id's start or an alias; the flags are read for the page only. */
+  async listUsersWithStats(options: { query?: string; limit: number; offset: number }): Promise<{ users: any[]; total: number }> {
+    const q = String(options.query || '').trim().toLowerCase();
+    const limit = Math.max(1, Math.min(500, options.limit));
+    const offset = Math.max(0, options.offset);
+    const sqlite = this.type === 'sqlite';
 
-      const rows = await this.allQuery(query);
-
-      const aliasRows = await this.getAllUserAliases();
-      const aliasByUuid = new Map(aliasRows.map(row => [row.user_uuid, row.alias]));
-
-      return rows.map(row => ({
-        uuid: row.user_uuid,
-        alias: aliasByUuid.get(row.user_uuid) || null,
-        created_at: row.created_at,
-        last_updated: row.updated_at,
-        last_activity: null,
-        total_requests: 0,
-        has_api_keys: !!row.has_api_keys,
-        config_status: 'configured',
-        is_active: !!row.is_active
-      }));
-    } catch (error) {
-      logger.error('Error getting all users with stats:', error);
-      return [];
+    let where = '';
+    const params: any[] = [];
+    if (q) {
+      const alias = await this.getQuery(
+        sqlite ? 'SELECT user_uuid FROM user_aliases WHERE alias_lower = ?' : 'SELECT user_uuid FROM user_aliases WHERE alias_lower = $1',
+        [q]
+      );
+      // SQLite seeks the primary key for a prefix range; Postgres compares text by locale, so it gets LIKE.
+      const prefix = sqlite ? '(user_uuid >= ? AND user_uuid < ?)' : `user_uuid LIKE $1`;
+      where = alias
+        ? ` WHERE (${prefix} OR user_uuid = ${sqlite ? '?' : '$2'})`
+        : ` WHERE ${prefix}`;
+      if (sqlite) params.push(q, `${q}\uffff`);
+      else params.push(`${q.replace(/[%_\\]/g, '\\$&')}%`);
+      if (alias) params.push(alias.user_uuid);
     }
+
+    const countRow = await this.getQuery(`SELECT COUNT(*) AS count FROM user_configs${where}`, params);
+    const total = Number(countRow?.count) || 0;
+
+    const n = params.length;
+    const page = sqlite
+      ? `SELECT user_uuid, created_at, updated_at, config_data FROM user_configs${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      : `SELECT user_uuid, created_at, updated_at, config_data FROM user_configs${where} ORDER BY created_at DESC LIMIT $${n + 1} OFFSET $${n + 2}`;
+    const rows = await this.allQuery(page, [...params, limit, offset]);
+    if (!rows?.length) return { users: [], total };
+
+    const uuids = rows.map((row: any) => row.user_uuid);
+    const marks = uuids.map((_: string, i: number) => (sqlite ? '?' : `$${i + 1}`)).join(', ');
+    const aliasRows = await this.allQuery(`SELECT alias, user_uuid FROM user_aliases WHERE user_uuid IN (${marks})`, uuids);
+    const aliasByUuid = new Map((aliasRows || []).map((row: any) => [row.user_uuid, row.alias]));
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    // SQLite stores the config as text and the times as UTC text; Postgres hands back JSONB and Date objects.
+    const stampOf = (value: any): number => {
+      if (value instanceof Date) return value.getTime();
+      const text = String(value || '').replace(' ', 'T');
+      return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/.test(text) ? text : `${text}Z`);
+    };
+
+    return {
+      total,
+      users: rows.map((row: any) => {
+        let keys: any = null;
+        try {
+          const config = typeof row.config_data === 'string' ? JSON.parse(row.config_data) : row.config_data;
+          keys = config?.apiKeys ?? null;
+        } catch {
+          keys = null;
+        }
+        const updated = stampOf(row.updated_at);
+        return {
+          uuid: row.user_uuid,
+          alias: aliasByUuid.get(row.user_uuid) || null,
+          created_at: row.created_at,
+          last_updated: row.updated_at,
+          last_activity: null,
+          total_requests: 0,
+          has_api_keys: Boolean(keys && (keys.tmdb || keys.tvdb || keys.imdb || keys.kitsu)),
+          config_status: 'configured',
+          is_active: Number.isFinite(updated) && updated >= weekAgo,
+        };
+      }),
+    };
   }
 
   async getUserDetails(userUUID: string): Promise<any> {

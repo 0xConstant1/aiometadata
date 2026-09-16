@@ -335,6 +335,19 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
   const profile = profileKey(config);
   const played = event === 'played';
 
+  // A mark on a title the server still holds as playing is the stop that never arrived.
+  const open = await getPosition(`${userUUID}:${profile}:${itemId}`);
+  if (open && !open.paused && isPlayable(await decodeJellyfinId(itemId))) {
+    const session = await resolveSession(userUUID, itemId);
+    deletePosition(`${userUUID}:${profile}:${itemId}`);
+    if (session && writesTrackers(config)) {
+      const at = played ? (session.runtimeMs ?? open.positionMs) : open.positionMs;
+      await tellTrackers(userUUID, config, session, 'stop', at, played, false).catch((error: any) =>
+        logger.debug(`Closing the open session before a mark failed for ${itemId}: ${error?.message || error}`)
+      );
+    }
+  }
+
   const marked = await markedItemIds(userUUID, itemId);
   const sessions = (await mapWithConcurrency(marked.ids, 8, async (id: string) => {
     const session = await resolveSession(userUUID, id, marked.meta);
@@ -366,6 +379,8 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
     .then(() => invalidateWatched(config))
     .catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
 }
+
+const isPlayable = (descriptor: any): boolean => descriptor?.k === 'movie' || descriptor?.k === 'episode';
 
 /** The item itself, or each aired episode of the season or series it names, with the meta they share. */
 async function markedItemIds(

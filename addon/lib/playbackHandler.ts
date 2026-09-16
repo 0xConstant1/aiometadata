@@ -267,8 +267,9 @@ export async function handlePlaybackReport(
 }
 
 // A watch only hides a tracker's paused session; it has to be deleted or an unwatch revives it.
+// A mark ends a session the same way a finished stop does.
 async function clearSessionOnFinish(type: string, id: string, report: PlaybackReport, config: any): Promise<void> {
-  if (report.event !== 'stop' || intentOf(report) !== 'watched') return;
+  if (!(report.event === 'played' || (report.event === 'stop' && intentOf(report) === 'watched'))) return;
   const { parseMediaId, clearResumePoint } = require('./subtitleHandler');
   const parsedId = parseMediaId(id);
   if (!parsedId) return;
