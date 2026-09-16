@@ -50,6 +50,12 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   const known = await getPlaystatesAcross(userUUID, finished);
   for (const videoId of finished) {
     const row = known.get(videoId);
+    // An import written without a date takes the tracker's once it has one.
+    if (row && row.played && !row.last_played_at && !Number(row.position_ms) && watched.at.get(videoId)) {
+      await upsertPlaystateEverywhere(userUUID, videoId, { lastPlayedAt: watched.at.get(videoId) });
+      added += 1;
+      continue;
+    }
     if (row && (row.played || paused.has(videoId))) {
       skipped += 1;
       continue;
@@ -97,7 +103,8 @@ export async function syncAllPlaystate(): Promise<void> {
   running = true;
 
   try {
-    const uuids: string[] = await database.getAllUserUUIDs();
+    const { seenConfigurations } = require('./context');
+    const uuids: string[] = (await seenConfigurations()) ?? (await database.getAllUserUUIDs());
     let users = 0;
     let added = 0;
 
