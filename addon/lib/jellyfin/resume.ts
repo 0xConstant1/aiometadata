@@ -383,14 +383,21 @@ const nextUpPages = new LRUCache<string, any[]>({
 const nextUpInFlight = new Map<string, Promise<any[]>>();
 
 /** One Next Up list per shelf shape, shared by concurrent asks and kept briefly; a play drops it. */
-export async function memoNextUp(userUUID: string, key: string, build: () => Promise<any[]>): Promise<any[]> {
+export async function memoNextUp(
+  userUUID: string,
+  key: string,
+  build: () => Promise<any[]>,
+  validUntil?: (result: any[]) => number | null
+): Promise<any[]> {
   const held = nextUpPages.get(key);
   if (held) return held;
   const running = nextUpInFlight.get(key);
   if (running) return running;
   const work = build()
     .then((result) => {
-      nextUpPages.set(key, result);
+      const until = validUntil?.(result);
+      const left = until ? until - Date.now() : null;
+      nextUpPages.set(key, result, left && left > 0 && left < nextUpPages.ttl! ? { ttl: left } : undefined);
       return result;
     })
     .finally(() => nextUpInFlight.delete(key));

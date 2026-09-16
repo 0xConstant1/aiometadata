@@ -137,7 +137,8 @@ function reportFor(
   session: ResolvedSession,
   event: 'start' | 'pause' | 'stop' | 'played' | 'unplayed',
   positionMs: number | null,
-  played: boolean | null
+  played: boolean | null,
+  resumedFrom: number | null = null
 ): any {
   const d = session.descriptor;
   return {
@@ -150,7 +151,7 @@ function reportFor(
     id:
       event === 'played' || event === 'unplayed'
         ? `jellyfin|${session.videoId}|${event}|${Date.now()}`
-        : `jellyfin|${session.videoId}|${event}|${positionMs ?? 0}`,
+        : `jellyfin|${session.videoId}|${event}|${positionMs ?? 0}${resumedFrom ? `|r${resumedFrom}` : ''}`,
     event,
     at: Math.floor(Date.now() / 1000),
     metaId: d.i,
@@ -220,7 +221,9 @@ async function report(
   const key = `${userUUID}:${profile}:${itemId}`;
   const known = await getPosition(key);
   const reported = ticksToMs(body?.PositionTicks ?? body?.positionTicks);
-  const positionMs = reported ?? known?.positionMs ?? 0;
+  // A resume reported at zero is the client's habit, not a seek to the start.
+  const resumedFrom = event === 'start' && known?.paused ? known.at : null;
+  const positionMs = (resumedFrom && !reported ? known?.positionMs : reported) ?? known?.positionMs ?? 0;
 
   // A client re-sends Playing while it runs; reopening an already-playing
   // session is noise. A resume comes through the pause edge instead.
@@ -257,7 +260,7 @@ async function report(
     return;
   }
 
-  await tellTrackers(userUUID, config, session, event, positionMs, played);
+  await tellTrackers(userUUID, config, session, event, positionMs, played, true, resumedFrom);
 }
 
 async function tellTrackers(
@@ -267,13 +270,14 @@ async function tellTrackers(
   event: 'start' | 'pause' | 'stop' | 'played' | 'unplayed',
   positionMs: number,
   played: boolean | null,
-  refreshWatched = true
+  refreshWatched = true,
+  resumedFrom: number | null = null
 ): Promise<void> {
   const { handlePlaybackReport } = require('../playbackHandler');
   await handlePlaybackReport(
     session.stremioType,
     session.videoId,
-    reportFor(session, event, positionMs, played),
+    reportFor(session, event, positionMs, played, resumedFrom),
     config,
     userUUID
   );

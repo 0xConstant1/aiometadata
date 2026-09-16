@@ -53,6 +53,8 @@ export interface NextUpRow {
   episode: number;
   mediaType: 'anime' | 'series';
   lastWatchedAt: number;
+  /** When the tracker says the episode airs, where it says. */
+  airsAt?: number | null;
 }
 
 export interface WatchedSnapshot {
@@ -158,6 +160,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
         episode: next.episode,
         mediaType: isAnime && ids.kitsu ? 'anime' : 'series',
         lastWatchedAt: Date.parse(entry?.last_watched_at ?? '') || 0,
+        airsAt: Date.parse(entry?.next_to_watch_info?.date ?? '') || null,
       });
     }
   }

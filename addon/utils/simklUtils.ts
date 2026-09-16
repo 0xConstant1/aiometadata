@@ -248,7 +248,7 @@ async function fetchSimklAllItems(accessToken: string): Promise<any> {
 
   try {
     const response = await makeAuthenticatedSimklRequest(
-      `${SIMKL_BASE_URL}/sync/all-items?extended=full_anime_seasons&episode_watched_at=yes&include_all_episodes=yes`,
+      `${SIMKL_BASE_URL}/sync/all-items?extended=full_anime_seasons&episode_watched_at=yes&include_all_episodes=yes&next_watch_info=yes`,
       accessToken,
       'Simkl fetchSimklAllItems'
     );
