@@ -1022,7 +1022,7 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
   }, [simklMediaType]);
 
   const sortedGenres = useMemo(
-    () => (references?.genres || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+    () => (references?.genres || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')),
     [references]
   );
 
@@ -1068,7 +1068,7 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
   const tvdbStatuses = useMemo(() => {
     return (references?.statuses || [])
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [references]);
 
   const filteredProviders = useMemo(() => {
