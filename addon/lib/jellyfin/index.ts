@@ -25,7 +25,7 @@ import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSea
 import { decodeJellyfinId } from './ids';
 import { buildEpisodes, buildSeasons, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, streamUserAgent, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
@@ -991,7 +991,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     descriptor: any,
     itemId: string
   ): Promise<void> => {
-    const resolved = withDefaultSourceId(
+    const resolved = await withDefaultSourceId(
       await resolveMediaSources(req, descriptor, item.RunTimeTicks ?? null),
       itemId
     );
@@ -1015,11 +1015,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
    * one has to carry the item guid rather than its own hash or nothing is
    * selectable.
    */
-  const withDefaultSourceId = (sources: any[], itemId: string): any[] => {
+  const withDefaultSourceId = async (sources: any[], itemId: string): Promise<any[]> => {
     if (!sources.length) return sources;
     const id = normaliseJellyfinId(itemId);
     // A play report then names the item, not the hash the duration sits under.
-    recallDuration(sources[0].Id).then((ms) => ms && rememberDuration(id, ms)).catch(() => undefined);
+    const ms = await recallDuration(sources[0].Id).catch(() => null);
+    if (ms) rememberDuration(id, ms);
+    else forgetDuration(id);
     return sources.map((source, index) =>
       index === 0 ? { ...source, Id: id, ETag: id } : source
     );
@@ -1041,17 +1043,24 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const requested = req.query.MediaSourceId ?? req.body?.MediaSourceId;
     const all = await resolveMediaSources(req, descriptor, null);
-    const withIds = withDefaultSourceId(all, itemId);
+    const withIds = await withDefaultSourceId(all, itemId);
 
     let sources = withIds;
     if (typeof requested === 'string' && requested && normaliseJellyfinId(requested) !== normaliseJellyfinId(itemId)) {
-      const picked = withIds.filter((s: any) => s.Id === requested);
+      const picked = withIds.filter((s: any) => normaliseJellyfinId(s.Id) === normaliseJellyfinId(requested));
       if (picked.length) sources = picked;
     }
 
     if (!sources.length) {
       res.json({ MediaSources: [], PlaySessionId: randomUUID(), ErrorCode: 'NoCompatibleStream' });
       return;
+    }
+
+    // A segments request names the item and follows this, so the item's length is the picked version's.
+    if (sources[0].Id !== normaliseJellyfinId(itemId)) {
+      const ms = await recallDuration(sources[0].Id).catch(() => null);
+      if (ms) rememberDuration(normaliseJellyfinId(itemId), ms);
+      else forgetDuration(normaliseJellyfinId(itemId));
     }
 
     await attachExternalSubtitles(req, itemId, sources, {
@@ -1072,7 +1081,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const index = parseInt(String(req.params.index), 10);
     const format = formatOf(String(req.params.format));
 
-    const sources = withDefaultSourceId(await resolveMediaSources(req, descriptor, null), itemId);
+    const sources = await withDefaultSourceId(await resolveMediaSources(req, descriptor, null), itemId);
     const source = sources.find((s: any) => normaliseJellyfinId(s.Id) === normaliseJellyfinId(sourceId));
     if (!source) {
       res.status(404).end();
@@ -1127,6 +1136,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (wantedId && wantedId !== normaliseJellyfinId(itemId)) {
       const pinned = await recallIssued(wantedId);
       if (pinned) {
+        const ms = await recallDuration(wantedId).catch(() => null);
+        if (ms) rememberDuration(normaliseJellyfinId(itemId), ms);
+        else forgetDuration(normaliseJellyfinId(itemId));
         res.redirect(302, pinned);
         return;
       }
@@ -1134,7 +1146,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     // No pin for it, so it is resolved: a client that never called PlaybackInfo
     // or has outlived the pin gets the source matched from a fresh list.
-    const sources = withDefaultSourceId(await resolveMediaSources(req, descriptor, null), itemId);
+    const sources = await withDefaultSourceId(await resolveMediaSources(req, descriptor, null), itemId);
     if (!sources.length) {
       res.status(404).json({ Message: 'No playable stream' });
       return;
@@ -2136,6 +2148,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   });
 
   // Skip markers, from PublicMetaDB when the user has a key, AniSkip for anime, IntroDB otherwise.
+  const episodeRuntimeMs = (meta: any, descriptor: any): number | null => {
+    const video = descriptor.k === 'episode'
+      ? (meta.videos || []).find((v: any) => v?.season === descriptor.s && v?.episode === descriptor.e)
+      : null;
+    const ticks = runtimeTicksFrom(video?.runtime ? video : meta);
+    return ticks ? Math.round(ticks / 10000) : null;
+  };
+
   router.get('/MediaSegments/:itemId', async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
     const itemId = normaliseJellyfinId(String(req.params.itemId));
@@ -2163,6 +2183,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       season: descriptor.k === 'episode' ? descriptor.s ?? null : null,
       episode: descriptor.k === 'episode' ? descriptor.e ?? null : null,
       ...(descriptor.k === 'episode' ? await malEpisodeFor(stremioIdFor(descriptor)) : null),
+      runtimeMs: (await recallDuration(itemId)) ?? episodeRuntimeMs(meta, descriptor),
     });
 
     const items = segments

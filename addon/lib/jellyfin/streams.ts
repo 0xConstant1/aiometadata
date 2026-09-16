@@ -152,6 +152,12 @@ export function rememberDuration(id: string, durationMs: number): void {
   if (redis) redis.set(`jf:dur:${id}`, String(durationMs), 'EX', issuedTtlSeconds()).catch(() => undefined);
 }
 
+export function forgetDuration(id: string): void {
+  if (!id) return;
+  issuedDuration.delete(id);
+  if (redis) redis.del(`jf:dur:${id}`).catch(() => undefined);
+}
+
 /** The file's own length, when the stream addon reported one for this source. */
 export async function recallDuration(id: string | undefined): Promise<number | null> {
   if (!id) return null;

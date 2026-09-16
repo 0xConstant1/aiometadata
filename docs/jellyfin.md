@@ -108,7 +108,7 @@ Intro, recap and outro markers are served as media segments, so a client with a 
 | IntroDB only | IntroDB, which needs no key |
 | Off | no markers, no button |
 
-Each lookup sends the title, season and episode to the service asked. AniSkip is asked under the episode's MyAnimeList entry and number, so an anime browsed by TVDB seasons is translated first; its openings and endings become the intro and outro markers, and its recaps the recap marker. Other users inherit your choice unless their card says otherwise.
+Each lookup sends the title, season and episode to the service asked. AniSkip is asked under the episode's MyAnimeList entry and number, so an anime browsed by TVDB seasons is translated first; its openings and endings become the intro and outro markers, and its recaps the recap marker. Its submissions are made against one release each, so the file's own length is sent when the stream addon reported it (the metadata's otherwise) and the release nearest to it answers; a length more than a tenth off every known release is a different cut and gets no markers from it. Other users inherit your choice unless their card says otherwise.
 
 ## Watch history
 
@@ -232,6 +232,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | `TRAILER_ADDON_TIMEOUT_MS`, `TRAILER_ADDON_TTL`, `TRAILER_ADDON_EMPTY_TTL` | | How long a trailer addon may take, how long its answer is kept, how long a miss is left alone. |
 | `JELLYFIN_SEGMENTS_TTL` | `604800` | How long an episode's skip markers are kept, found or not. |
 | `INTRODB_TIMEOUT_MS`, `ANISKIP_TIMEOUT_MS` | `5000` | How long a skip marker lookup on IntroDB or AniSkip may take. |
+| `INTRODB_BASE_URL`, `ANISKIP_BASE_URL` | | A mirror or self-hosted instance in place of the public API. |
 
 ### Subtitles
 
