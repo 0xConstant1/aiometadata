@@ -58,7 +58,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
       skipped += 1;
       continue;
     }
-    await upsertPlaystateEverywhere(userUUID, videoId, row ? { positionMs: 0, played: true } : { positionMs: 0, played: true, lastPlayedAt: null });
+    await upsertPlaystateEverywhere(userUUID, videoId, row ? { positionMs: 0, played: true } : { positionMs: 0, played: true, lastPlayedAt: watched.at.get(videoId) ?? null });
     added += 1;
   }
 

@@ -29,7 +29,7 @@ export async function seenConfigurations(): Promise<string[] | null> {
       for (const key of keys) out.push(key.slice('jf:seen:'.length));
     } while (cursor !== '0');
   } catch {
-    return null;
+    return [];
   }
   return out;
 }
