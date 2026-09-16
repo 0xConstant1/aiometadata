@@ -22,6 +22,8 @@ interface SessionPosition {
   writtenMs?: number;
   /** Last reported pause state, so only the change is acted on. */
   paused?: boolean;
+  /** The profile signed in, which may be playing into the account's shared history. */
+  viewer?: string | null;
 }
 
 // A client that dies never sends a stop, so the last tick is kept and a stop
@@ -60,6 +62,17 @@ function setPosition(key: string, value: SessionPosition): void {
 function deletePosition(key: string): void {
   positions.delete(key);
   if (redis) redis.del(`jf:pos:${key}`).catch(() => undefined);
+}
+
+/** Sessions this process has heard from, newest first, for the dashboard. */
+export function liveSessions(): Array<{ userUUID: string; profile: string; viewer: string | null; itemId: string; positionMs: number; at: number; paused: boolean }> {
+  const out: Array<{ userUUID: string; profile: string; viewer: string | null; itemId: string; positionMs: number; at: number; paused: boolean }> = [];
+  for (const [key, value] of positions.entries()) {
+    const [userUUID, profile, itemId] = key.split(':');
+    if (!userUUID || !itemId) continue;
+    out.push({ userUUID, profile: profile || '', viewer: value.viewer ?? null, itemId, positionMs: value.positionMs, at: value.at, paused: value.paused === true });
+  }
+  return out.sort((a, b) => b.at - a.at);
 }
 
 function ticksToMs(value: any): number | null {
@@ -228,7 +241,7 @@ async function report(
   // A client re-sends Playing while it runs; reopening an already-playing
   // session is noise. A resume comes through the pause edge instead.
   if (event === 'start' && known && known.paused === false) {
-    setPosition(key, { positionMs, at: Date.now(), paused: false });
+    setPosition(key, { positionMs, at: Date.now(), paused: false, viewer: req.jellyfin?.profileId ?? null });
     return;
   }
 
@@ -243,7 +256,7 @@ async function report(
   } else {
     // Recorded as playing, not unknown: a following tick reporting the same
     // state would otherwise read as a change and reopen the session.
-    setPosition(key, { positionMs, at: Date.now(), paused: event === 'pause' });
+    setPosition(key, { positionMs, at: Date.now(), paused: event === 'pause', viewer: req.jellyfin?.profileId ?? null });
   }
 
   // The table is written before any tracker is told, so a read never waits on one.
@@ -408,7 +421,7 @@ export async function recordProgress(req: any, body: any): Promise<void> {
   const startsPaused = previous === undefined && paused;
   if (!changed && !startsPaused) {
     const now = Date.now();
-    const next: SessionPosition = { positionMs, at: now, paused, writtenAt: previous?.writtenAt, writtenMs: previous?.writtenMs };
+    const next: SessionPosition = { positionMs, at: now, paused, writtenAt: previous?.writtenAt, writtenMs: previous?.writtenMs, viewer: req.jellyfin?.profileId ?? previous?.viewer ?? null };
     // Table only; a tracker still hears edges alone.
     const interval = envInt('JELLYFIN_PROGRESS_WRITE_INTERVAL', 60, 0) * 1000;
     const moved = positionMs !== (previous?.writtenMs ?? -1);

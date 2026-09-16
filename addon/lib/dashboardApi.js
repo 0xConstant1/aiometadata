@@ -2614,6 +2614,7 @@ class DashboardAPI {
     return {
       guestModeEnabled: !disableGuestMode,
       adminKeyConfigured: !!process.env.ADMIN_KEY,
+      jellyfinEnabled: String(require('./settingsService').getSetting('JELLYFIN_API_ENABLED') || '').trim().toLowerCase() === 'true',
       logViewerMaxEntries: Number.isFinite(viewerMax) && viewerMax > 0 ? viewerMax : 10000
     };
   }

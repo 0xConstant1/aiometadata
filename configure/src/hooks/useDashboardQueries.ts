@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // Types
 // ============================================================================
 
-export type DashboardTab = 'overview' | 'analytics' | 'content' | 'performance' | 'system' | 'operations' | 'users' | 'logs' | 'settings';
+export type DashboardTab = 'overview' | 'analytics' | 'content' | 'performance' | 'system' | 'operations' | 'users' | 'jellyfin' | 'logs' | 'settings';
 
 interface DashboardQueryOptions {
   activeTab?: DashboardTab;
@@ -27,6 +27,7 @@ const POLLING_INTERVALS = {
   COLD_STORE: 60 * 1000,        // 60 seconds - size gauge over a large table, not a live feed
   USERS: 15 * 1000,             // 15 seconds - user activity
   ACCOUNTS: 30 * 1000,          // 30 seconds - sign-ins change less often than config users
+  JELLYFIN: 10 * 1000,          // 10 seconds - live sessions move
   CONTENT: 60 * 1000,           // 60 seconds - slow-changing data
   LOGS: 2 * 1000,               // 2 seconds - live log streaming (backstop for the SSE stream)
 } as const;
@@ -58,6 +59,7 @@ export const DASHBOARD_QUERY_KEYS = {
   users: ['dashboard', 'users'] as const,
   accounts: ['dashboard', 'accounts'] as const,
   signinFailures: ['dashboard', 'signin-failures'] as const,
+  jellyfin: ['dashboard', 'jellyfin'] as const,
   logs: ['dashboard', 'logs'] as const,
   settings: ['dashboard', 'settings'] as const,
   all: ['dashboard'] as const,
@@ -1440,3 +1442,118 @@ export function useResetSetting() {
   });
 }
 
+
+export interface JellyfinSessionRow {
+  profile: string;
+  profileKey: string;
+  viewer: string | null;
+  imageUrl: string | null;
+  title: string;
+  episode: string | null;
+  positionMs: number;
+  paused: boolean;
+  at: number;
+}
+
+export interface JellyfinPlayRow {
+  profile: string;
+  videoId: string;
+  imageUrl: string | null;
+  posterUrl: string | null;
+  title: string;
+  episode: string | null;
+  positionMs: number;
+  runtimeMs: number;
+  played: boolean;
+  lastPlayedAt: number | null;
+  updatedAt: number;
+}
+
+export interface JellyfinOverview {
+  playedDay: number;
+  playedWeek: number;
+  activeConfigurations: number | null;
+  activeDays: number;
+  playingNow: number;
+  sessions: number;
+  sync: { startedAt: number; finishedAt: number; configurations: number; added: number; running: boolean };
+}
+
+export interface JellyfinSearchRow {
+  userUUID: string;
+  label: string;
+  profiles: Array<{ key: string; name: string }>;
+  lastActivity: number | null;
+}
+
+export interface JellyfinConfiguration {
+  userUUID: string;
+  label: string;
+  profile: string | null;
+  profiles: Array<{ key: string; name: string; sharedWith: string[]; inProgress: number; played: number; lastActivity: number | null }>;
+  sessions: JellyfinSessionRow[];
+  inProgress: JellyfinPlayRow[];
+  recentlyPlayed: JellyfinPlayRow[];
+}
+
+function useJellyfinQuery<T>(key: readonly unknown[], path: string, options: DashboardQueryOptions & { enabledWhen?: boolean; poll?: boolean } = {}) {
+  const { isAdmin, logout } = useAdmin();
+  const getHeaders = useApiHeaders();
+  const isVisible = usePageVisibility();
+  const { activeTab = 'overview', enabled = true, enabledWhen = true, poll = true } = options;
+  const isActiveTab = activeTab === 'jellyfin';
+
+  return useQuery({
+    queryKey: key,
+    queryFn: async () => {
+      try {
+        return await fetchDashboardData<T>(path, getHeaders());
+      } catch (error) {
+        if (error instanceof Error && error.message === 'UNAUTHORIZED') logout();
+        throw error;
+      }
+    },
+    enabled: enabled && enabledWhen && isAdmin && isActiveTab,
+    refetchInterval: poll && isVisible && isActiveTab && isAdmin ? POLLING_INTERVALS.JELLYFIN : false,
+    refetchIntervalInBackground: false,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useJellyfinOverview(options: DashboardQueryOptions = {}) {
+  return useJellyfinQuery<JellyfinOverview>(DASHBOARD_QUERY_KEYS.jellyfin, '/api/dashboard/jellyfin', options);
+}
+
+export function useJellyfinSearch(query: string, options: DashboardQueryOptions = {}) {
+  return useJellyfinQuery<{ query: string; results: JellyfinSearchRow[] }>(
+    ['dashboard', 'jellyfin', 'search', query] as const,
+    `/api/dashboard/jellyfin/search?q=${encodeURIComponent(query)}`,
+    { ...options, enabledWhen: query.length > 0, poll: false }
+  );
+}
+
+export function useJellyfinConfiguration(userUUID: string | null, profile: string | null, options: DashboardQueryOptions = {}) {
+  const suffix = profile === null ? '' : `?profile=${encodeURIComponent(profile)}`;
+  return useJellyfinQuery<JellyfinConfiguration>(
+    ['dashboard', 'jellyfin', 'configuration', userUUID, profile] as const,
+    `/api/dashboard/jellyfin/${encodeURIComponent(userUUID ?? '')}${suffix}`,
+    { ...options, enabledWhen: Boolean(userUUID) }
+  );
+}
+
+export function useJellyfinExport() {
+  const getHeaders = useApiHeaders();
+  return async (userUUID: string): Promise<void> => {
+    const response = await fetch(`/api/dashboard/jellyfin/${encodeURIComponent(userUUID)}/export`, { headers: getHeaders() });
+    if (!response.ok) throw new Error(`Export failed (${response.status})`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `jellyfin-playback-${userUUID.slice(0, 8)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+}

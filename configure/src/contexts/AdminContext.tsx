@@ -24,6 +24,7 @@ interface AdminContextType {
   adminKeyConfigured: boolean;  // Indicates if ADMIN_KEY is set on server
   logViewerMaxEntries: number;  // Most log entries the viewer keeps in the browser
   guestModeEnabled: boolean;    // Indicates if guest mode is available
+  jellyfinEnabled: boolean;     // The Jellyfin server is switched on for this instance
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -43,11 +44,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [adminKeyConfigured, setAdminKeyConfigured] = useState(true);  // Assume configured until proven otherwise
   const [guestModeEnabled, setGuestModeEnabled] = useState(false);     // Guest mode disabled by default
   const [logViewerMaxEntries, setLogViewerMaxEntries] = useState(DEFAULT_LOG_VIEWER_MAX_ENTRIES);
+  const [jellyfinEnabled, setJellyfinEnabled] = useState(false);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [ssoEnabled, setSsoEnabled] = useState(false);
 
   // Fetch dashboard config to determine guest mode availability
-  const fetchDashboardConfig = async (): Promise<{ guestModeEnabled: boolean; adminKeyConfigured: boolean; logViewerMaxEntries: number }> => {
+  const fetchDashboardConfig = async (): Promise<{ guestModeEnabled: boolean; adminKeyConfigured: boolean; logViewerMaxEntries: number; jellyfinEnabled: boolean }> => {
     try {
       const response = await fetch('/api/dashboard/config', {
         method: 'GET',
@@ -63,15 +65,16 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
           adminKeyConfigured: data.adminKeyConfigured ?? true,
           logViewerMaxEntries: Number(data.logViewerMaxEntries) > 0
             ? Number(data.logViewerMaxEntries)
-            : DEFAULT_LOG_VIEWER_MAX_ENTRIES
+            : DEFAULT_LOG_VIEWER_MAX_ENTRIES,
+          jellyfinEnabled: data.jellyfinEnabled === true
         };
       }
       
       // If config endpoint fails, fall back to defaults
-      return { guestModeEnabled: false, adminKeyConfigured: true, logViewerMaxEntries: DEFAULT_LOG_VIEWER_MAX_ENTRIES };
+      return { guestModeEnabled: false, adminKeyConfigured: true, logViewerMaxEntries: DEFAULT_LOG_VIEWER_MAX_ENTRIES, jellyfinEnabled: false };
     } catch (error) {
       console.error('Error fetching dashboard config:', error);
-      return { guestModeEnabled: false, adminKeyConfigured: true, logViewerMaxEntries: DEFAULT_LOG_VIEWER_MAX_ENTRIES };
+      return { guestModeEnabled: false, adminKeyConfigured: true, logViewerMaxEntries: DEFAULT_LOG_VIEWER_MAX_ENTRIES, jellyfinEnabled: false };
     }
   };
 
@@ -134,6 +137,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         setGuestModeEnabled(config.guestModeEnabled);
         setAdminKeyConfigured(config.adminKeyConfigured);
         setLogViewerMaxEntries(config.logViewerMaxEntries);
+        setJellyfinEnabled(config.jellyfinEnabled);
 
         // A provider session outranks a pasted key, and carries its own
         // permissions, so it is checked before anything is restored.
@@ -322,7 +326,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     adminKeyConfigured,
     guestModeEnabled,
-    logViewerMaxEntries
+    logViewerMaxEntries,
+    jellyfinEnabled
   };
 
   return (

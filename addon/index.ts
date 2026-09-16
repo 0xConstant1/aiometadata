@@ -7851,6 +7851,50 @@ addon.get("/api/dashboard/content", requireAuthUnlessGuestMode, (req, res) => {
   }
 });
 
+addon.get("/api/dashboard/jellyfin", requireDashboardAdmin, async (req, res) => {
+  try {
+    res.json(await require('./lib/jellyfin/dashboard').dashboardOverview());
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to fetch Jellyfin playback data' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/search", requireDashboardAdmin, async (req, res) => {
+  try {
+    res.json(await require('./lib/jellyfin/dashboard').dashboardSearch(String(req.query.q ?? '')));
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to search Jellyfin playback' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/:userUUID/export", requireDashboardAdmin, async (req, res) => {
+  try {
+    const payload = await require('./lib/jellyfin/dashboard').dashboardExport(String(req.params.userUUID));
+    res.setHeader('Content-Disposition', `attachment; filename="jellyfin-playback-${String(req.params.userUUID).slice(0, 8)}.json"`);
+    res.json(payload);
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to export Jellyfin playback' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/:userUUID", requireDashboardAdmin, async (req, res) => {
+  try {
+    const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
+    const payload = await require('./lib/jellyfin/dashboard').dashboardConfiguration(String(req.params.userUUID), profile);
+    if (!payload) {
+      res.status(404).json({ error: 'No such configuration' });
+      return;
+    }
+    res.json(payload);
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to fetch Jellyfin playback data' });
+  }
+});
+
 addon.get("/api/dashboard/users", requireDashboardAdmin, (req, res) => {
   // Users endpoint is NOT disabled when metrics are disabled
   // It provides user management which is essential for admin UI

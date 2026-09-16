@@ -97,10 +97,16 @@ export async function runtimeFromMeta(userUUID: string, row: any): Promise<numbe
 }
 
 let running = false;
+const lastSync = { startedAt: 0, finishedAt: 0, configurations: 0, added: 0 };
+
+export function syncStatus() {
+  return { ...lastSync, running };
+}
 
 export async function syncAllPlaystate(): Promise<void> {
   if (running) return;
   running = true;
+  lastSync.startedAt = Date.now();
 
   try {
     const { seenConfigurations } = require('./context');
@@ -136,6 +142,7 @@ export async function syncAllPlaystate(): Promise<void> {
     }
 
     if (added) logger.info(`Playstate sync: ${added} title(s) taken from trackers across ${users} configuration(s)`);
+    Object.assign(lastSync, { finishedAt: Date.now(), configurations: users, added });
   } finally {
     running = false;
   }

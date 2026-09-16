@@ -277,6 +277,7 @@ class Database {
         PRIMARY KEY (user_uuid, profile, video_id)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_recent ON jellyfin_playstate(user_uuid, profile, updated_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_played ON jellyfin_playstate(last_played_at)`,
       `CREATE TABLE IF NOT EXISTS jellyfin_preferences (
         user_uuid TEXT NOT NULL,
         profile TEXT NOT NULL DEFAULT '',
@@ -398,6 +399,7 @@ class Database {
         PRIMARY KEY (user_uuid, profile, video_id)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_recent ON jellyfin_playstate(user_uuid, profile, updated_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_played ON jellyfin_playstate(last_played_at)`,
       `CREATE TABLE IF NOT EXISTS jellyfin_preferences (
         user_uuid VARCHAR(64) NOT NULL,
         profile TEXT NOT NULL DEFAULT '',
@@ -962,6 +964,60 @@ class Database {
       ? "SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND profile = ? AND played = 1 AND last_played_at >= ? AND video_id LIKE '%:%:%' ORDER BY last_played_at DESC LIMIT ?"
       : "SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND profile = $2 AND played = 1 AND last_played_at >= $3 AND video_id LIKE '%:%:%' ORDER BY last_played_at DESC LIMIT $4";
     return (await this.allQuery(query, [userUUID, profile, since, limit])) || [];
+  }
+
+  async countPlayedSince(since: number): Promise<number> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT COUNT(*) AS count FROM jellyfin_playstate WHERE last_played_at >= ? AND played = 1'
+      : 'SELECT COUNT(*) AS count FROM jellyfin_playstate WHERE last_played_at >= $1 AND played = 1';
+    const row = await this.getQuery(query, [since]);
+    return Number(row?.count) || 0;
+  }
+
+  async playstateForConfiguration(userUUID: string): Promise<any[]> {
+    const query = this.type === 'sqlite'
+      ? `SELECT profile, COUNT(*) AS rows_total,
+                SUM(CASE WHEN position_ms > 0 THEN 1 ELSE 0 END) AS in_progress,
+                SUM(CASE WHEN played = 1 THEN 1 ELSE 0 END) AS played,
+                MAX(last_played_at) AS last_played_at, MAX(updated_at) AS updated_at
+         FROM jellyfin_playstate WHERE user_uuid = ? GROUP BY profile`
+      : `SELECT profile, COUNT(*) AS rows_total,
+                SUM(CASE WHEN position_ms > 0 THEN 1 ELSE 0 END) AS in_progress,
+                SUM(CASE WHEN played = 1 THEN 1 ELSE 0 END) AS played,
+                MAX(last_played_at) AS last_played_at, MAX(updated_at) AS updated_at
+         FROM jellyfin_playstate WHERE user_uuid = $1 GROUP BY profile`;
+    return (await this.allQuery(query, [userUUID])) || [];
+  }
+
+  async findUserUUIDsByPrefix(prefix: string, limit: number): Promise<string[]> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT user_uuid FROM user_configs WHERE user_uuid LIKE ? LIMIT ?'
+      : 'SELECT user_uuid FROM user_configs WHERE user_uuid LIKE $1 LIMIT $2';
+    const rows = await this.allQuery(query, [`${prefix}%`, limit]);
+    return rows ? rows.map((row: any) => row.user_uuid) : [];
+  }
+
+  async listPlaystateInProgressFor(userUUID: string, limit: number, profile: string | null = null): Promise<any[]> {
+    const scoped = profile === null ? '' : (this.type === 'sqlite' ? ' AND profile = ?' : ' AND profile = $3');
+    const query = this.type === 'sqlite'
+      ? `SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND position_ms > 0${scoped} ORDER BY COALESCE(last_played_at, updated_at) DESC LIMIT ?`
+      : `SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND position_ms > 0${scoped} ORDER BY COALESCE(last_played_at, updated_at) DESC LIMIT $2`;
+    return (await this.allQuery(query, profile === null ? [userUUID, limit] : this.type === 'sqlite' ? [userUUID, profile, limit] : [userUUID, limit, profile])) || [];
+  }
+
+  async listPlaystatePlayedFor(userUUID: string, limit: number, profile: string | null = null): Promise<any[]> {
+    const scoped = profile === null ? '' : (this.type === 'sqlite' ? ' AND profile = ?' : ' AND profile = $3');
+    const query = this.type === 'sqlite'
+      ? `SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND played = 1 AND last_played_at IS NOT NULL${scoped} ORDER BY last_played_at DESC LIMIT ?`
+      : `SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND played = 1 AND last_played_at IS NOT NULL${scoped} ORDER BY last_played_at DESC LIMIT $2`;
+    return (await this.allQuery(query, profile === null ? [userUUID, limit] : this.type === 'sqlite' ? [userUUID, profile, limit] : [userUUID, limit, profile])) || [];
+  }
+
+  async listPlaystateFor(userUUID: string): Promise<any[]> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT * FROM jellyfin_playstate WHERE user_uuid = ? ORDER BY profile, COALESCE(last_played_at, updated_at) DESC'
+      : 'SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 ORDER BY profile, COALESCE(last_played_at, updated_at) DESC';
+    return (await this.allQuery(query, [userUUID])) || [];
   }
 
   async upsertPlaystate(
