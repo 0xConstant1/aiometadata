@@ -1,7 +1,7 @@
 import { httpGet, httpPost, httpRequest } from "./httpClient.js";
 import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { getMeta } from "../lib/getMeta.js";
-import { cacheWrapMetaSmart, cacheWrapGlobal } from "../lib/getCache.js";
+import { cacheWrapMetaSmart, cacheWrapGlobal, classifyResultAllowEmpty } from "../lib/getCache.js";
 import { UserConfig } from "../types/index.js";
 import * as Utils from "./parseProps.js";
 import { progress } from "framer-motion";
@@ -341,7 +341,8 @@ async function fetchSimklItemDetail(type: 'movie' | 'tv', simklId: string | numb
         return null;
       }
     },
-    24 * 60 * 60
+    24 * 60 * 60,
+    { resultClassifier: classifyResultAllowEmpty }
   );
 }
 
@@ -1179,7 +1180,7 @@ async function getSimklWatchedIds(config: any): Promise<SimklWatchedIds | null> 
 
       logger.info(`[Watched IDs] ${movieImdbIds.length} movies, ${showImdbIds.length} shows, ${malIds.length} anime completed on Simkl`);
       return { movieImdbIds, showImdbIds, malIds, anilistIds };
-    }, SIMKL_WATCHLIST_TTL);
+    }, SIMKL_WATCHLIST_TTL, { resultClassifier: classifyResultAllowEmpty });
 
     return {
       movieImdbIds: new Set(watched.movieImdbIds),

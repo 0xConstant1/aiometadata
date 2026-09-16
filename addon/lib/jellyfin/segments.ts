@@ -5,7 +5,7 @@ import { httpGet } from '../../utils/httpClient';
 
 const logger = consola.withTag('Jellyfin');
 
-const { cacheWrapGlobal } = require('../getCache');
+const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
 
 export type SegmentType = 'Intro' | 'Recap' | 'Outro';
 
@@ -21,6 +21,8 @@ interface Lookup {
   kind: 'movie' | 'episode';
   season?: number | null;
   episode?: number | null;
+  malId?: number | null;
+  malEpisode?: number | null;
 }
 
 function range(type: SegmentType, start: unknown, end: unknown): Segment | null {
@@ -69,23 +71,98 @@ async function fromIntroDb(lookup: Lookup): Promise<Segment[]> {
   return out;
 }
 
-// Timestamps are per title, not per file, so a release cut differently is off by that much.
-export type SkipSource = 'auto' | 'publicmetadb' | 'introdb' | 'off';
+const ANISKIP_BASE = 'https://api.aniskip.com/v2';
 
-export function skipSources(config: any): Array<'publicmetadb' | 'introdb'> {
+// An entry can file some of its episodes under another MAL id; the rules say which.
+async function aniSkipTarget(malId: number, episode: number): Promise<{ malId: number; episode: number }> {
+  const rules = await cacheWrapGlobal(`aniskip_rules:${malId}`, async () => {
+    try {
+      const response = await httpGet(`${ANISKIP_BASE}/relation-rules/${malId}`, {
+        headers: { accept: 'application/json' },
+        timeout: envInt('ANISKIP_TIMEOUT_MS', 5000, 500),
+      });
+      return { rules: Array.isArray(response.data?.rules) ? response.data.rules : [] };
+    } catch (error: any) {
+      if (error?.response?.status === 404) return { rules: [] };
+      throw error;
+    }
+  }, envInt('JELLYFIN_SEGMENTS_TTL', 7 * 24 * 60 * 60, 60), { resultClassifier: classifyResultAllowEmpty });
+  for (const rule of rules?.rules ?? []) {
+    const start = Number(rule?.from?.start);
+    const end = rule?.from?.end === undefined || rule?.from?.end === null ? start : Number(rule.from.end);
+    if (!Number.isFinite(start) || episode < start || episode > end || !rule?.to?.malId) continue;
+    return { malId: Number(rule.to.malId), episode: Number(rule.to.start) + (episode - start) };
+  }
+  return { malId, episode };
+}
+
+// Keyed by MAL id and the entry's own episode number; a plain opening or
+// ending is preferred to one mixed with the episode.
+async function fromAniSkip(lookup: Lookup): Promise<Segment[]> {
+  if (lookup.kind !== 'episode' || !lookup.malId || !lookup.malEpisode) return [];
+  const target = await aniSkipTarget(lookup.malId, lookup.malEpisode);
+  const params = new URLSearchParams({ episodeLength: '0' });
+  for (const type of ['op', 'ed', 'mixed-op', 'mixed-ed', 'recap']) params.append('types', type);
+  let results: any[] = [];
+  try {
+    const response = await httpGet(`${ANISKIP_BASE}/skip-times/${target.malId}/${target.episode}?${params.toString()}`, {
+      headers: { accept: 'application/json' },
+      timeout: envInt('ANISKIP_TIMEOUT_MS', 5000, 500),
+    });
+    results = Array.isArray(response.data?.results) ? response.data.results : [];
+  } catch (error: any) {
+    if (error?.response?.status === 404) return [];
+    throw error;
+  }
+  const out: Segment[] = [];
+  const order = ['op', 'ed', 'recap', 'mixed-op', 'mixed-ed'];
+  const typeOf: Record<string, SegmentType> = { op: 'Intro', 'mixed-op': 'Intro', ed: 'Outro', 'mixed-ed': 'Outro', recap: 'Recap' };
+  for (const skipType of order) {
+    const type = typeOf[skipType];
+    if (out.some((s) => s.type === type)) continue;
+    const match = results.find((r: any) => r?.skipType === skipType);
+    const segment = match && range(type, Number(match.interval?.startTime) * 1000, Number(match.interval?.endTime) * 1000);
+    if (segment) out.push(segment);
+  }
+  return out;
+}
+
+/** The MAL entry and episode number an episode id is known under, if any. */
+export async function malEpisodeFor(videoId: string | null): Promise<{ malId: number; malEpisode: number } | null> {
+  if (!videoId) return null;
+  const { parseStremioId } = require('./ids');
+  const { videoIdAliases } = require('./aliases');
+  const spellings = [videoId, ...(await videoIdAliases(videoId))];
+  for (const spelling of spellings) {
+    const parsed = parseStremioId(spelling);
+    if (parsed?.idType !== 'mal' || !parsed.episode) continue;
+    const malId = parseInt(parsed.base.split(':')[1], 10);
+    if (malId > 0) return { malId, malEpisode: Number(parsed.episode) };
+  }
+  return null;
+}
+
+// Timestamps are per title, not per file, so a release cut differently is off by that much.
+export type SkipSource = 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
+type Provider = 'publicmetadb' | 'aniskip' | 'introdb';
+
+export function skipSources(config: any): Provider[] {
   const choice: SkipSource = config?.jellyfinSkipSource ?? 'auto';
   const pmdb = Boolean(config?.apiKeys?.publicmetadb);
   if (choice === 'off') return [];
   if (choice === 'publicmetadb') return pmdb ? ['publicmetadb'] : [];
+  if (choice === 'aniskip') return ['aniskip'];
   if (choice === 'introdb') return ['introdb'];
-  return pmdb ? ['publicmetadb', 'introdb'] : ['introdb'];
+  return pmdb ? ['publicmetadb', 'aniskip', 'introdb'] : ['aniskip', 'introdb'];
 }
+
+const PROVIDER_NAMES: Record<Provider, string> = { publicmetadb: 'PublicMetaDB', aniskip: 'AniSkip', introdb: 'IntroDB' };
 
 export async function segmentsFor(config: any, lookup: Lookup): Promise<Segment[]> {
   const sources = skipSources(config);
   if (!sources.length) return [];
   const pmdbKey: string = config?.apiKeys?.publicmetadb || '';
-  const key = `jf_segments:v2:${sources.join('+')}:${lookup.kind}:${lookup.tmdbId || ''}:${lookup.imdbId || ''}:${lookup.season ?? ''}:${lookup.episode ?? ''}`;
+  const key = `jf_segments:v3:${sources.join('+')}:${lookup.kind}:${lookup.tmdbId || ''}:${lookup.imdbId || ''}:${lookup.season ?? ''}:${lookup.episode ?? ''}:${lookup.malId ?? ''}:${lookup.malEpisode ?? ''}`;
   const ttl = envInt('JELLYFIN_SEGMENTS_TTL', 7 * 24 * 60 * 60, 60);
 
   const data = await cacheWrapGlobal(key, async () => {
@@ -96,13 +173,17 @@ export async function segmentsFor(config: any, lookup: Lookup): Promise<Segment[
     for (const source of sources) {
       if (found.size >= 3) break;
       try {
-        take(source === 'publicmetadb' ? await fromPublicMetaDb(pmdbKey, lookup) : await fromIntroDb(lookup));
+        take(
+          source === 'publicmetadb' ? await fromPublicMetaDb(pmdbKey, lookup)
+          : source === 'aniskip' ? await fromAniSkip(lookup)
+          : await fromIntroDb(lookup)
+        );
       } catch (error: any) {
-        logger.debug(`${source === 'publicmetadb' ? 'PublicMetaDB' : 'IntroDB'} skips unavailable: ${error?.message || error}`);
+        logger.debug(`${PROVIDER_NAMES[source]} skips unavailable: ${error?.message || error}`);
       }
     }
     return { segments: [...found.values()] };
-  }, ttl);
+  }, ttl, { resultClassifier: classifyResultAllowEmpty });
 
   return Array.isArray(data?.segments) ? data.segments : [];
 }

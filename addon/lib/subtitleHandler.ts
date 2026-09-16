@@ -536,7 +536,12 @@ async function eachHistoryService(
 }
 
 // Each video resolves on its own (an anime episode pivots per episode); one history call per show ids.
-async function markEpisodes(videoIds: string[], config: any, method: 'addToHistory' | 'removeFromHistory'): Promise<void> {
+async function markEpisodes(
+  videoIds: string[],
+  config: any,
+  method: 'addToHistory' | 'removeFromHistory',
+  scope?: 'season' | 'series'
+): Promise<void> {
   const parsed = videoIds.map(parseMediaId).filter((p): p is ParsedMediaId => !!p && p.type === 'series');
   if (!parsed.length) return;
 
@@ -574,11 +579,31 @@ async function markEpisodes(videoIds: string[], config: any, method: 'addToHisto
     }
   }
 
-  if (shouldTrackServiceMediaType(config, 'publicmetadb', 'series')) {
-    for (const id of parsed) {
-      await checkinPublicMetaDB(id, config, { action: method === 'addToHistory' ? 'watched' : 'unwatch' }).catch(() => undefined);
+  if (!shouldTrackServiceMediaType(config, 'publicmetadb', 'series')) return;
+
+  // PublicMetaDB deletes a whole show or season in one call; a watch is one call per episode.
+  if (method === 'removeFromHistory' && scope && config.apiKeys?.publicmetadb) {
+    const { removeWatched, tmdbIdFrom } = require('../utils/publicmetadbUtils');
+    const groups = new Map<string, ParsedMediaId>();
+    for (const id of parsed) groups.set(`${id.provider}:${id.id}:${scope === 'season' ? id.season : ''}`, id);
+    for (const id of groups.values()) {
+      try {
+        const resolution = await resolveSeriesIds(id, config);
+        const tmdbId = resolution ? await tmdbIdFrom(resolution.ids, 'series') : null;
+        if (!tmdbId) continue;
+        const result = await removeWatched(config.apiKeys.publicmetadb, tmdbId, 'tv', scope === 'season' ? id.season : undefined);
+        logger.info(`[Watch Tracking] Cleared ${result?.deleted ?? 0} play(s): tmdb:${tmdbId}${scope === 'season' ? ` S${id.season}` : ''}`);
+      } catch (error: any) {
+        logger.error(`[PublicMetaDB] Clearing the ${scope} failed: ${error.message}`);
+      }
     }
+    return;
   }
+
+  const { mapWithConcurrency } = require('../utils/concurrency');
+  await mapWithConcurrency(parsed, 4, (id: ParsedMediaId) =>
+    checkinPublicMetaDB(id, config, { action: method === 'addToHistory' ? 'watched' : 'unwatch' }).catch(() => undefined)
+  );
 }
 
 async function unwatch(parsedId: ParsedMediaId, config: any): Promise<void> {

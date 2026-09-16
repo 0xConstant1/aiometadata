@@ -17,7 +17,7 @@ const { getSearch } = require("./lib/getSearch");
 const { getManifest, resolveManifestTags, DEFAULT_LANGUAGE } = require("./lib/getManifest");
 const { resolveInstallFilters, uniformTagRating, allowsUnrated, scopeTagsToCatalog } = require("./utils/ageRating");
 const { getMeta } = require("./lib/getMeta");
-const { cacheWrapMetaSmart, cacheWrapCatalog, cacheWrapSearch, cacheWrapJikanApi, cacheWrapGlobal, getCacheHealth, clearCacheHealth, logCacheHealth, stableStringify, deleteKeysByPattern, scanKeys } = require("./lib/getCache");
+const { cacheWrapMetaSmart, cacheWrapCatalog, cacheWrapSearch, cacheWrapJikanApi, cacheWrapGlobal, classifyResultAllowEmpty, getCacheHealth, clearCacheHealth, logCacheHealth, stableStringify, deleteKeysByPattern, scanKeys } = require("./lib/getCache");
 const { hasPermission } = require("./lib/authSession");
 const { isOidcConfigured } = require("./lib/oidc");
 const { resolveConfigAccess } = require("./lib/configAccess");
@@ -1627,7 +1627,8 @@ addon.get("/api/mdblist/lists/search", async (req, res) => {
           totalItems: parseInt(response.headers?.['x-total-items'], 10) || 0,
         };
       },
-      mdblistListCacheTtl()
+      mdblistListCacheTtl(),
+      { resultClassifier: classifyResultAllowEmpty }
     );
     res.json(payload);
   } catch (error) {
@@ -2053,7 +2054,8 @@ addon.get("/api/tvdb/discover/reference", async (req, res) => {
           companyTypes: normalizedCompanyTypes,
         };
       },
-      TVDB_DISCOVER_CACHE_TTL
+      TVDB_DISCOVER_CACHE_TTL,
+      { resultClassifier: classifyResultAllowEmpty }
     );
 
     return res.json(payload);
@@ -2343,7 +2345,8 @@ addon.get("/api/tvdb/lists/resolve", async (req, res) => {
           itemCount: movieCount + seriesCount
         };
       },
-      6 * 60 * 60
+      6 * 60 * 60,
+      { resultClassifier: classifyResultAllowEmpty }
     );
 
     if (!preview) {

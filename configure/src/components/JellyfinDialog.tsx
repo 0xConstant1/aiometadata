@@ -197,6 +197,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
               {!main && <SelectItem value="inherit">Same as you</SelectItem>}
               <SelectItem value="auto">Automatic</SelectItem>
               {hasPmdb ? <SelectItem value="publicmetadb">PublicMetaDB</SelectItem> : null}
+              <SelectItem value="aniskip">AniSkip</SelectItem>
               <SelectItem value="introdb">IntroDB</SelectItem>
               <SelectItem value="off">Off</SelectItem>
             </SelectContent>
@@ -256,10 +257,11 @@ function resumeSourceCaption(value: string, options: Array<{ value: string; labe
 function skipSourceCaption(value: string, hasPmdb: boolean): string {
   if (value === 'off') return 'Off: no markers are offered, so clients show no skip button.';
   if (value === 'publicmetadb') return 'PublicMetaDB only: markers come from your PublicMetaDB key and nothing else.';
+  if (value === 'aniskip') return 'AniSkip only: openings, endings and recaps for anime, keyed by MyAnimeList id; nothing for other titles. Needs no key.';
   if (value === 'introdb') return 'IntroDB only: markers come from IntroDB, which needs no key. Each lookup sends the title, season and episode to it.';
   return hasPmdb
-    ? 'Automatic: PublicMetaDB is asked first, and IntroDB fills whatever it lacks. Each lookup sends the title, season and episode to both.'
-    : 'Automatic: IntroDB answers, since no PublicMetaDB key is set. Each lookup sends the title, season and episode to it.';
+    ? 'Automatic: PublicMetaDB is asked first, AniSkip for anime, and IntroDB fills whatever is still missing. Each lookup sends the title, season and episode to the services asked.'
+    : 'Automatic: AniSkip answers for anime and IntroDB for the rest, since no PublicMetaDB key is set. Each lookup sends the title, season and episode to them.';
 }
 
 function newUserId(): string {

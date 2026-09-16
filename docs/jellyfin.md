@@ -102,12 +102,13 @@ Intro, recap and outro markers are served as media segments, so a client with a 
 
 | Choice | Source |
 |---|---|
-| Automatic | PublicMetaDB when a key is set, IntroDB for what it lacks |
+| Automatic | PublicMetaDB when a key is set, then AniSkip for anime, then IntroDB for what is still missing |
 | PublicMetaDB only | your PublicMetaDB key and nothing else |
+| AniSkip only | AniSkip, the anime skip database, keyed by MyAnimeList id; needs no key, nothing for non-anime |
 | IntroDB only | IntroDB, which needs no key |
 | Off | no markers, no button |
 
-Each lookup sends the title, season and episode to the service asked. Other users inherit your choice unless their card says otherwise.
+Each lookup sends the title, season and episode to the service asked. AniSkip is asked under the episode's MyAnimeList entry and number, so an anime browsed by TVDB seasons is translated first; its openings and endings become the intro and outro markers, and its recaps the recap marker. Other users inherit your choice unless their card says otherwise.
 
 ## Watch history
 
@@ -229,6 +230,8 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | `JELLYFIN_MAX_MEDIA_SOURCES` (env) | `50` | The most versions offered for a title. |
 | `JELLYFIN_MAX_TRAILERS` (env) | `8` | The most trailers offered for a title. |
 | `TRAILER_ADDON_TIMEOUT_MS`, `TRAILER_ADDON_TTL`, `TRAILER_ADDON_EMPTY_TTL` | | How long a trailer addon may take, how long its answer is kept, how long a miss is left alone. |
+| `JELLYFIN_SEGMENTS_TTL` | `604800` | How long an episode's skip markers are kept, found or not. |
+| `INTRODB_TIMEOUT_MS`, `ANISKIP_TIMEOUT_MS` | `5000` | How long a skip marker lookup on IntroDB or AniSkip may take. |
 
 ### Subtitles
 
@@ -294,6 +297,6 @@ Clients differ in what they ask for, and a few things are worth knowing when a r
 
 **Posters overlap in a grid.** One of them is landscape. Make sure **Bring Posters to 2:3** is on in the image cache settings, or switch the poster source for that title's provider.
 
-**A title opens but the version list is empty.** The stream addon returned nothing when the picker asked; opening the picker again retries. The log shows the addon's answer.
+**A title opens but the version list holds no real version.** When the addon was asked and had nothing, the first entry of the picker says why: `Stream addon answered 403: check the addon URL` means the URL in the Playback field is not an install URL the addon accepts from a server (an addon's internal manifest URL, for instance); `401` or `400` is a wrong UUID or password in that URL; `404` is a URL that is not a stream addon at all; `Stream addon not reachable` or `did not answer within 15s` is a network or timeout problem; `No streams found for this title` is the addon's own empty answer. Opening the picker again retries, and the log shows the addon's answer.
 
 **Subtitles from a subtitle addon do not appear.** The addon must declare a subtitle resource in its manifest and be part of this configuration. Anime titles are also asked under their IMDb id; a title with no IMDb mapping gets only the subtitles its stream carries.

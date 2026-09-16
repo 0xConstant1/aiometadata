@@ -27,7 +27,7 @@ export interface JellyfinUser {
   trackers?: boolean;
   /** Absent follows the main user. */
   trackerSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
-  skipSource?: 'auto' | 'publicmetadb' | 'introdb' | 'off';
+  skipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
   watchlistServices?: string[];
 }
 
@@ -412,7 +412,7 @@ export interface AppConfig {
   jellyfinUserName?: string;
   jellyfinUserAvatar?: string;
   jellyfinUserTags?: string[];
-  jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'introdb' | 'off';
+  jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
   jellyfinWatchlistServices?: string[];
   jellyfinUsers?: JellyfinUser[];
   customPosterUrlPattern?: string;

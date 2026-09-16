@@ -145,7 +145,7 @@ export async function handleBulkPlaybackReport(
 
   const work = async () => {
     const { markEpisodes } = require('./subtitleHandler');
-    await markEpisodes(videos, config, event === 'played' ? 'addToHistory' : 'removeFromHistory');
+    await markEpisodes(videos, config, event === 'played' ? 'addToHistory' : 'removeFromHistory', body?.scope === 'season' ? 'season' : 'series');
     if (event === 'played') {
       // A count-based list only needs the furthest episode.
       const last = [...videos].sort((a, b) => episodeOrder(a) - episodeOrder(b)).pop() as string;

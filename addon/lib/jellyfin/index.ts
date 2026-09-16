@@ -25,13 +25,13 @@ import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSea
 import { decodeJellyfinId } from './ids';
 import { buildEpisodes, buildSeasons, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, recallDuration, recallIssued, recallStreams, rememberDuration, rememberStreams, streamUserAgent, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
-import { segmentId, segmentsFor, type SegmentType } from './segments';
+import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
 import { allBoxSets, boxSetMembers, boxSetsFor, collectionById, collectionView, folderCoverSize } from './collections';
 import { setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
@@ -831,8 +831,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       recallStreams(cacheKey) ??
       (await coalesce(cacheKey, async () => {
         const fetched = await fetchStreams(base, stremioType, stremioId);
-        if (fetched.length) rememberStreams(cacheKey, fetched);
-        return fetched;
+        if (fetched.streams.length) rememberStreams(cacheKey, fetched.streams);
+        if (fetched.failure) rememberFailure(cacheKey, fetched.failure);
+        return fetched.streams;
       }));
 
     const seen = new Set<string>();
@@ -845,7 +846,15 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     logger.debug(`Streams ${stremioType}/${stremioId}: ${streams.length} offered, ${sources.length} playable`);
+    if (streams.length && !sources.length) rememberFailure(cacheKey, 'No playable stream for this title');
     return sources.slice(0, maxMediaSources());
+  };
+
+  // What the picker says when a resolve leaves nothing to list.
+  const streamFailure = (req: any, descriptor: any): string => {
+    const stremioId = stremioIdFor(descriptor);
+    const stremioType = descriptor.k === 'movie' ? 'movie' : 'series';
+    return recallFailure(`${req.params.userUUID}:${stremioType}:${stremioId}`) ?? 'No streams found for this title';
   };
 
   /**
@@ -986,7 +995,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       await resolveMediaSources(req, descriptor, item.RunTimeTicks ?? null),
       itemId
     );
-    if (!resolved.length) return;
+    if (!resolved.length) {
+      if (!Array.isArray(item.MediaSources) || !item.MediaSources.length) return;
+      const reason = placeholderMediaSource(item.MediaSources[0].Id, streamFailure(req, descriptor));
+      item.MediaSources = [reason, ...item.MediaSources.slice(1)];
+      item.MediaStreams = reason.MediaStreams;
+      return;
+    }
     await attachExternalSubtitles(req, itemId, resolved, {});
 
     item.MediaSources = resolved;
@@ -2120,7 +2135,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json(itemList(items, items.length, 0));
   });
 
-  // Skip markers, from PublicMetaDB when the user has a key and IntroDB otherwise.
+  // Skip markers, from PublicMetaDB when the user has a key, AniSkip for anime, IntroDB otherwise.
   router.get('/MediaSegments/:itemId', async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
     const itemId = normaliseJellyfinId(String(req.params.itemId));
@@ -2147,6 +2162,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       kind: descriptor.k,
       season: descriptor.k === 'episode' ? descriptor.s ?? null : null,
       episode: descriptor.k === 'episode' ? descriptor.e ?? null : null,
+      ...(descriptor.k === 'episode' ? await malEpisodeFor(stremioIdFor(descriptor)) : null),
     });
 
     const items = segments

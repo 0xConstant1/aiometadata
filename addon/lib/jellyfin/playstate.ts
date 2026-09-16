@@ -83,7 +83,7 @@ export interface ResolvedSession {
 }
 
 // The runtime is not in any playstate payload, so it comes from the meta.
-async function resolveSession(userUUID: string, itemId: string): Promise<ResolvedSession | null> {
+async function resolveSession(userUUID: string, itemId: string, known?: any): Promise<ResolvedSession | null> {
   const descriptor = await decodeJellyfinId(itemId);
   if (!descriptor) return null;
   if (descriptor.k !== 'movie' && descriptor.k !== 'episode') return null;
@@ -92,7 +92,7 @@ async function resolveSession(userUUID: string, itemId: string): Promise<Resolve
   if (!videoId) return null;
 
   const stremioType = descriptor.k === 'movie' ? 'movie' : 'series';
-  const meta = await fetchMeta(userUUID, stremioType, descriptor.i);
+  const meta = known ?? (await fetchMeta(userUUID, stremioType, descriptor.i));
 
   let runtimeMs: number | null = null;
   const aliases: string[] = [];
@@ -318,8 +318,9 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
   const profile = profileKey(config);
   const played = event === 'played';
 
-  const sessions = (await mapWithConcurrency(await markedItemIds(userUUID, itemId), 8, async (id: string) => {
-    const session = await resolveSession(userUUID, id);
+  const marked = await markedItemIds(userUUID, itemId);
+  const sessions = (await mapWithConcurrency(marked.ids, 8, async (id: string) => {
+    const session = await resolveSession(userUUID, id, marked.meta);
     if (!session) {
       logger.debug(`No playable session for ${id}`);
       return null;
@@ -330,16 +331,32 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
   })).filter((s): s is ResolvedSession => s !== null);
 
   if (!writesTrackers(config)) return;
+  // A season or series goes to the trackers as one batch, not an event per episode.
+  if (marked.scope) {
+    const { handlePlaybackReport } = require('../playbackHandler');
+    const { invalidateResume } = require('./resume');
+    invalidateResume(userUUID);
+    handlePlaybackReport('series', marked.metaId, {
+      scope: marked.scope,
+      event,
+      metaId: marked.metaId,
+      videos: sessions.map((session) => ({ videoId: session.videoId })),
+    }, config, userUUID).catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
+    return;
+  }
   const { invalidateWatched } = require('./watched');
   mapWithConcurrency(sessions, 3, (session: ResolvedSession) => tellTrackers(userUUID, config, session, event, 0, played, false))
     .then(() => invalidateWatched(config))
     .catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
 }
 
-/** The item itself, or each aired episode of the season or series it names. */
-async function markedItemIds(userUUID: string, itemId: string): Promise<string[]> {
+/** The item itself, or each aired episode of the season or series it names, with the meta they share. */
+async function markedItemIds(
+  userUUID: string,
+  itemId: string
+): Promise<{ ids: string[]; meta?: any; scope?: 'season' | 'series'; metaId?: string }> {
   const descriptor = await decodeJellyfinId(itemId);
-  if (!descriptor || (descriptor.k !== 'season' && descriptor.k !== 'series')) return [itemId];
+  if (!descriptor || (descriptor.k !== 'season' && descriptor.k !== 'series')) return { ids: [itemId] };
 
   const meta = await fetchMeta(userUUID, 'series', descriptor.i);
   const videos: any[] = Array.isArray(meta?.videos) ? meta.videos : [];
@@ -352,7 +369,7 @@ async function markedItemIds(userUUID: string, itemId: string): Promise<string[]
     const parsed = parseStremioId(String(video.id ?? ''));
     if (parsed) ids.push(encodeJellyfinId({ k: 'episode', t: descriptor.t, i: parsed.base, s: parsed.season, e: parsed.episode as number }));
   }
-  return ids;
+  return { ids, meta, scope: descriptor.k, metaId: descriptor.i };
 }
 
 export async function recordPlayed(req: any, body: any): Promise<void> {

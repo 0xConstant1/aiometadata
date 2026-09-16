@@ -229,8 +229,34 @@ const resolved = new LRUCache<string, any[]>({
 
 const inFlight = new Map<string, Promise<any[]>>();
 
+// Why the last resolve came back empty, worded for the version picker.
+const failures = new LRUCache<string, string>({
+  max: envInt('JELLYFIN_STREAM_CACHE_MAX', 2000, 1),
+  ttl: envInt('JELLYFIN_STREAM_CACHE_TTL', 60, 1) * 1000,
+});
+
 export function rememberStreams(key: string, streams: any[]): void {
   resolved.set(key, streams);
+  failures.delete(key);
+}
+
+export function rememberFailure(key: string, reason: string): void {
+  failures.set(key, reason);
+}
+
+export function recallFailure(key: string): string | undefined {
+  return failures.get(key);
+}
+
+export function describeStatus(status: number): string {
+  const hint =
+    status === 403 ? 'check the addon URL'
+    : status === 400 || status === 401 ? 'check the UUID and password in the addon URL'
+    : status === 404 ? 'the addon URL is not a stream addon'
+    : status === 429 ? 'too many requests, try again later'
+    : status >= 500 ? 'the addon is having trouble'
+    : '';
+  return `Stream addon answered ${status}${hint ? `: ${hint}` : ''}`;
 }
 
 export function recallStreams(key: string): any[] | undefined {
@@ -250,7 +276,7 @@ export async function fetchStreams(
   base: string,
   type: string,
   id: string
-): Promise<any[]> {
+): Promise<{ streams: any[]; failure?: string }> {
   const url = `${base}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), requestTimeoutMs());
@@ -262,13 +288,17 @@ export async function fetchStreams(
     });
     if (!response.ok) {
       logger.debug(`Streams ${type}/${id} returned ${response.status}`);
-      return [];
+      return { streams: [], failure: describeStatus(response.status) };
     }
     const body: any = await response.json();
-    return Array.isArray(body?.streams) ? body.streams : [];
+    const streams = Array.isArray(body?.streams) ? body.streams : [];
+    return streams.length ? { streams } : { streams, failure: 'No streams found for this title' };
   } catch (error: any) {
     logger.warn(`Streams ${type}/${id} failed: ${error?.message || error}`);
-    return [];
+    const failure = error?.name === 'AbortError'
+      ? `Stream addon did not answer within ${Math.round(requestTimeoutMs() / 1000)}s`
+      : 'Stream addon not reachable';
+    return { streams: [], failure };
   } finally {
     clearTimeout(timer);
   }

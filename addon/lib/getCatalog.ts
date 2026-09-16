@@ -2663,7 +2663,7 @@ async function getLetterboxdCatalog(
       `letterboxd-list:${identifier}:${isWatchlist}`,
       async () => await fetchLetterboxdList(identifier, isWatchlist),
       catalogConfig?.cacheTTL || 7200,
-      { enableErrorCaching: true, maxRetries: 2 }
+      { enableErrorCaching: true, maxRetries: 2, resultClassifier: classifyResultAllowEmpty }
     );
     
     if (!listData?.data?.items) {

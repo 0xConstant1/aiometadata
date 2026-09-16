@@ -2,7 +2,7 @@ import { httpGet, httpPost, httpRequest } from "./httpClient.js";
 import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { getMeta } from "../lib/getMeta.js";
 import { mapWithLimit } from "./concurrency.js";
-import { cacheWrapMetaSmart, cacheWrapGlobal, readGlobalCache, writeGlobalCache } from "../lib/getCache.js";
+import { cacheWrapMetaSmart, cacheWrapGlobal, classifyResultAllowEmpty, readGlobalCache, writeGlobalCache } from "../lib/getCache.js";
 import { UserConfig } from "../types/index.js";
 const consola = require('consola');
 const crypto = require('crypto');
@@ -636,7 +636,7 @@ async function fetchTraktUpNextEpisodes(
           return resp.data;
         },
         86400, // 1 day TTL
-        { upstream: true }
+        { upstream: true, resultClassifier: classifyResultAllowEmpty }
       );
       showDataMap.set(showId, data);
     } catch(e) {}
