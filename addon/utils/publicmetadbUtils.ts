@@ -431,16 +431,16 @@ async function saveResume(
   season?: number,
   episode?: number
 ): Promise<any> {
+  // A film's point is stored under season 0, episode 0, and only matches an
+  // existing one when both are sent; left out, a second save is a duplicate.
   const body: any = {
     tmdb_id: tmdbId,
     media_type: mediaType,
+    season: mediaType === 'tv' && season != null ? season : 0,
+    episode: mediaType === 'tv' && episode != null ? episode : 0,
     position_ms: Math.max(0, Math.round(positionMs)),
     runtime_ms: Math.max(1, Math.round(runtimeMs)),
   };
-  if (mediaType === 'tv' && season != null && episode != null) {
-    body.season = season;
-    body.episode = episode;
-  }
   return makeRequest('/api/external/resume', apiKey, 'POST', body);
 }
 
