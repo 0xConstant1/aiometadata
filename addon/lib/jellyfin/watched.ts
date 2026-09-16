@@ -67,6 +67,8 @@ export interface WatchedSnapshot {
   following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
   /** When a video was last watched, by video id, where the tracker says. */
   at: Map<string, number>;
+  /** Shows the tracker lists as dropped, under every id they answer to. */
+  dropped: Set<string>;
   fingerprint: string;
 }
 
@@ -77,6 +79,7 @@ const EMPTY: WatchedSnapshot = {
   nextUp: [],
   following: [],
   at: new Map(),
+  dropped: new Set(),
   fingerprint: '',
 };
 
@@ -107,6 +110,17 @@ function seriesKeys(ids: Record<string, any>): string[] {
   return keys;
 }
 
+// A dropped show is kept out under the anime spelling the meta may use as well.
+function droppedKeys(ids: Record<string, any>): string[] {
+  const keys = seriesKeys(ids);
+  if (!ids.kitsu) {
+    const idMapper: any = require('../id-mapper');
+    const mapping = ids.imdb ? idMapper.getMappingByImdbId(String(ids.imdb)) : ids.tvdb ? idMapper.getMappingByTvdbId(Number(ids.tvdb)) : null;
+    if (mapping?.kitsu_id) keys.push(`kitsu:${mapping.kitsu_id}`);
+  }
+  return keys;
+}
+
 // `next_to_watch` is `S02E09` for a show and a bare `E6` for anime, which is
 // the absolute numbering its own entry uses.
 function parseNextToWatch(value: any): { season: number | null; episode: number } | null {
@@ -130,6 +144,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
   if (metaId && entry?.status === 'watching') {
     snapshot.following.push({ metaId, mediaType: isAnime && ids.kitsu ? 'anime' : 'series' });
   }
+  if (entry?.status === 'dropped') for (const key of droppedKeys(ids)) snapshot.dropped.add(key);
 
   // Simkl names a next episode for every listed show, a planned or dropped one
   // included; only a show being watched belongs on the shelf.
@@ -198,6 +213,7 @@ interface RawSnapshot {
   series: Array<[string, { watched: number; total: number; at?: number }]>;
   nextUp: NextUpRow[];
   following?: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
+  dropped?: string[];
 }
 
 async function build(accessToken: string): Promise<RawSnapshot> {
@@ -216,6 +232,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     nextUp: [],
     following: [],
     at: new Map(),
+    dropped: new Set(),
     fingerprint: '',
   };
 
@@ -239,6 +256,7 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     series: [...snapshot.series],
     nextUp: snapshot.nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
     following: snapshot.following,
+    dropped: [...snapshot.dropped],
   };
 }
 
@@ -359,12 +377,25 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
     }
   }
 
+  const dropped = new Set<string>();
+  try {
+    for (let offset = 0; offset < maxPages * pageSize; offset += pageSize) {
+      const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/dropped?limit=${pageSize}&offset=${offset}&apikey=${apiKey}`, apiKey, 'MDBList dropped');
+      const shows = Array.isArray(response?.data?.shows) ? response.data.shows : [];
+      for (const item of shows) for (const key of droppedKeys(item?.show?.ids ?? {})) dropped.add(key);
+      if (shows.length < pageSize) break;
+    }
+  } catch (error: any) {
+    logger.warn(`MDBList dropped shows failed: ${error?.message || error}`);
+  }
+
   return {
     episodes: [...episodes],
     movies: [...movies],
     at: [...at],
     series: [...series],
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
+    dropped: [...dropped],
   };
 }
 
@@ -424,6 +455,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
       following: raw?.following ?? [],
+      dropped: new Set(raw?.dropped ?? []),
       fingerprint,
     };
     if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);
@@ -593,6 +625,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Prom
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
       following: raw?.following ?? [],
+      dropped: new Set(),
       fingerprint: key,
     };
     if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);
@@ -659,6 +692,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): P
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
       following: [],
+      dropped: new Set(raw?.dropped ?? []),
       fingerprint: key,
     };
     if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);

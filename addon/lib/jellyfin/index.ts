@@ -1879,7 +1879,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     lap.resumable = Date.now() - t1;
     // The table first; a tracker adds the shows it knows that the table does not.
     const t2 = Date.now();
-    const own = await ownNextUpRows(userUUID, profileKey(config));
+    const own = (await ownNextUpRows(userUUID, profileKey(config))).filter((row) => !snapshot.dropped.has(row.metaId));
     lap.own = Date.now() - t2;
     const known = new Set(own.map((row) => row.metaId));
     const merged = [...own, ...snapshot.nextUp.filter((row) => !known.has(row.metaId))]
@@ -2047,7 +2047,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     let local = 0;
     const localCap = envInt('JELLYFIN_UPCOMING_LOCAL_SHOWS', 60, 0);
-    for (const row of [...own, ...snapshot.nextUp, ...resume.filter((r) => r.kind === 'episode')]) {
+    for (const row of [...own.filter((r) => !snapshot.dropped.has(r.metaId)), ...snapshot.nextUp, ...resume.filter((r) => r.kind === 'episode')]) {
       if (shows.has(row.metaId)) continue;
       if (local >= localCap) break;
       shows.set(row.metaId, row.mediaType);
