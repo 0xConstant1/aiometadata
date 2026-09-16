@@ -409,12 +409,12 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
     const memo = hydrated.get(key);
     if (memo) return memo;
 
-    const { cacheWrapGlobal } = require('../getCache');
+    const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
       `jellyfin_watched_v4:${key}`,
       () => build(accessToken),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
-      { upstream: true }
+      { upstream: true, resultClassifier: classifyResultAllowEmpty }
     );
 
     const snapshot: WatchedSnapshot = {
@@ -445,7 +445,7 @@ export async function upcomingFollowed(config: any, days: number): Promise<Array
   const apiKey = credentialFor(config, 'mdblist');
   if (!apiKey) return [];
 
-  const { cacheWrapGlobal } = require('../getCache');
+  const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   try {
     return await cacheWrapGlobal(
@@ -473,7 +473,7 @@ export async function upcomingFollowed(config: any, days: number): Promise<Array
 
 // No activity digest on PublicMetaDB; the newest play and the total stand in.
 async function pmdbFingerprint(apiKey: string): Promise<string> {
-  const { cacheWrapGlobal } = require('../getCache');
+  const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   const head = await cacheWrapGlobal(
     `pmdb_watched_head:${keyHash}`,
@@ -484,7 +484,7 @@ async function pmdbFingerprint(apiKey: string): Promise<string> {
       return `${page.total}|${first?.id ?? ''}|${first?.watched_at ?? ''}`;
     },
     envInt('PMDB_ACTIVITIES_TTL', 300, 30),
-    { upstream: true }
+    { upstream: true, resultClassifier: classifyResultAllowEmpty }
   );
   return createHash('sha256').update(String(head)).digest('hex').substring(0, 16);
 }
@@ -578,12 +578,12 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Prom
   if (memo) return memo;
 
   try {
-    const { cacheWrapGlobal } = require('../getCache');
+    const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
       `jellyfin_watched_pmdb_v2:${key}`,
       () => buildPmdb(apiKey, config),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
-      { upstream: true }
+      { upstream: true, resultClassifier: classifyResultAllowEmpty }
     );
 
     const snapshot: WatchedSnapshot = {
@@ -613,7 +613,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Prom
  * than a clock: a watch marked elsewhere lands on the next request.
  */
 async function mdblistFingerprint(apiKey: string): Promise<string> {
-  const { cacheWrapGlobal } = require('../getCache');
+  const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
 
   const activities = await cacheWrapGlobal(
@@ -644,12 +644,12 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): P
   if (memo) return memo;
 
   try {
-    const { cacheWrapGlobal } = require('../getCache');
+    const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
       `jellyfin_watched_mdblist_v3:${key}`,
       () => buildMdblist(apiKey, config),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
-      { upstream: true }
+      { upstream: true, resultClassifier: classifyResultAllowEmpty }
     );
 
     const snapshot: WatchedSnapshot = {
