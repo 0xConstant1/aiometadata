@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConfig } from "@/contexts/ConfigContext";
 import { useSave } from "@/contexts/SaveContext";
 import { Button } from "@/components/ui/button";
@@ -278,6 +278,16 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const { config, setConfig, auth } = useConfig();
   const { requestSave, isSaving, isDirty, canSave } = useSave();
   const serverAddress = `${window.location.origin}/jellyfin/${userUUID}`;
+  const [resolveMode, setResolveMode] = useState<string>('user');
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data?.jellyfinResolveOnOpen) setResolveMode(String(data.jellyfinResolveOnOpen)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  const resolveForced: boolean | null = resolveMode === 'always' ? true : resolveMode === 'never' ? false : null;
   const mainName = config.jellyfinUserName || config.addonName || userUUID.slice(0, 8);
   const tags = useMemo(() => config.tags ?? [], [config.tags]);
   const users = useMemo(() => config.jellyfinUsers ?? [], [config.jellyfinUsers]);
@@ -513,6 +523,22 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
               <p className="text-xs text-muted-foreground">
                 Paste a stream addon's install URL, such as your AIOStreams. Without one, titles browse but will not play. AIOMetadata never serves the video itself; the client fetches it from that addon directly.
               </p>
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div>
+                  <Label className="text-xs font-medium">Wait for the streams when a title opens</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    {resolveForced === null
+                      ? 'Off, a title opens at once and its versions load when the picker opens or play is pressed, which suits most clients. On for a client that shows versions on the title page but never asks for them: the title then opens once the stream addon has answered.'
+                      : 'Set by this server.'}
+                  </p>
+                </div>
+                <Switch
+                  checked={resolveForced ?? config.jellyfinResolveOnOpen ?? false}
+                  disabled={resolveForced !== null}
+                  onCheckedChange={(next) => setConfig(prev => ({ ...prev, jellyfinResolveOnOpen: next ? true : undefined }))}
+                  aria-label="Wait for the streams when a title opens"
+                />
+              </div>
             </div>
           </div>
           <div className="space-y-2 border-t pt-4">

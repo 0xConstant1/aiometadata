@@ -856,24 +856,24 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   // A single item carries its versions inline, as a real server's does: a
   // client builds its picker from them and asks PlaybackInfo only to play. The
   // page is not held past the budget; the placeholder stays when it runs out.
-  // A client naming MediaSources in Fields builds its picker from the item and
-  // plays nothing without them, so it is answered in full whatever the wait.
+  // A client asking for MediaSources plays nothing without them.
   const asksForSources = (req: any): boolean =>
     /\bMediaSources\b/i.test(String(req.query?.Fields ?? req.query?.fields ?? ''));
 
+  // Instance rule first; on means the full resolve, bounded by the stream request.
+  const resolveOnOpen = async (req: any): Promise<boolean> => {
+    const mode = String(require('../settingsService').getSetting('JELLYFIN_RESOLVE_ON_OPEN') || 'user');
+    if (mode === 'always') return true;
+    if (mode === 'never') return false;
+    return (await loadConfig(req))?.jellyfinResolveOnOpen === true;
+  };
+
   const attachSourcesInTime = async (req: any, item: any, descriptor: any, itemId: string): Promise<void> => {
-    const budget = envInt('JELLYFIN_ITEM_SOURCES_WAIT_MS', 0, 0);
     if (req.params?.listed) return;
-    const inFull = req.params?.forceSources || asksForSources(req);
-    if (budget === 0 && !inFull) return;
-    const work = attachSources(req, item, descriptor, itemId).catch((error: any) =>
+    if (!req.params?.forceSources && !asksForSources(req) && !(await resolveOnOpen(req))) return;
+    await attachSources(req, item, descriptor, itemId).catch((error: any) =>
       logger.debug(`Sources for ${itemId} unavailable: ${error?.message || error}`)
     );
-    if (inFull) {
-      await work;
-      return;
-    }
-    await Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, budget).unref?.())]);
   };
 
   // Subtitle addons answer IMDb ids, so an anime id is spelled that way first,

@@ -77,7 +77,7 @@ Search catalogs are tagged too, from the tag chip on each row under **Search**. 
 
 ### The version picker
 
-A title's versions are the stream addon's streams, returned as the item's media sources, so the client builds the same version picker it would for a server holding several files. By default a title opens at once with a placeholder version and the addon is asked when the picker is opened or play is pressed. A client that names `MediaSources` in the fields it asks for, as Infuse does, builds its picker from the item and plays nothing without them, so it is always answered in full. For other clients that show versions or quality badges on the title page, `JELLYFIN_ITEM_SOURCES_WAIT_MS` makes the item request wait that long for the addon, and past it the title opens with the placeholder as before. The most versions offered is `JELLYFIN_MAX_MEDIA_SOURCES` (50).
+A title's versions are the stream addon's streams, returned as the item's media sources, so the client builds the same version picker it would for a server holding several files. By default a title opens at once with a placeholder version and the addon is asked when the picker is opened or play is pressed. A client that names `MediaSources` in the fields it asks for, as Infuse does, builds its picker from the item and plays nothing without them, so it is always answered in full. For a client that builds its picker from the title without asking, **Wait for the streams when a title opens** in the Jellyfin dialog makes the title wait for the addon so the versions are there on open; it is off by default, since a title that opens at once suits the clients that ask on their own. The instance's `JELLYFIN_RESOLVE_ON_OPEN` sets the rule: `user` leaves it to that switch, `always` and `never` decide for everyone and the switch shows as set by the server. The most versions offered is `JELLYFIN_MAX_MEDIA_SOURCES` (50).
 
 Each version carries what can be read from the stream: resolution and dynamic range, video codec, audio codec, channels and a profile such as Dolby TrueHD with Atmos or DTS:X, languages, file size, bitrate and runtime. Where the stream addon sends parsed release data the picture is complete; where it does not, the release name is parsed on the server. Clients render this as the badges on their title pages.
 
@@ -223,7 +223,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | Setting | Default | What it does |
 |---|---|---|
 | `JELLYFIN_STREAM_USER_AGENT` | | User agent sent to the stream addon. AIOStreams attaches parsed release data only for one it recognises. |
-| `JELLYFIN_ITEM_SOURCES_WAIT_MS` | `0` | How long opening a title waits for the stream addon so the versions are on the page itself. 0 opens at once and resolves them from the version picker or play. |
+| `JELLYFIN_RESOLVE_ON_OPEN` | `user` | Whether a title opens with its versions resolved: `user` (each configuration's switch, off by default), `always`, or `never`. |
 | `JELLYFIN_STREAM_TIMEOUT_MS` (env) | `15000` | How long a stream request may take. |
 | `JELLYFIN_STREAM_CACHE_TTL` (env) | `60` | How long a title's stream list is reused, in seconds. |
 | `JELLYFIN_MAX_MEDIA_SOURCES` (env) | `50` | The most versions offered for a title. |
