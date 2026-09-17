@@ -1703,6 +1703,22 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json(latest);
   });
 
+  const warmSeriesMetas = (req: any, userUUID: string, items: any[]): void => {
+    if (!/odin|fusion/i.test(clientInfo(req).client)) return;
+    const seen = new Set<string>();
+    const targets: Array<{ type: 'movie' | 'series'; id: string }> = [];
+    for (const item of items) {
+      const id = String(item?.SeriesId || item?.Id || '');
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      targets.push({ type: item?.Type === 'Movie' ? 'movie' : 'series', id });
+    }
+    void mapWithConcurrency(targets, shelfConcurrency(), async ({ type, id }) => {
+      const descriptor = await decodeJellyfinId(id);
+      if (descriptor && (descriptor.k === 'movie' || descriptor.k === 'series')) await fetchMeta(userUUID, type, descriptor.i).catch(() => undefined);
+    }).catch(() => undefined);
+  };
+
   router.get(['/UserItems/Resume', '/Users/:userId/Items/Resume'], async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
     const config = await loadConfig(req);
@@ -1772,7 +1788,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     // A play is held under every spelling of its title; the spellings build one item.
     const shown = new Set<string>();
     const distinct = items.filter((item) => !shown.has(item.Id) && shown.add(item.Id));
-    res.json(itemList(distinct.filter(keepsUnderProfileCap(config)), rows.length, startIndex));
+    const shelf = distinct.filter(keepsUnderProfileCap(config));
+    res.json(itemList(shelf, rows.length, startIndex));
+    warmSeriesMetas(req, userUUID, shelf);
   });
 
   const seriesMetaFor = async (req: any) => {
@@ -1853,7 +1871,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
     const memoKey = `${userUUID}:${profileKey(config)}:${digest}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
     const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config));
-    res.json(itemList(found.slice(startIndex, startIndex + limit), found.length, startIndex));
+    const page = found.slice(startIndex, startIndex + limit);
+    res.json(itemList(page, found.length, startIndex));
+    warmSeriesMetas(req, userUUID, page);
   });
 
   const buildNextUp = async (req: any, userUUID: string, config: any): Promise<any[]> => {
