@@ -18,14 +18,15 @@ export interface WatchlistEntry {
 export type WatchlistIds = { imdb?: string; tmdb?: number | string; tvdb?: number | string; kitsu?: number | string; mal?: number | string };
 
 
-export type WatchlistService = 'mdblist' | 'trakt' | 'simkl' | 'anilist' | 'mal';
-export const WATCHLIST_SERVICES: WatchlistService[] = ['mdblist', 'trakt', 'simkl', 'anilist', 'mal'];
+export type WatchlistService = 'mdblist' | 'trakt' | 'simkl' | 'anilist' | 'mal' | 'publicmetadb';
+export const WATCHLIST_SERVICES: WatchlistService[] = ['mdblist', 'trakt', 'simkl', 'anilist', 'mal', 'publicmetadb'];
 export const SERVICE_KINDS: Record<WatchlistService, WatchlistKind[]> = {
   mdblist: ['movies', 'series'],
   trakt: ['movies', 'series'],
   simkl: ['movies', 'series', 'anime'],
   anilist: ['anime'],
   mal: ['anime'],
+  publicmetadb: ['movies', 'series'],
 };
 
 function connected(config: any, service: WatchlistService): boolean {
@@ -75,16 +76,26 @@ const SHELF_CATALOGS: Record<WatchlistService, Partial<Record<WatchlistKind, { t
   },
   anilist: { anime: { type: 'anime', id: 'anilist.Planning' } },
   mal: { anime: { type: 'anime', id: 'mal.userlist.plan_to_watch' } },
+  publicmetadb: {},
 };
 
+async function shelfCatalog(config: any, service: WatchlistService, kind: WatchlistKind): Promise<{ type: string; id: string; keep?: (meta: any) => boolean } | null> {
+  if (service !== 'publicmetadb') return SHELF_CATALOGS[service][kind] ?? null;
+  const { publicMetaDBWatchlistCatalog } = require('../../utils/publicmetadbUtils');
+  const catalog = await publicMetaDBWatchlistCatalog(config);
+  if (!catalog) return null;
+  const wanted = kind === 'movies' ? 'movie' : 'series';
+  return { type: catalog.type, id: catalog.id, keep: (meta: any) => meta?.type === wanted };
+}
+
 async function shelfEntries(userUUID: string, config: any, service: WatchlistService, kind: WatchlistKind): Promise<WatchlistEntry[]> {
-  const catalog = SHELF_CATALOGS[service][kind];
+  const catalog = await shelfCatalog(config, service, kind);
   if (!catalog) return [];
   const { fetchWindow } = require('./items');
   const { profileTags } = require('./profiles');
   const max = envInt('JELLYFIN_WATCHLIST_MAX_ITEMS', 5000, 100);
   try {
-    const window = await fetchWindow(userUUID, { id: catalog.id, type: catalog.type, name: catalog.id, pageSize: 0, extra: [] }, 0, max, {}, undefined, profileTags(config));
+    const window = await fetchWindow(userUUID, { id: catalog.id, type: catalog.type, name: catalog.id, pageSize: 0, extra: [] }, 0, max, {}, catalog.keep, profileTags(config));
     const out: WatchlistEntry[] = [];
     window.items.forEach((meta: any, rank: number) => {
       if (!meta?.id) return;
@@ -165,6 +176,18 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
       }
     } catch (error: any) {
       logger.warn(`Simkl watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);
+    }
+  }
+
+  if (takes('publicmetadb', shelf) && shouldTrackServiceMediaType(config, 'publicmetadb', mediaType) && config?.apiKeys?.publicmetadb && ids.tmdb) {
+    try {
+      const { publicMetaDBWatchlistCatalog, setListItem } = require('../../utils/publicmetadbUtils');
+      const catalog = await publicMetaDBWatchlistCatalog(config);
+      if (catalog) {
+        await setListItem(config.apiKeys.publicmetadb, catalog.id.slice('publicmetadb.list.'.length), ids.tmdb, kind === 'movie' ? 'movie' : 'tv', listed);
+      }
+    } catch (error: any) {
+      logger.warn(`PublicMetaDB watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);
     }
   }
 

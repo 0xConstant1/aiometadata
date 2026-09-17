@@ -3346,6 +3346,7 @@ async function getPublicMetaDBCatalog(
         publicMetaDBListType(config, catalogId),
       ]);
       let metas = await parseListItems(data.items || [], type, language, config);
+      metas = stampListedAt(metas, data.items || [], (item: any) => ({ tmdb: item?.tmdb_id }), (item: any) => item?.created);
       logger.success(`[PublicMetaDB] ${listType === 'watchlist' ? 'Watchlist' : 'List'} ${listId}: ${metas.length} items (page ${page})`);
       return metas;
     }

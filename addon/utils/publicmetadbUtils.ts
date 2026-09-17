@@ -262,6 +262,33 @@ async function publicMetaDBListType(config: any, catalogId: string): Promise<Pmd
   }
 }
 
+async function publicMetaDBWatchlistCatalog(config: any): Promise<any | null> {
+  const lists = (config?.catalogs ?? []).filter((c: any) => typeof c?.id === 'string' && c.id.startsWith('publicmetadb.list.'));
+  const known = lists.find((c: any) => c?.metadata?.listType === 'watchlist');
+  if (known) return known;
+  for (const catalog of lists) {
+    if (catalog?.metadata?.listType) continue;
+    if ((await publicMetaDBListType(config, catalog.id)) === 'watchlist') return catalog;
+  }
+  return null;
+}
+
+async function setListItem(apiKey: string, listId: string, tmdbId: number | string, mediaType: 'movie' | 'tv', listed: boolean): Promise<void> {
+  if (listed) {
+    await makeRequest(`/api/external/lists/${listId}/items`, apiKey, 'POST', { tmdb_id: Number(tmdbId), media_type: mediaType });
+    return;
+  }
+  for (let page = 1; page <= 20; page++) {
+    const data = await fetchListItems(apiKey, listId, page, 500);
+    const item = (data.items || []).find((i: any) => String(i?.tmdb_id) === String(tmdbId) && i?.media_type === mediaType);
+    if (item?.id) {
+      await makeRequest(`/api/external/lists/${listId}/items/${item.id}`, apiKey, 'DELETE');
+      return;
+    }
+    if (page >= (data.totalPages || 1)) return;
+  }
+}
+
 async function fetchListItems(apiKey: string, listId: string, page: number = 1, perPage: number = 20): Promise<any> {
   return makeRequest(`/api/external/lists/${listId}/items?page=${page}&perPage=${perPage}`, apiKey);
 }
@@ -622,6 +649,8 @@ export {
   fetchLists,
   fetchListItems,
   publicMetaDBListType,
+  publicMetaDBWatchlistCatalog,
+  setListItem,
   fetchPicks,
   fetchPickItems,
   markWatched,
