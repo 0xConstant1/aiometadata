@@ -437,7 +437,6 @@ export function resumeUserData(
     PlayCount: played ? 1 : 0,
     IsFavorite: false,
     Played: played,
-    UnplayedItemCount: 0,
     Key: id,
     ItemId: id,
   };

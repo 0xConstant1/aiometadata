@@ -162,7 +162,6 @@ const EMPTY_USER_DATA = {
   PlayCount: 0,
   IsFavorite: false,
   Played: false,
-  UnplayedItemCount: 0,
 };
 
 export function collectionFolder(
