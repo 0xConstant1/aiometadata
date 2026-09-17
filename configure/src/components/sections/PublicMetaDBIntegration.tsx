@@ -89,6 +89,36 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
     toast.success("PublicMetaDB disconnected. All PublicMetaDB catalogs have been removed.");
   };
 
+  const rememberListKinds = useCallback((items: any[]) => {
+    setConfig((prev) => {
+      let changed = false;
+      const catalogs = prev.catalogs.map((c) => {
+        if (!c.id.startsWith('publicmetadb.list.')) return c;
+        const list = items.find((l: any) => `publicmetadb.list.${l.id}` === c.id);
+        if (!list) return c;
+        const metadata = { ...c.metadata };
+        if (list.type && metadata.listType !== list.type) metadata.listType = list.type;
+        if (typeof list.is_public === 'boolean' && metadata.isPublic !== list.is_public) metadata.isPublic = list.is_public;
+        if (metadata.listType === c.metadata?.listType && metadata.isPublic === c.metadata?.isPublic) return c;
+        changed = true;
+        return { ...c, metadata };
+      });
+      return changed ? { ...prev, catalogs } : prev;
+    });
+  }, [setConfig]);
+
+  const needsListKinds = config.catalogs.some((c) => c.id.startsWith('publicmetadb.list.') && !c.metadata?.listType);
+  useEffect(() => {
+    const key = config.apiKeys.publicmetadb;
+    if (!key || !needsListKinds) return;
+    let cancelled = false;
+    fetch(`/api/publicmetadb/lists?apikey=${encodeURIComponent(key)}&perPage=500`)
+      .then((res) => res.json())
+      .then((data) => { if (!cancelled) rememberListKinds(data.items || []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [config.apiKeys.publicmetadb, needsListKinds, rememberListKinds]);
+
   const loadLists = useCallback(async () => {
     const key = config.apiKeys.publicmetadb;
     if (!key) return;
@@ -99,6 +129,7 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
       const items = data.items || [];
       setLists(items);
       setSelectedLists(new Set());
+      rememberListKinds(items);
       if (items.length === 0) {
         toast.info("No lists found", { description: "You have no lists on your PublicMetaDB account." });
       } else {
@@ -109,7 +140,7 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
     } finally {
       setIsLoadingLists(false);
     }
-  }, [config.apiKeys.publicmetadb]);
+  }, [config.apiKeys.publicmetadb, rememberListKinds]);
 
   const handleListSelection = (listId: string, checked: boolean) => {
     const next = new Set(selectedLists);

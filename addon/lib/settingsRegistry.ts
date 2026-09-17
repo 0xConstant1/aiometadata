@@ -353,6 +353,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 1800,
   },
   {
+    key: 'PUBLICMETADB_LISTS_TTL',
+    envVar: 'PUBLICMETADB_LISTS_TTL',
+    label: 'PublicMetaDB Lists Cache TTL',
+    description: 'How long a PublicMetaDB account\'s list of lists is cached, in seconds. Read to tell a watchlist from a custom list for a catalog imported before that was stored on it.',
+    category: 'Cache',
+    type: 'number',
+    default: 3600,
+    min: 60,
+  },
+  {
     key: 'CONFIG_CACHE_TTL_SEC',
     envVar: 'CONFIG_CACHE_TTL_SEC',
     label: 'Config Cache TTL',

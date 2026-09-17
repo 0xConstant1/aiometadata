@@ -7,7 +7,7 @@ import { fetchTraktWatchlistItems, fetchTraktFavoritesItems, fetchTraktRecommend
 import { fetchSimklTrendingItems, fetchSimklRecipeItems, fetchSimklWatchlistItems, fetchSimklUpNextItems, parseSimklItems, parseSimklUpNextItems, getSimklToken, fetchSimklCalendarItems, fetchSimklGenreItems, fetchSimklDvdReleases } from "../utils/simklUtils.js";
 import { fetchLetterboxdList, parseLetterboxdItems, getLetterboxdGenreIdByName } from "../utils/letterboxdUtils.js";
 import { getFlixPatrolMetas } from "../utils/flixpatrolUtils.js";
-import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems } from "../utils/publicmetadbUtils.js";
+import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType } from "../utils/publicmetadbUtils.js";
 import { mapWithLimit } from "../utils/concurrency.js";
 const anilist = require('./anilist');
 import * as jikan from "./mal.js"
@@ -3324,9 +3324,12 @@ async function getPublicMetaDBCatalog(
     if (catalogId.startsWith('publicmetadb.list.')) {
       const listId = catalogId.replace('publicmetadb.list.', '');
       const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
-      const data = await fetchListItems(apiKey, listId, page, pageSize);
+      const [data, listType] = await Promise.all([
+        fetchListItems(apiKey, listId, page, pageSize),
+        publicMetaDBListType(config, catalogId),
+      ]);
       let metas = await parseListItems(data.items || [], type, language, config);
-      logger.success(`[PublicMetaDB] List ${listId}: ${metas.length} items (page ${page})`);
+      logger.success(`[PublicMetaDB] ${listType === 'watchlist' ? 'Watchlist' : 'List'} ${listId}: ${metas.length} items (page ${page})`);
       return metas;
     }
 
