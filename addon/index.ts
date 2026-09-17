@@ -1798,7 +1798,12 @@ addon.get("/api/tmdb/discover/reference", async (req, res) => {
           moviedb.makeTmdbRequest('/watch/providers/regions', tmdbApiKey, {}, 'GET', null, config),
         ]);
 
-        const genres = Array.isArray(genresData?.genres) ? genresData.genres : [];
+        let genres = Array.isArray(genresData?.genres) ? genresData.genres : [];
+        if (genres.some(genre => !genre?.name) && lang !== 'en-US') {
+          const english = await moviedb.makeTmdbRequest(`/genre/${mediaType}/list`, tmdbApiKey, { language: 'en-US' }, 'GET', null, config);
+          const names = new Map((Array.isArray(english?.genres) ? english.genres : []).map(genre => [genre.id, genre.name]));
+          genres = genres.map(genre => (genre?.name ? genre : { ...genre, name: names.get(genre?.id) ?? '' }));
+        }
         const languages = Array.isArray(languagesData)
           ? languagesData.filter(langItem => !!langItem?.iso_639_1)
           : [];

@@ -2287,8 +2287,8 @@ const StreamingSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: Catalo
 
 const PMDBSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConfig, isOpen: boolean, onClose: () => void }) => {
   const { setConfig, catalogTTL, config } = useConfig();
-  const isWatchlist = catalog.id === 'publicmetadb.upnext';
-  const minCacheTTL = minCacheTTLFor(catalog.id);
+  const isWatchlist = catalog.id === 'publicmetadb.upnext' || catalog.metadata?.listType === 'watchlist';
+  const minCacheTTL = minCacheTTLFor(catalog.id, catalog.metadata);
   const [cacheTTL, setCacheTTL] = useState<number | null>(catalog.cacheTTL ?? null);
   const [hideWatchedTrakt, setHideWatchedTrakt] = useState<string>(catalog.metadata?.hideWatchedTrakt === true ? 'on' : catalog.metadata?.hideWatchedTrakt === false ? 'off' : 'global');
   const [hideWatchedAnilist, setHideWatchedAnilist] = useState<string>(catalog.metadata?.hideWatchedAnilist === true ? 'on' : catalog.metadata?.hideWatchedAnilist === false ? 'off' : 'global');
@@ -3499,6 +3499,11 @@ const SortableCatalogItem = React.memo(({ catalog, onEditDiscover, onCustomize, 
             >
               {catalog.displayType || catalog.type}
             </Badge>
+            {catalog.source === 'publicmetadb' && catalog.metadata?.listType === 'watchlist' && (
+              <Badge variant="outline" className={`text-xs shrink-0 ${catalog.enabled ? '' : 'opacity-50'}`}>
+                Watchlist
+              </Badge>
+            )}
             {catalog.source === 'anilist' && anilistRequiresAuth && !config.apiKeys?.anilistTokenId && (
               <Badge
                 variant="outline"
@@ -4863,7 +4868,7 @@ function CatalogsSettingsContent({
         catalogs: prev.catalogs.map(c => {
           const catalogKey = `${c.id}-${c.type}`;
           if (targets.some(cat => `${cat.id}-${cat.type}` === catalogKey)) {
-            return { ...c, cacheTTL: Math.max(ttl, minCacheTTLFor(c.id)) };
+            return { ...c, cacheTTL: Math.max(ttl, minCacheTTLFor(c.id, c.metadata)) };
           }
           return c;
         })

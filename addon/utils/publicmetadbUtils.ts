@@ -1,5 +1,6 @@
 import { getMeta } from "../lib/getMeta.js";
-import { cacheWrapMetaSmart } from "../lib/getCache.js";
+import { cacheWrapMetaSmart, cacheWrapGlobal } from "../lib/getCache.js";
+import { createHash } from "crypto";
 import { resolveAllIds } from "../lib/id-resolver.js";
 import { UserConfig } from "../types/index.js";
 import consola from 'consola';
@@ -218,6 +219,47 @@ async function clearResume(apiKey: string, tmdbId: number, mediaType: 'movie' | 
 
 async function fetchLists(apiKey: string, page: number = 1, perPage: number = 50): Promise<any> {
   return makeRequest(`/api/external/lists?page=${page}&perPage=${perPage}`, apiKey);
+}
+
+type PmdbListType = 'watchlist' | 'custom';
+
+function asListType(value: any): PmdbListType | null {
+  return value === 'watchlist' || value === 'custom' ? value : null;
+}
+
+async function fetchAllLists(apiKey: string): Promise<any[]> {
+  const items: any[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const data = await fetchLists(apiKey, page, 500);
+    items.push(...(data.items || []));
+    if (page >= (data.totalPages || 1)) break;
+  }
+  return items;
+}
+
+async function resolveListType(apiKey: string, listId: string): Promise<PmdbListType | null> {
+  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  const ttl = parseInt(process.env.PUBLICMETADB_LISTS_TTL || '3600', 10);
+  const kinds: Array<{ id: string; type: PmdbListType }> = await cacheWrapGlobal(`publicmetadb:list-kinds:${keyHash}`, async () =>
+    (await fetchAllLists(apiKey))
+      .map((list: any) => ({ id: list?.id, type: asListType(list?.type) }))
+      .filter((k: any): k is { id: string; type: PmdbListType } => Boolean(k.id && k.type)),
+  ttl);
+  return kinds?.find((k) => k.id === listId)?.type ?? null;
+}
+
+async function publicMetaDBListType(config: any, catalogId: string): Promise<PmdbListType | null> {
+  if (!catalogId.startsWith('publicmetadb.list.')) return null;
+  const catalog = config?.catalogs?.find((c: any) => c.id === catalogId);
+  const known = asListType(catalog?.metadata?.listType);
+  if (known) return known;
+  const apiKey = config?.apiKeys?.publicmetadb;
+  if (!apiKey) return null;
+  try {
+    return await resolveListType(apiKey, catalogId.slice('publicmetadb.list.'.length));
+  } catch {
+    return null;
+  }
 }
 
 async function fetchListItems(apiKey: string, listId: string, page: number = 1, perPage: number = 20): Promise<any> {
@@ -579,6 +621,7 @@ export {
   removeWatched,
   fetchLists,
   fetchListItems,
+  publicMetaDBListType,
   fetchPicks,
   fetchPickItems,
   markWatched,
