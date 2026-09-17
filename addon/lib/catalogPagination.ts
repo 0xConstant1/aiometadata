@@ -134,11 +134,6 @@ export async function fillFilteredPage(options: {
 
     offset = 0;
     page += 1;
-
-    if (raw.length < pageSize) {
-      exhausted = true;
-      break;
-    }
   }
 
   return { metas, nextPage: page, nextOffset: offset, pagesRead, exhausted };
