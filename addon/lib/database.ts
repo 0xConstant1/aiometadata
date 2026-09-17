@@ -939,7 +939,6 @@ class Database {
     const out = new Map<string, any>();
     if (!videoIds.length) return out;
 
-    // Bound parameters are capped per statement, so a whole history is looked up in slices.
     const slice = 500;
     for (let at = 0; at < videoIds.length; at += slice) {
       const ids = videoIds.slice(at, at + slice);

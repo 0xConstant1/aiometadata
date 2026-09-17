@@ -1690,9 +1690,18 @@ export interface MdblistScrobbleOptions {
   progress?: number;
 }
 
+function responseDetail(error: any): string {
+  const data = error?.response?.data;
+  const text = typeof data === 'string' ? data : data ? JSON.stringify(data) : '';
+  return text ? ` (${text.slice(0, 300)})` : '';
+}
+
+function scrobblePath(action: string): string {
+  return action === 'checkin' ? 'checkin' : `scrobble/${action}`;
+}
+
 function scrobbleUrl(action: string, apiKey: string): string {
-  const path = action === 'checkin' ? 'checkin' : `scrobble/${action}`;
-  return `https://api.mdblist.com/${path}?apikey=${apiKey}`;
+  return `https://api.mdblist.com/${scrobblePath(action)}?apikey=${apiKey}`;
 }
 
 async function checkinMovie(
@@ -1723,17 +1732,17 @@ async function checkinMovie(
         dispatcher: mdblistDispatcher
       }),
       apiKey,
-      `MDBList checkinMovie (${formatIdSummary(idInput)})`
+      `MDBList ${scrobblePath(action)} (${formatIdSummary(idInput)})`
     );
 
-    logger.info('[MDBList Checkin] Movie check-in successful', { ids: idInput });
+    logger.info(`[MDBList ${action}] Movie reported`, { ids: idInput });
     return true;
   } catch (error: any) {
     if (error.response?.status === 409) {
-      logger.info('[MDBList Checkin] Session already managed by another API (409 Conflict)');
+      logger.info(`[MDBList ${action}] Session already managed by another API (409 Conflict)`);
       return true;
     }
-    logger.error(`[MDBList Checkin] Movie check-in failed: ${error.message}`);
+    logger.error(`[MDBList ${action}] Movie report failed: ${error.message}${responseDetail(error)}`);
     return false;
   }
 }
@@ -1779,17 +1788,17 @@ async function checkinEpisode(
         dispatcher: mdblistDispatcher
       }),
       apiKey,
-      `MDBList checkinEpisode (${formatIdSummary(idInput)} S${season}E${episode})`
+      `MDBList ${scrobblePath(action)} (${formatIdSummary(idInput)} S${season}E${episode})`
     );
 
-    logger.info('[MDBList Checkin] Episode check-in successful', { ids: idInput, season, episode });
+    logger.info(`[MDBList ${action}] Episode reported`, { ids: idInput, season, episode });
     return true;
   } catch (error: any) {
     if (error.response?.status === 409) {
-      logger.info('[MDBList Checkin] Session already managed by another API (409 Conflict)');
+      logger.info(`[MDBList ${action}] Session already managed by another API (409 Conflict)`);
       return true;
     }
-    logger.error(`[MDBList Checkin] Episode check-in failed: ${error.message}`);
+    logger.error(`[MDBList ${action}] Episode report failed: ${error.message}${responseDetail(error)}`);
     return false;
   }
 }
