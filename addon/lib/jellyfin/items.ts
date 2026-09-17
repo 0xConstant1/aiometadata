@@ -156,6 +156,19 @@ const pageLengths = new LRUCache<string, number>({
   max: envInt('JELLYFIN_PAGE_LENGTH_CACHE_MAX', 2000, 1),
 });
 
+const catalogLengths = new LRUCache<string, number>({
+  max: envInt('JELLYFIN_PAGE_LENGTH_CACHE_MAX', 2000, 1),
+  ttl: envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60) * 1000,
+});
+
+function lengthKeyFor(catalog: CatalogRef, extras: Record<string, string>, tags: string[]): string {
+  return `${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}`;
+}
+
+export function knownCatalogLength(catalog: CatalogRef, extras: Record<string, string> = {}, tags: string[] = []): number | undefined {
+  return catalogLengths.get(lengthKeyFor(catalog, extras, tags));
+}
+
 /**
  * `skip` is an absolute offset, but the catalog route rounds it up to a whole
  * page for a stable cache key, so an offset landing mid-page silently loses the
@@ -174,7 +187,7 @@ export async function fetchWindow(
   keep?: (meta: any) => boolean,
   tags: string[] = []
 ): Promise<Window> {
-  const lengthKey = `${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}`;
+  const lengthKey = lengthKeyFor(catalog, extras, tags);
   let pageLength = pageLengths.get(lengthKey);
 
   if (!pageLength && startIndex > 0) {
@@ -230,6 +243,8 @@ export async function fetchWindow(
       break;
     }
   }
+
+  if (exhausted) catalogLengths.set(lengthKey, alignedSkip + collected.length);
 
   // Duplicates are dropped above, so trimming by count would cut into the window
   // itself; the offset only ever covers items that came before startIndex.

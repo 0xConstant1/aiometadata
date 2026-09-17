@@ -23,7 +23,7 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
-import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
+import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, recallImages, rememberImages } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -486,15 +486,18 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     // The watchlist, newest first, is what a client calls favourites.
     if (filters.includes('IsFavorite')) {
+      const started = Date.now();
       const wanted = includeItemTypes
         ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
         : null;
       const entries = (await watchlistEntries(userUUID, config)).filter((entry) =>
         !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
       );
+      const listed = Date.now() - started;
       const page = entries.slice(startIndex, startIndex + limit);
       const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
       await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+      logger.debug(`Favourites for ${userUUID}: ${items.length} of ${entries.length} in ${Date.now() - started}ms (entries ${listed}ms)`);
       res.json(itemList(items, entries.length, startIndex));
       return;
     }
@@ -636,36 +639,37 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       });
 
       const collected: any[] = [];
-      let offset = 0;
-      let more = false;
+      let passed = 0;
+      const tags = profileTags(config);
 
       for (const catalog of pool) {
         if (collected.length >= limit) break;
 
+        const known = knownCatalogLength(catalog, extras, tags);
+        if (known !== undefined && passed + known <= startIndex) {
+          passed += known;
+          continue;
+        }
+
+        const skip = Math.max(0, startIndex - passed);
         const page = await fetchWindow(
           userUUID,
           catalog,
-          Math.max(0, startIndex - offset),
-          limit - collected.length + Math.max(0, offset - startIndex),
+          skip,
+          limit - collected.length,
           extras,
           includeTypesFilter(catalog.type, includeItemTypes ? String(includeItemTypes) : undefined),
-          profileTags(config)
+          tags
         ).catch(() => ({ items: [] as any[], hasMore: false }));
 
         const viewId = encodeJellyfinId({ k: 'view', t: catalog.type, c: catalog.id });
         for (const meta of page.items) {
-          if (!meta?.id) continue;
-          if (offset >= startIndex && collected.length < limit) {
-            collected.push(metaToBaseItem(meta, catalog.type, serverId, viewId));
-          }
-          offset += 1;
+          if (!meta?.id || collected.length >= limit) continue;
+          collected.push(metaToBaseItem(meta, catalog.type, serverId, viewId));
         }
 
-        if (page.hasMore) {
-          offset += 1;
-          more = true;
-        }
-        if (page.hasMore && collected.length >= limit) break;
+        if (page.hasMore) break;
+        passed += knownCatalogLength(catalog, extras, tags) ?? skip + page.items.length;
       }
 
       const across = filterByIncludeTypes(
@@ -674,11 +678,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       );
       await applyWatchedState(across, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
 
-      res.json(itemList(
-        across,
-        more && across.length >= limit ? startIndex + across.length + limit : startIndex + across.length,
-        startIndex
-      ));
+      res.json(itemList(across, startIndex + across.length, startIndex));
       return;
     }
 
