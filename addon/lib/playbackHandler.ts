@@ -210,7 +210,7 @@ export async function handlePlaybackReport(
 
   const progress =
     report.positionMs !== null && report.durationMs
-      ? Math.round((report.positionMs / report.durationMs) * 100)
+      ? Math.min(100, Math.max(0, Math.round((report.positionMs / report.durationMs) * 100)))
       : null;
 
   logger.info(
