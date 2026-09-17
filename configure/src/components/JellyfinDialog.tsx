@@ -340,18 +340,15 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const resumeSourceOptions = useMemo(() => {
     const candidates: Array<{ value: string; label: string; ready: boolean }> = [
       { value: 'mdblist', label: 'MDBList', ready: Boolean(config.apiKeys?.mdblist) && config.mdblistWatchTracking !== false },
-      { value: 'trakt', label: 'Trakt', ready: Boolean(config.apiKeys?.traktTokenId) && config.traktWatchTracking !== false },
       { value: 'simkl', label: 'Simkl', ready: Boolean(config.apiKeys?.simklTokenId) && config.simklWatchTracking !== false },
       { value: 'publicmetadb', label: 'PublicMetaDB', ready: Boolean(config.apiKeys?.publicmetadb) && config.publicmetadbWatchTracking !== false },
     ];
     return candidates.filter((c) => c.ready);
   }, [
     config.apiKeys?.mdblist,
-    config.apiKeys?.traktTokenId,
     config.apiKeys?.simklTokenId,
     config.apiKeys?.publicmetadb,
     config.mdblistWatchTracking,
-    config.traktWatchTracking,
     config.simklWatchTracking,
     config.publicmetadbWatchTracking,
   ]);
