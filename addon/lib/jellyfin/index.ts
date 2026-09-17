@@ -471,7 +471,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   router.get(['/Items', '/Users/:userId/Items'], async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
     const startIndex = Math.max(0, qInt(req, 'StartIndex', 0));
-    const limit = Math.min(Math.max(1, qInt(req, 'Limit', 100)), envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20));
+    const limit = Math.min(Math.max(1, qInt(req, 'Limit', 100)), 500);
     const includeItemTypes = req.query.IncludeItemTypes ?? req.query.includeItemTypes;
     const parentId = req.query.ParentId ?? req.query.parentId;
     const filters = String(req.query.Filters ?? req.query.filters ?? '');
@@ -735,14 +735,15 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           res.json(itemList([], 0, startIndex));
           return;
         }
+        const folderLimit = Math.min(limit, envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20));
         const page = await boxSetMembers(
-          userUUID, config, serverId, collection, folder, startIndex, limit,
+          userUUID, config, serverId, collection, folder, startIndex, folderLimit,
           includeItemTypes ? String(includeItemTypes) : undefined
         );
         await applyWatchedState(page.items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
         res.json(itemList(
           page.items,
-          page.hasMore && page.items.length > 0 ? startIndex + page.items.length + limit : startIndex + page.items.length,
+          page.hasMore && page.items.length > 0 ? startIndex + page.items.length + folderLimit : startIndex + page.items.length,
           startIndex
         ));
         return;
@@ -1541,7 +1542,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
     const kind = String(req.params.imageType).toLowerCase();
-    const url =
+    let url =
       kind === 'primary' ? images.primary
       : kind === 'backdrop' ? images.backdrop
       : kind === 'logo' ? images.logo
@@ -1552,6 +1553,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(404).end();
       return;
     }
+    url = tmdbSized(url, kind, qInt(req, 'MaxWidth', 0));
 
     // A folder cover is cropped to its tile's shape rather than letterboxed by the client.
     if (kind === 'primary') {
@@ -1566,6 +1568,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const cached = throughPosterCache(url, kind);
     if (cached) {
+      const local = builtinPosterCachePath(cached);
+      if (local) {
+        await serveFromPosterCache(req, res, local, cached);
+        return;
+      }
+      res.set('Cache-Control', 'public, max-age=86400');
       res.redirect(302, cached);
       return;
     }
@@ -1575,6 +1583,46 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     await streamImage(res, url);
   });
+
+  const TMDB_ORIGINAL = 'https://image.tmdb.org/t/p/original/';
+  const TMDB_WIDTHS: Record<string, number[]> = {
+    logo: [92, 154, 185, 300, 500],
+    poster: [92, 154, 185, 342, 500, 780],
+    backdrop: [300, 780, 1280],
+  };
+  const tmdbSized = (url: string, kind: string, maxWidth: number): string => {
+    if (!url.includes(TMDB_ORIGINAL)) return url;
+    const bucket = kind === 'logo' ? 'logo' : kind === 'backdrop' || kind === 'thumb' ? 'backdrop' : 'poster';
+    const widths = TMDB_WIDTHS[bucket];
+    const wanted = maxWidth > 0 ? maxWidth : bucket === 'backdrop' ? 1280 : bucket === 'logo' ? 500 : 780;
+    const width = widths.find((w) => w >= wanted);
+    return width ? url.replace(TMDB_ORIGINAL, `https://image.tmdb.org/t/p/w${width}/`) : url;
+  };
+
+  const builtinPosterCachePath = (url: string): string | null => {
+    const posterCache = require('../posterCache/config');
+    if (!posterCache.isBuiltinPosterCacheEnabled?.()) return null;
+    const origin: string = posterCache.getSelfOrigin?.() || '';
+    const route: string = posterCache.POSTER_CACHE_ROUTE;
+    if (!origin || !url.startsWith(`${origin}${route}/`)) return null;
+    return url.slice(origin.length);
+  };
+
+  const serveFromPosterCache = (req: any, res: any, path: string, fallback: string): Promise<void> =>
+    new Promise((resolve) => {
+      const inner = Object.create(req, {
+        url: { value: path, writable: true },
+        originalUrl: { value: path, writable: true },
+        baseUrl: { value: '', writable: true },
+        method: { value: 'GET' },
+      });
+      res.once('finish', resolve);
+      res.once('close', resolve);
+      req.app.handle(inner, res, () => {
+        if (!res.headersSent) res.redirect(302, fallback);
+        resolve();
+      });
+    });
 
   // Without a cache the bytes pass through here anyway, so a poster is shaped on the way out.
   const streamShaped = async (res: any, url: string): Promise<void> => {
