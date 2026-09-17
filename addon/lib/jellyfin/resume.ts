@@ -437,6 +437,7 @@ export function resumeUserData(
     PlayCount: played ? 1 : 0,
     IsFavorite: false,
     Played: played,
+    ...(row.updatedAt > 0 ? { LastPlayedDate: new Date(row.updatedAt).toISOString() } : {}),
     Key: id,
     ItemId: id,
   };
