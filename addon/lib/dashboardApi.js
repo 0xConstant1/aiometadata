@@ -418,6 +418,13 @@ class DashboardAPI {
           const hitRate = parseFloat(cacheHealth.hitRate) || 0;
           const missRate = hitRate > 0 ? 100 - hitRate : 0;
 
+          let evictedKeys = null;
+          try {
+            const stats = await this.cache.info("stats");
+            const line = stats.split("\r\n").find((l) => l.startsWith("evicted_keys:"));
+            if (line) evictedKeys = parseInt(line.split(":")[1], 10);
+          } catch (_) {}
+
           // Get real Redis memory usage
           let memoryUsed = "0 MB";
           let memoryUsagePercent = null;
@@ -469,7 +476,7 @@ class DashboardAPI {
             missRate: missRate,
             memoryUsage: memoryUsed,
             memoryUsagePercent: memoryUsagePercent,
-            evictionRate: 2.1, // TODO: Calculate real eviction rate from Redis stats
+            evictedKeys: Number.isFinite(evictedKeys) ? evictedKeys : null,
             totalKeys: totalKeys,
             hits: cacheHealth.hits || 0,
             misses: cacheHealth.misses || 0,
@@ -486,7 +493,7 @@ class DashboardAPI {
             missRate: 0,
             memoryUsage: "N/A",
             memoryUsagePercent: null,
-            evictionRate: 0,
+            evictedKeys: null,
             totalKeys: 0,
             hits: 0,
             misses: 0,
@@ -500,7 +507,7 @@ class DashboardAPI {
         missRate: 0,
         memoryUsage: "N/A",
         memoryUsagePercent: null,
-        evictionRate: 0,
+        evictedKeys: null,
         totalKeys: 0,
         hits: 0,
         misses: 0,
@@ -514,7 +521,7 @@ class DashboardAPI {
         missRate: 0,
         memoryUsage: "N/A",
         memoryUsagePercent: null,
-        evictionRate: 0,
+        evictedKeys: null,
         totalKeys: 0,
         hits: 0,
         misses: 0,

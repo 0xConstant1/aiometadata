@@ -139,7 +139,7 @@ export function DashboardAnalytics({ data, isMobile }: DashboardAnalyticsProps) 
     missRate: data?.cachePerformance?.missRate || 0,
     memoryUsage: data?.cachePerformance?.memoryUsage || 0,
     memoryUsagePercent: data?.cachePerformance?.memoryUsagePercent ?? null,
-    evictionRate: data?.cachePerformance?.evictionRate || 0,
+    evictedKeys: data?.cachePerformance?.evictedKeys ?? null,
   }));
 
   const [providerPerformance, setProviderPerformance] = useState(() => data?.providerPerformance || []);
@@ -304,7 +304,7 @@ export function DashboardAnalytics({ data, isMobile }: DashboardAnalyticsProps) 
               </div>
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">Evictions</p>
-                <p className="text-sm font-semibold">{Number(cachePerformance.evictionRate)}/s</p>
+                <p className="text-sm font-semibold">{cachePerformance.evictedKeys === null ? "N/A" : Number(cachePerformance.evictedKeys).toLocaleString()}</p>
               </div>
             </div>
           </div>
