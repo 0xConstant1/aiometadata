@@ -31,7 +31,7 @@ const catalogCache = new LRUCache<string, CatalogRef[]>({
 // Types outside movies and shows are left without a CollectionType, which
 // renders as a mixed library rather than one wearing the wrong chrome.
 export function collectionTypeFor(type: string): string | null {
-  switch (type) {
+  switch (String(type).toLowerCase()) {
     case 'movie':
     case 'anime.movie':
       return 'movies';
@@ -41,6 +41,35 @@ export function collectionTypeFor(type: string): string | null {
     default:
       return null;
   }
+}
+
+// Clients build home rows only from views of one kind.
+const sniffed = new LRUCache<string, string | null>({
+  max: envInt('JELLYFIN_VIEWS_CACHE_MAX', 500, 1),
+  ttl: Math.max(1, viewsTtlSeconds()) * 1000,
+});
+const sniffing = new Set<string>();
+
+export function viewCollectionType(userUUID: string, catalog: CatalogRef, config: any): string | null {
+  const declared = collectionTypeFor(catalog.type);
+  if (declared) return declared;
+  if (String(catalog.type).toLowerCase() === 'anime') return 'tvshows';
+
+  const tags = profileTags(config);
+  const key = `${catalog.type}|${catalog.id}|${tags.join(',')}`;
+  if (sniffed.has(key)) return sniffed.get(key) ?? null;
+  if (!sniffing.has(key)) {
+    sniffing.add(key);
+    const { fetchWindow } = require('./items');
+    fetchWindow(userUUID, catalog, 0, 20, {}, undefined, tags)
+      .then((window: any) => {
+        const kinds = new Set<string>((window?.items ?? []).filter((m: any) => m?.id).map((m: any) => (m.type === 'movie' ? 'movies' : 'tvshows')));
+        sniffed.set(key, kinds.size === 1 ? [...kinds][0] : null);
+      })
+      .catch(() => sniffed.set(key, null))
+      .finally(() => sniffing.delete(key));
+  }
+  return null;
 }
 
 export async function getCatalogs(userUUID: string, config: any): Promise<CatalogRef[]> {
@@ -98,7 +127,7 @@ export async function buildViews(
   const { boxSetsFor, collectionView, entryVisible } = require('./collections');
   const catalogs = (await getCatalogs(userUUID, config)).filter(isBrowsable);
   const catalogView = (catalog: CatalogRef) =>
-    collectionFolder(viewIdFor(catalog), serverId, catalog.name, collectionTypeFor(catalog.type), null);
+    collectionFolder(viewIdFor(catalog), serverId, catalog.name, viewCollectionType(userUUID, catalog, config), null);
 
   const views: any[] = [];
   const placed = new Set<CatalogRef>();

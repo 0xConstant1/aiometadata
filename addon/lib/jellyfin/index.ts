@@ -21,7 +21,7 @@ import {
   userDto,
   SERVER_NAME,
 } from './dto';
-import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
+import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable, viewCollectionType } from './views';
 import { decodeJellyfinId } from './ids';
 import { buildEpisodes, buildSeasons, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
@@ -2393,7 +2393,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           req.params.itemId,
           serverIdFor(userUUID),
           catalog.name,
-          collectionTypeFor(catalog.type),
+          viewCollectionType(userUUID, catalog, config),
           null
         )
       );
