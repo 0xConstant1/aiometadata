@@ -30,6 +30,9 @@ const snapshots = new LRUCache<string, ResumeRow[]>({
 
 const inFlight = new Map<string, Promise<ResumeRow[]>>();
 
+const generations = new Map<string, number>();
+const generationOf = (userUUID: string): number => generations.get(userUUID) ?? 0;
+
 /**
  * A tracker names an episode in its own space, which for anime is rarely the
  * one the meta publishes: a row stored as TVDB S3E11 is `kitsu:49002:11` here.
@@ -345,25 +348,27 @@ async function serviceSnapshot(userUUID: string, config: any, service: Capable):
   const cached = snapshots.get(key);
   if (cached) return cached;
 
-  const running = inFlight.get(key);
+  const generation = generationOf(userUUID);
+  const flightKey = `${generation}:${key}`;
+  const running = inFlight.get(flightKey);
   if (running) return running;
 
   const started = (async () => {
     try {
       const rows = await rowsFrom(service, credential, config);
-      snapshots.set(key, rows);
+      if (generationOf(userUUID) === generation) snapshots.set(key, rows);
       logger.debug(`Resume snapshot for ${userUUID} from ${service}: ${rows.length} rows`);
       return rows;
     } catch (error: any) {
-      snapshots.set(key, []);
+      if (generationOf(userUUID) === generation) snapshots.set(key, []);
       logger.warn(`Resume snapshot from ${service} failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_RESUME_TTL', 60, 1)}s`);
       return [];
     } finally {
-      inFlight.delete(key);
+      if (inFlight.get(flightKey) === started) inFlight.delete(flightKey);
     }
   })();
 
-  inFlight.set(key, started);
+  inFlight.set(flightKey, started);
   return started;
 }
 
@@ -372,6 +377,7 @@ async function serviceSnapshot(userUUID: string, config: any, service: Capable):
 // false because the row is resumable.
 /** Dropped when this server is itself the thing that changed the state. */
 export function invalidateResume(userUUID: string): void {
+  generations.set(userUUID, generationOf(userUUID) + 1);
   for (const key of [...snapshots.keys()]) {
     if (String(key).startsWith(`${userUUID}:`)) snapshots.delete(key);
   }
@@ -395,17 +401,23 @@ export async function memoNextUp(
 ): Promise<any[]> {
   const held = nextUpPages.get(key);
   if (held) return held;
-  const running = nextUpInFlight.get(key);
+  const generation = generationOf(userUUID);
+  const flightKey = `${generation}:${key}`;
+  const running = nextUpInFlight.get(flightKey);
   if (running) return running;
   const work = build()
     .then((result) => {
-      const until = validUntil?.(result);
-      const left = until ? until - Date.now() : null;
-      nextUpPages.set(key, result, left && left > 0 && left < nextUpPages.ttl! ? { ttl: left } : undefined);
+      if (generationOf(userUUID) === generation) {
+        const until = validUntil?.(result);
+        const left = until ? until - Date.now() : null;
+        nextUpPages.set(key, result, left && left > 0 && left < nextUpPages.ttl! ? { ttl: left } : undefined);
+      }
       return result;
     })
-    .finally(() => nextUpInFlight.delete(key));
-  nextUpInFlight.set(key, work);
+    .finally(() => {
+      if (nextUpInFlight.get(flightKey) === work) nextUpInFlight.delete(flightKey);
+    });
+  nextUpInFlight.set(flightKey, work);
   return work;
 }
 

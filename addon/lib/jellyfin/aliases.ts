@@ -88,12 +88,12 @@ export async function getPlaystatesAcross(userUUID: string, videoIds: string[], 
   const rows: Map<string, any> = await database.getPlaystates(userUUID, [...lookup], profile);
   const out = new Map<string, any>();
   for (const id of videoIds) {
-    const own = rows.get(id);
-    const other = (aliases.get(id) || []).map((alias) => rows.get(alias)).find(Boolean);
-    // The newest write wins when the spellings disagree.
-    const pick = own && other
-      ? (Number(own.updated_at) >= Number(other.updated_at) ? own : other)
-      : own || other;
+    let pick: any = null;
+    for (const spelling of [id, ...(aliases.get(id) || [])]) {
+      const row = rows.get(spelling);
+      if (!row) continue;
+      if (!pick || (Number(row.updated_at) || 0) > (Number(pick.updated_at) || 0)) pick = row;
+    }
     if (pick) out.set(id, pick);
   }
   return out;
