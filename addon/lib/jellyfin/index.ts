@@ -23,7 +23,7 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
-import { buildEpisodes, buildSeasons, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
+import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, metaToBaseItem, recallImages, rememberImages } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -571,7 +571,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const extras: Record<string, string> = {};
     if (genreNames.length) extras.genre = genreNames[0];
-    if (searchTerm) extras.search = String(searchTerm);
+    if (searchTerm) {
+      extras.search = String(searchTerm);
+      extras.light = '1';
+    }
 
     if (genreNames.length > 1) {
       logger.debug(`Only the first of ${genreNames.length} genres is filterable: ${genreNames[0]}`);
@@ -1214,6 +1217,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   // Each catalog returns its own ranked list, so results are interleaved rather
   // than concatenated: one catalog's weak matches would bury another's best.
+  const isoDate = (value: any): string | null => {
+    const at = Date.parse(String(value ?? ''));
+    return Number.isFinite(at) ? new Date(at).toISOString() : null;
+  };
   const personItem = (id: string, serverId: string, name: string, person: any): any => {
     const bare = normaliseJellyfinId(id);
     if (person?.photo) rememberImages(serverId, bare, { primary: person.photo });
@@ -1223,8 +1230,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       ServerId: serverId,
       Type: 'Person',
       Overview: person?.biography || '',
-      PremiereDate: person?.birthday || null,
-      EndDate: person?.deathday || null,
+      PremiereDate: isoDate(person?.birthday),
+      EndDate: isoDate(person?.deathday),
       ProductionLocations: person?.birthplace ? [person.birthplace] : [],
       ImageTags: person?.photo ? { Primary: 'p' } : {},
       BackdropImageTags: [],
@@ -1265,10 +1272,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
     );
 
+    // One page per catalog; a second page of an AI or MAL search is another full query.
     const pages = await Promise.all(
       catalogs.map((catalog: any) =>
-        fetchWindow(userUUID, catalog, 0, limit, { search: term }, undefined, profileTags(config))
-          .then((window) => ({ catalog, items: window.items }))
+        fetchCatalogPage(userUUID, catalog.type, catalog.id, { search: term, light: '1' }, profileTags(config))
+          .then((items) => ({ catalog, items: items.slice(0, limit) }))
           .catch(() => ({ catalog, items: [] as any[] }))
       )
     );

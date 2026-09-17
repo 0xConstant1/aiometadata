@@ -4988,6 +4988,7 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
       config._currentSearchEngine = searchEngine;
       config._currentSearchType = searchType;
       config._currentSearchCatalogId = originalSearchId;
+      config._searchLight = extraArgs.light === '1';
 
       // Compute search-specific page size based on the provider's actual results per page
       let searchPageSize = 20; // default (TMDB, Kitsu)
