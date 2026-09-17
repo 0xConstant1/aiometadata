@@ -4,6 +4,7 @@ import { envInt } from '../../utils/envNumber';
 import {
   CODEC_VERSION,
   Descriptor,
+  canonicalMediaType,
   hashJellyfinId,
   isHashedJellyfinId,
   normaliseJellyfinId,
@@ -48,7 +49,9 @@ function scheduleFlush(): void {
   flushTimer.unref?.();
 }
 
-export function encodeJellyfinId(d: Descriptor): string {
+export function encodeJellyfinId(raw: Descriptor): string {
+  const t = canonicalMediaType(raw);
+  const d: Descriptor = t === undefined ? raw : ({ ...raw, t } as Descriptor);
   const packed = packJellyfinId(d);
   if (packed) return packed;
 

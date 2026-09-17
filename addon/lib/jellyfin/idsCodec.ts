@@ -149,6 +149,17 @@ export function buildVideoId(
     : `${base}:${season}:${episode}`;
 }
 
+/**
+ * The type an item id carries is the title's own kind, never the catalog it was
+ * listed from: a show reached through two catalogs is one item.
+ */
+export function canonicalMediaType(d: Descriptor): string | undefined {
+  if (d.k !== 'movie' && d.k !== 'series' && d.k !== 'season' && d.k !== 'episode') return (d as any).t;
+  const id = String(d.i ?? '');
+  if (/^(kitsu|mal|anilist|anidb):/.test(id)) return 'anime';
+  return d.k === 'movie' ? 'movie' : 'series';
+}
+
 function tryPack(d: Descriptor): string | null {
   if (d.k !== 'movie' && d.k !== 'series' && d.k !== 'season' && d.k !== 'episode') {
     return null;
