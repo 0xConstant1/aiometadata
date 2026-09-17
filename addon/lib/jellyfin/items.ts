@@ -305,6 +305,8 @@ function remoteTrailers(meta: any): any[] {
   return [...direct, ...youtube].slice(0, envInt('JELLYFIN_MAX_TRAILERS', 8, 1));
 }
 
+const EPOCH_DATE = new Date(0).toISOString();
+
 function premiereDate(meta: any): string | null {
   if (typeof meta.released === 'string' && meta.released) return meta.released;
   const year = parseInt(String(meta.year || meta.releaseInfo || ''), 10);
@@ -356,6 +358,7 @@ export function metaToBaseItem(
     Overview: meta.description || null,
     ProductionYear: productionYear(meta),
     PremiereDate: premiereDate(meta),
+    DateCreated: premiereDate(meta) ?? EPOCH_DATE,
     Genres: Array.isArray(meta.genres) ? meta.genres : [],
     GenreItems: (Array.isArray(meta.genres) ? meta.genres : []).map((g: string) => ({
       Name: g,
@@ -473,6 +476,7 @@ export function buildSeasons(
       SeriesId: seriesId,
       SeriesName: meta.name,
       IndexNumber: season,
+      DateCreated: EPOCH_DATE,
       ChildCount: episodes.length,
       RecursiveItemCount: episodes.length,
       UserData: { ...EMPTY_USER_DATA, Key: id, ItemId: id },
@@ -539,6 +543,7 @@ export function buildEpisodes(
       IndexNumber: Number(video.episode),
       Overview: video.overview || null,
       PremiereDate: video.released || null,
+      DateCreated: video.released || EPOCH_DATE,
       RunTimeTicks: parseRuntimeTicks(video.runtime),
       ProviderIds: {},
       ImageTags: video.thumbnail ? { Primary: 'p' } : {},
