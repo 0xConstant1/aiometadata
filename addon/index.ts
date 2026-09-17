@@ -7889,7 +7889,8 @@ addon.get("/api/dashboard/jellyfin/:userUUID/export", requireDashboardAdmin, asy
 addon.get("/api/dashboard/jellyfin/:userUUID", requireDashboardAdmin, async (req, res) => {
   try {
     const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
-    const payload = await require('./lib/jellyfin/dashboard').dashboardConfiguration(String(req.params.userUUID), profile);
+    const rows = parseInt(String(req.query.rows ?? ''), 10);
+    const payload = await require('./lib/jellyfin/dashboard').dashboardConfiguration(String(req.params.userUUID), profile, Number.isFinite(rows) ? rows : undefined);
     if (!payload) {
       res.status(404).json({ error: 'No such configuration' });
       return;

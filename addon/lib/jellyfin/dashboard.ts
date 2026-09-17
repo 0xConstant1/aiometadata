@@ -19,6 +19,10 @@ export interface PlayRow {
   posterUrl: string | null;
   title: string;
   episode: string | null;
+  seriesId: string | null;
+  season: number | null;
+  number: number | null;
+  episodeTitle: string | null;
   positionMs: number;
   runtimeMs: number;
   played: boolean;
@@ -51,6 +55,10 @@ interface Named {
   episode: string | null;
   imageUrl: string | null;
   posterUrl: string | null;
+  seriesId: string | null;
+  season: number | null;
+  number: number | null;
+  episodeTitle: string | null;
 }
 
 // The meta's own images: an episode's still and its show's poster, a film's backdrop and poster.
@@ -60,7 +68,7 @@ async function describe(userUUID: string, videoId: string): Promise<Named> {
   if (held) return held;
 
   const parsed = parseStremioId(videoId);
-  let out: Named = { keys: [videoId], title: videoId, episode: null, imageUrl: null, posterUrl: null };
+  let out: Named = { keys: [videoId], title: videoId, episode: null, imageUrl: null, posterUrl: null, seriesId: null, season: null, number: null, episodeTitle: null };
   try {
     if (parsed && parsed.episode !== null && parsed.episode !== undefined) {
       let index = await seriesIndex(userUUID, parsed.base);
@@ -78,6 +86,10 @@ async function describe(userUUID: string, videoId: string): Promise<Named> {
         episode: video?.title ? `${number} ${video.title}` : number,
         imageUrl: video?.thumbnail ?? index?.background ?? null,
         posterUrl: index?.poster ?? null,
+        seriesId: index?.id ?? parsed.base,
+        season: parsed.season ?? null,
+        number: parsed.episode,
+        episodeTitle: video?.title ?? null,
       };
     } else if (parsed) {
       const meta = await fetchMeta(userUUID, 'movie', parsed.base);
@@ -89,6 +101,10 @@ async function describe(userUUID: string, videoId: string): Promise<Named> {
         episode: null,
         imageUrl: meta?.background ?? meta?.poster ?? null,
         posterUrl: meta?.poster ?? null,
+        seriesId: null,
+        season: null,
+        number: null,
+        episodeTitle: null,
       };
     }
   } catch {
@@ -118,14 +134,15 @@ const profileLabel = (names: Map<string, string>, key: string): string =>
   names.get(key) ?? (key ? key.slice(0, 8) : 'Main');
 
 async function playRows(userUUID: string, rows: any[], names: Map<string, string>): Promise<PlayRow[]> {
+  const described = await mapWithConcurrency(rows, envInt('JELLYFIN_DASHBOARD_DESCRIBE_CONCURRENCY', 8, 1), (row: any) => describe(userUUID, String(row.video_id)));
   const seen = new Set<string>();
   const out: PlayRow[] = [];
-  for (const row of rows) {
+  rows.forEach((row, i) => {
     const videoId = String(row.video_id);
-    const named = await describe(userUUID, videoId);
+    const named = described[i];
     // One title, one card: the same play is stored under every spelling, and a rewatch shows as the newest.
     const keys = named.keys.map((id) => `${row.profile}|${id}`);
-    if (keys.some((key) => seen.has(key))) continue;
+    if (keys.some((key) => seen.has(key))) return;
     for (const key of keys) seen.add(key);
     out.push({
       profile: profileLabel(names, String(row.profile ?? '')),
@@ -134,13 +151,17 @@ async function playRows(userUUID: string, rows: any[], names: Map<string, string
       posterUrl: named.posterUrl,
       title: named.title,
       episode: named.episode,
+      seriesId: named.seriesId,
+      season: named.season,
+      number: named.number,
+      episodeTitle: named.episodeTitle,
       positionMs: Number(row.position_ms) || 0,
       runtimeMs: Number(row.runtime_ms) || 0,
       played: Boolean(row.played),
       lastPlayedAt: row.last_played_at ? Number(row.last_played_at) : null,
       updatedAt: Number(row.updated_at) || 0,
     });
-  }
+  });
   return out;
 }
 async function sessionRows(userUUID: string, names: Map<string, string>): Promise<SessionRow[]> {
@@ -148,7 +169,7 @@ async function sessionRows(userUUID: string, names: Map<string, string>): Promis
   return mapWithConcurrency(own, 2, async (s) => {
     const descriptor = await decodeJellyfinId(s.itemId);
     const videoId = descriptor ? stremioIdFor(descriptor) : null;
-    const named: Named = videoId ? await describe(userUUID, videoId) : { keys: [s.itemId], title: s.itemId, episode: null, imageUrl: null, posterUrl: null };
+    const named: Named = videoId ? await describe(userUUID, videoId) : { keys: [s.itemId], title: s.itemId, episode: null, imageUrl: null, posterUrl: null, seriesId: null, season: null, number: null, episodeTitle: null };
     const viewer = s.viewer && s.viewer !== s.profile ? names.get(s.viewer) ?? s.viewer.slice(0, 8) : null;
     return { profile: profileLabel(names, s.profile), profileKey: s.profile, viewer, imageUrl: named.imageUrl, title: named.title, episode: named.episode, positionMs: s.positionMs, paused: s.paused, at: s.at };
   });
@@ -218,11 +239,11 @@ export async function dashboardSearch(query: string): Promise<{ query: string; r
 }
 
 /** One configuration: its profiles with counts, and the sessions, positions and recent plays of one profile or all. */
-export async function dashboardConfiguration(userUUID: string, profile: string | null): Promise<any> {
+export async function dashboardConfiguration(userUUID: string, profile: string | null, rows?: number): Promise<any> {
   const config = await database.getUserConfig(userUUID).catch(() => null);
   if (!config) return null;
   const names = profileNames(config, userUUID);
-  const limit = envInt('JELLYFIN_DASHBOARD_ROWS', 50, 1);
+  const limit = Math.min(500, Math.max(1, rows || envInt('JELLYFIN_DASHBOARD_ROWS', 50, 1)));
   const byProfile: any[] = await database.playstateForConfiguration(userUUID);
   const profiles = historyProfiles(config, userUUID).map(({ key, name, sharedWith }) => {
     const p = byProfile.find((row: any) => String(row.profile ?? '') === key);
@@ -235,19 +256,29 @@ export async function dashboardConfiguration(userUUID: string, profile: string |
       lastActivity: Math.max(Number(p?.last_played_at) || 0, Number(p?.updated_at) || 0) || null,
     };
   });
-  const [inProgress, played] = await Promise.all([
-    database.listPlaystateInProgressFor(userUUID, limit, profile),
-    database.listPlaystatePlayedFor(userUUID, limit, profile),
+  const folded = async (fetch: (n: number) => Promise<any[]>): Promise<PlayRow[]> => {
+    let want = limit * 2;
+    for (;;) {
+      const rows = await fetch(want);
+      const out = await playRows(userUUID, rows, names);
+      if (out.length >= limit || rows.length < want || want >= limit * 16) return out.slice(0, limit);
+      want *= 2;
+    }
+  };
+  const [inProgress, recentlyPlayed] = await Promise.all([
+    folded((n) => database.listPlaystateInProgressFor(userUUID, n, profile)),
+    folded((n) => database.listPlaystatePlayedFor(userUUID, n, profile)),
   ]);
   const sessions = (await sessionRows(userUUID, names)).filter((s) => profile === null || s.profileKey === profile);
   return {
     userUUID,
     label: defaultUserName(config, userUUID),
     profile,
+    rows: limit,
     profiles,
     sessions,
-    inProgress: await playRows(userUUID, inProgress, names),
-    recentlyPlayed: await playRows(userUUID, played, names),
+    inProgress,
+    recentlyPlayed,
   };
 }
 

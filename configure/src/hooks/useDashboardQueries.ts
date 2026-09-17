@@ -1462,6 +1462,10 @@ export interface JellyfinPlayRow {
   posterUrl: string | null;
   title: string;
   episode: string | null;
+  seriesId: string | null;
+  season: number | null;
+  number: number | null;
+  episodeTitle: string | null;
   positionMs: number;
   runtimeMs: number;
   played: boolean;
@@ -1492,6 +1496,7 @@ export interface JellyfinConfiguration {
   profile: string | null;
   profiles: Array<{ key: string; name: string; sharedWith: string[]; inProgress: number; played: number; lastActivity: number | null }>;
   sessions: JellyfinSessionRow[];
+  rows: number;
   inProgress: JellyfinPlayRow[];
   recentlyPlayed: JellyfinPlayRow[];
 }
@@ -1532,10 +1537,13 @@ export function useJellyfinSearch(query: string, options: DashboardQueryOptions 
   );
 }
 
-export function useJellyfinConfiguration(userUUID: string | null, profile: string | null, options: DashboardQueryOptions = {}) {
-  const suffix = profile === null ? '' : `?profile=${encodeURIComponent(profile)}`;
+export function useJellyfinConfiguration(userUUID: string | null, profile: string | null, rows: number | null, options: DashboardQueryOptions = {}) {
+  const params = new URLSearchParams();
+  if (profile !== null) params.set('profile', profile);
+  if (rows !== null) params.set('rows', String(rows));
+  const suffix = params.toString() ? `?${params}` : '';
   return useJellyfinQuery<JellyfinConfiguration>(
-    ['dashboard', 'jellyfin', 'configuration', userUUID, profile] as const,
+    ['dashboard', 'jellyfin', 'configuration', userUUID, profile, rows] as const,
     `/api/dashboard/jellyfin/${encodeURIComponent(userUUID ?? '')}${suffix}`,
     { ...options, enabledWhen: Boolean(userUUID) }
   );
