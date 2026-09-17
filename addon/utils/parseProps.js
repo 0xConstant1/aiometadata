@@ -2181,7 +2181,8 @@ async function parseAnimeCatalogMeta(anime, config, language, descriptionFallbac
 /**
  * Batch version of parseAnimeCatalogMeta that uses AniList batch fetching for better performance
  */
-async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideos = false) {
+async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideos = false, options = {}) {
+  const light = options.light === true;
   if (!animes || animes.length === 0) return [];
 
   const artProvider = resolveArtProvider('anime', 'poster', config);
@@ -2472,6 +2473,46 @@ async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideo
         name: anime.title_english || anime.title
       });
     }
+    let malReleaseInfo = anime.year || (anime.aired?.from ? anime.aired.from.substring(0, 4) : "");
+    if (stremioType === 'series' && anime.aired) {
+      const firstYear = anime.aired.from ? anime.aired.from.substring(0, 4) : "";
+      if (firstYear) {
+        const isOngoing = anime.status === 'Currently Airing' || !anime.aired.to;
+
+        if (isOngoing) {
+          malReleaseInfo = `${firstYear}-`;
+        } else if (anime.aired.to) {
+          const lastYear = anime.aired.to.substring(0, 4);
+          malReleaseInfo = firstYear === lastYear ? firstYear : `${firstYear}-${lastYear}`;
+        }
+      }
+    }
+
+    if (light) {
+      return withCatalogCertification({
+        id: config.mal?.useImdbIdForCatalogAndSearch && imdbId ? id : `mal:${malId}`,
+        type: stremioType,
+        name: anime.title_english || anime.title,
+        genres: anime.genres?.map(g => g.name) || [],
+        poster: finalPosterUrl,
+        description: addMetaProviderAttribution(anime.synopsis, 'MAL', config),
+        year: anime.year,
+        imdb_id: imdbId,
+        ...(tmdbId ? { _tmdbId: String(tmdbId) } : {}),
+        ...(tvdbId ? { _tvdbId: String(tvdbId) } : {}),
+        ...(imdbId ? { _imdbId: imdbId } : {}),
+        ...(mapping?.kitsu_id ? { _kitsuId: String(mapping.kitsu_id) } : {}),
+        ...(malId ? { _malId: String(malId) } : {}),
+        releaseInfo: malReleaseInfo,
+        runtime: parseRunTime(anime.duration),
+        imdbRating: imdbRating,
+        certification: malRatingToCertification(anime.rating),
+        released: anime.aired?.from ? new Date(anime.aired.from) : undefined,
+        status: anime.status,
+        trailers: trailers
+      });
+    }
+
     if((config.mal?.useImdbIdForCatalogAndSearch && imdbId)){
       return (await cacheWrapMetaSmart(config.userUUID, id, async () => {
         const { getMeta } = await import("../lib/getMeta");
@@ -2481,20 +2522,6 @@ async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideo
       }, undefined, {enableErrorCaching: true, maxRetries: 2, config}, stremioType, includeVideos))?.meta || null;
     }
     else {
-      let malReleaseInfo = anime.year || (anime.aired?.from ? anime.aired.from.substring(0, 4) : "");
-      if (stremioType === 'series' && anime.aired) {
-        const firstYear = anime.aired.from ? anime.aired.from.substring(0, 4) : "";
-        if (firstYear) {
-          const isOngoing = anime.status === 'Currently Airing' || !anime.aired.to;
-          
-          if (isOngoing) {
-            malReleaseInfo = `${firstYear}-`;
-          } else if (anime.aired.to) {
-            const lastYear = anime.aired.to.substring(0, 4);
-            malReleaseInfo = firstYear === lastYear ? firstYear : `${firstYear}-${lastYear}`;
-          }
-        }
-      }
       let releaseDates = null;
       const shouldFetchReleaseDates = stremioType === 'movie' && tmdbId;
       
