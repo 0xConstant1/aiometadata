@@ -113,7 +113,18 @@ function seriesKeys(ids: Record<string, any>): string[] {
 }
 
 // A dropped show is kept out under the anime spelling the meta may use as well.
-function droppedKeys(ids: Record<string, any>): string[] {
+async function droppedKeys(ids: Record<string, any>, config: any = {}): Promise<string[]> {
+  if (!ids.imdb && !ids.tvdb && ids.tmdb) {
+    try {
+      const { resolveAllIds } = require('../id-resolver');
+      const found = await resolveAllIds(`tmdb:${ids.tmdb}`, 'series', config, {}, ['imdb', 'tvdb']);
+      ids = { ...ids, ...(found?.imdbId ? { imdb: found.imdbId } : {}), ...(found?.tvdbId ? { tvdb: found.tvdbId } : {}) };
+    } catch {}
+  }
+  return seriesKeysWithKitsu(ids);
+}
+
+function seriesKeysWithKitsu(ids: Record<string, any>): string[] {
   const keys = seriesKeys(ids);
   if (!ids.kitsu) {
     const idMapper: any = require('../id-mapper');
@@ -146,7 +157,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
   if (metaId && entry?.status === 'watching') {
     snapshot.following.push({ metaId, mediaType: isAnime && ids.kitsu ? 'anime' : 'series' });
   }
-  if (entry?.status === 'dropped') for (const key of droppedKeys(ids)) snapshot.dropped.add(key);
+  if (entry?.status === 'dropped') for (const key of seriesKeysWithKitsu(ids)) snapshot.dropped.add(key);
 
   // Simkl names a next episode for every listed show, a planned or dropped one
   // included; only a show being watched belongs on the shelf.
@@ -385,7 +396,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
     for (let offset = 0; offset < maxPages * pageSize; offset += pageSize) {
       const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/dropped?limit=${pageSize}&offset=${offset}&apikey=${apiKey}`, apiKey, 'MDBList dropped');
       const shows = Array.isArray(response?.data?.shows) ? response.data.shows : [];
-      for (const item of shows) for (const key of droppedKeys(item?.show?.ids ?? {})) dropped.add(key);
+      for (const item of shows) for (const key of seriesKeysWithKitsu(item?.show?.ids ?? {})) dropped.add(key);
       if (shows.length < pageSize) break;
     }
   } catch (error: any) {
@@ -513,10 +524,10 @@ async function pmdbFingerprint(apiKey: string): Promise<string> {
   const head = await cacheWrapGlobal(
     `pmdb_watched_head:${keyHash}`,
     async () => {
-      const { fetchWatched } = require('../../utils/publicmetadbUtils');
-      const page = await fetchWatched(apiKey, 1, 1);
+      const { fetchWatched, fetchDropped } = require('../../utils/publicmetadbUtils');
+      const [page, dropped] = await Promise.all([fetchWatched(apiKey, 1, 1), fetchDropped(apiKey, 1, 1).catch(() => ({ items: [], total: 0, totalPages: 0 }))]);
       const first = page.items[0];
-      return `${page.total}|${first?.id ?? ''}|${first?.watched_at ?? ''}`;
+      return `${page.total}|${first?.id ?? ''}|${first?.watched_at ?? ''}|${dropped.total}`;
     },
     envInt('PMDB_ACTIVITIES_TTL', 300, 30),
     { upstream: true, resultClassifier: classifyResultAllowEmpty }
@@ -526,7 +537,7 @@ async function pmdbFingerprint(apiKey: string): Promise<string> {
 
 // The newest play of a show seeds Next Up, which moves on from it.
 async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
-  const { fetchWatched } = require('../../utils/publicmetadbUtils');
+  const { fetchWatched, fetchDropped } = require('../../utils/publicmetadbUtils');
   const { movieBase } = require('./resume');
   const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
 
@@ -549,10 +560,11 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     if (!row?.tmdb_id) continue;
     const at = Date.parse(row?.watched_at ?? '') || 0;
     if (row.media_type === 'movie') {
-      movies.add(movieBase(row.tmdb_id));
+      const base = await movieBase(row.tmdb_id, config);
+      movies.add(base);
       movies.add(`tmdb:${row.tmdb_id}`);
       if (at) {
-        seen.set(movieBase(row.tmdb_id), at);
+        seen.set(base, at);
         seen.set(`tmdb:${row.tmdb_id}`, at);
       }
       continue;
@@ -588,6 +600,19 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     if (at >= followedSince) following.push({ metaId, mediaType: row.mediaType });
   }
 
+  const dropped = new Set<string>();
+  try {
+    for (let page = 1; page <= maxPages; page += 1) {
+      const result = await fetchDropped(apiKey, page, 100);
+      for (const item of result.items) {
+        if (item?.tmdb_id && (item?.media_type ?? 'tv') === 'tv') for (const key of await droppedKeys({ tmdb: item.tmdb_id }, config)) dropped.add(key);
+      }
+      if (page >= result.totalPages || !result.items.length) break;
+    }
+  } catch (error: any) {
+    logger.warn(`PublicMetaDB dropped shows failed: ${error?.message || error}`);
+  }
+
   return {
     episodes: [...episodes],
     movies: [...movies],
@@ -595,6 +620,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     series: [...series],
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
     following,
+    dropped: [...dropped],
   };
 }
 
@@ -628,7 +654,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Prom
       series: new Map(raw?.series ?? []),
       nextUp: raw?.nextUp ?? [],
       following: raw?.following ?? [],
-      dropped: new Set(),
+      dropped: new Set(raw?.dropped ?? []),
       fingerprint: key,
     };
     if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);

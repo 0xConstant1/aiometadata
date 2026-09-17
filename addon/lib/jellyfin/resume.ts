@@ -226,7 +226,7 @@ async function pmdbRows(apiKey: string, config: any): Promise<ResumeRow[]> {
     const runtimeMinutes = Number(entry?.runtime_ms) > 0 ? Math.round(Number(entry.runtime_ms) / 60000) : null;
 
     if (entry.media_type === 'movie') {
-      const base = movieBase(entry.tmdb_id);
+      const base = await movieBase(entry.tmdb_id, config);
       rows.push({ metaId: base, videoId: base, mediaType: 'movie', kind: 'movie', progress, runtimeMinutes, updatedAt });
       continue;
     }
@@ -239,10 +239,14 @@ async function pmdbRows(apiKey: string, config: any): Promise<ResumeRow[]> {
   return rows.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export function movieBase(tmdbId: string | number): string {
-  const wiki: any = require('../wiki-mapper');
-  const imdb = wiki.getByTmdbId?.(String(tmdbId), 'movie')?.imdbId;
-  return imdb ? String(imdb) : `tmdb:${tmdbId}`;
+/** A film's IMDb id for its TMDB id; the TMDB spelling when none is known. */
+export async function movieBase(tmdbId: string | number, config: any = {}): Promise<string> {
+  try {
+    const { resolveAllIds } = require('../id-resolver');
+    const ids = await resolveAllIds(`tmdb:${tmdbId}`, 'movie', config, {}, ['imdb']);
+    if (ids?.imdbId) return String(ids.imdbId);
+  } catch {}
+  return `tmdb:${tmdbId}`;
 }
 
 async function rowsFrom(service: Capable, credential: string, config: any): Promise<ResumeRow[]> {

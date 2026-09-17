@@ -183,6 +183,11 @@ async function fetchResume(apiKey: string): Promise<any[]> {
   return data.items || [];
 }
 
+async function fetchDropped(apiKey: string, page: number = 1, perPage: number = 100): Promise<{ items: any[]; total: number; totalPages: number }> {
+  const data = await makeRequest(`/api/external/dropped?page=${page}&perPage=${Math.min(Math.max(1, perPage), 100)}`, apiKey);
+  return { items: Array.isArray(data?.items) ? data.items : [], total: Number(data?.total) || 0, totalPages: Number(data?.totalPages) || 1 };
+}
+
 async function fetchWatched(apiKey: string, page: number = 1, perPage: number = 500): Promise<{ items: any[]; total: number; totalPages: number }> {
   const data = await makeRequest(`/api/external/watched?page=${page}&perPage=${Math.min(Math.max(1, perPage), 500)}`, apiKey);
   return {
@@ -566,6 +571,7 @@ export {
   validateKey,
   fetchSkips,
   fetchResume,
+  fetchDropped,
   fetchWatched,
   saveResume,
   clearResume,
