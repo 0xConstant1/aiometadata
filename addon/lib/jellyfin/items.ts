@@ -440,6 +440,33 @@ function seasonNumbersFrom(videos: any[]): number[] {
   return [...seasons].sort((a, b) => a - b);
 }
 
+function parentArt(meta: any, seriesId: string, serverId: string): Record<string, any> {
+  const images: ItemImages = {
+    primary: meta.poster || undefined,
+    backdrop: meta.background || undefined,
+    logo: meta.logo || undefined,
+    thumb: meta.landscapePoster || undefined,
+  };
+  if (serverId && seriesId) rememberImages(serverId, seriesId, images);
+
+  const art: Record<string, any> = {};
+  if (images.primary) art.SeriesPrimaryImageTag = 'p';
+  if (images.backdrop) {
+    art.ParentBackdropItemId = seriesId;
+    art.ParentBackdropImageTags = ['b'];
+  }
+  if (images.logo) {
+    art.ParentLogoItemId = seriesId;
+    art.ParentLogoImageTag = 'l';
+  }
+  if (images.thumb) {
+    art.ParentThumbItemId = seriesId;
+    art.ParentThumbImageTag = 't';
+    art.SeriesThumbImageTag = 't';
+  }
+  return art;
+}
+
 export function buildSeasons(
   meta: any,
   mediaType: string,
@@ -457,6 +484,7 @@ export function buildSeasons(
   const posters = Array.isArray(meta?.app_extras?.seasonPosters) ? meta.app_extras.seasonPosters : [];
   const aligned = posters.length === numbers.length;
 
+  const art = parentArt(meta, seriesId, serverId);
   return numbers.map((season, index) => {
     const id = encodeJellyfinId({ k: 'season', t: mediaType, i: String(meta.id), s: season });
     const episodes = videos.filter((v: any) => v.season === season);
@@ -483,6 +511,7 @@ export function buildSeasons(
       ImageTags: primary ? { Primary: 'p' } : {},
       BackdropImageTags: [],
       ImageBlurHashes: {},
+      ...art,
       LocationType: 'FileSystem',
       PrimaryImageAspectRatio: 0.6666666666666666,
       CanDelete: false,
@@ -500,6 +529,7 @@ export function buildEpisodes(
 ): any[] {
   const videos = Array.isArray(meta?.videos) ? meta.videos : [];
   const wanted = season === null ? videos : videos.filter((v: any) => v.season === season);
+  const art = parentArt(meta, seriesId, serverId);
 
   return wanted.map((video: any) => {
     const hasSeason = Number.isInteger(video.season);
@@ -549,6 +579,7 @@ export function buildEpisodes(
       ImageTags: video.thumbnail ? { Primary: 'p' } : {},
       BackdropImageTags: [],
       ImageBlurHashes: {},
+      ...art,
       UserData: { ...EMPTY_USER_DATA, Key: id, ItemId: id },
       LocationType: 'FileSystem',
       PrimaryImageAspectRatio: 1.7777777777777777,

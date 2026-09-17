@@ -15,6 +15,8 @@ export interface SeriesIndex {
   _tmdbId?: string | number;
   poster?: string | null;
   background?: string | null;
+  logo?: string | null;
+  landscapePoster?: string | null;
   app_extras?: { certification?: string | null };
   videos: Array<{
     id: string;
@@ -50,6 +52,8 @@ function trim(meta: any): SeriesIndex {
     ...(meta._tmdbId ? { _tmdbId: meta._tmdbId } : {}),
     ...(meta.poster ? { poster: String(meta.poster) } : {}),
     ...(meta.background ? { background: String(meta.background) } : {}),
+    ...(meta.logo ? { logo: String(meta.logo) } : {}),
+    ...(meta.landscapePoster ? { landscapePoster: String(meta.landscapePoster) } : {}),
     ...(meta.app_extras?.certification ? { app_extras: { certification: meta.app_extras.certification } } : {}),
     videos: videos.map((video: any) => ({
       id: String(video?.id ?? ''),
