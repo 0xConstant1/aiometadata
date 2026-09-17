@@ -23,7 +23,7 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
-import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, recallImages, rememberImages } from './items';
+import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, recallImages, rememberImages, sortNameFor } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -1226,6 +1226,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (person?.photo) rememberImages(serverId, bare, { primary: person.photo });
     return {
       Name: person?.name || name,
+      SortName: sortNameFor(person?.name || name),
       Id: bare,
       ServerId: serverId,
       Type: 'Person',

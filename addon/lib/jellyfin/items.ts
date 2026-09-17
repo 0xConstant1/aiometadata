@@ -322,6 +322,11 @@ function remoteTrailers(meta: any): any[] {
 
 const EPOCH_DATE = new Date(0).toISOString();
 
+/** Jellyfin's sort key: the name lowercased with a leading article dropped. */
+export function sortNameFor(name: any): string {
+  return String(name ?? '').trim().toLowerCase().replace(/^(the|a|an)\s+/, '');
+}
+
 function isoDate(value: any): string | null {
   const at = value instanceof Date ? value.getTime() : Date.parse(String(value ?? ''));
   return Number.isFinite(at) ? new Date(at).toISOString() : null;
@@ -369,6 +374,7 @@ export function metaToBaseItem(
 
   return {
     Name: meta.name,
+    SortName: sortNameFor(meta.name),
     Id: id,
     ServerId: serverId,
     Etag: id,
@@ -535,6 +541,7 @@ export function buildSeasons(
 
     return {
       Name: season === 0 ? 'Specials' : `Season ${season}`,
+      SortName: season === 0 ? 'specials' : `season ${String(season).padStart(3, '0')}`,
       Id: id,
       ServerId: serverId,
       Etag: id,
@@ -599,6 +606,7 @@ export function buildEpisodes(
 
     return {
       Name: video.title || `Episode ${video.episode}`,
+      SortName: `${String(video.episode).padStart(4, '0')} - ${sortNameFor(video.title || `Episode ${video.episode}`)}`,
       Id: id,
       ServerId: serverId,
       Etag: id,
