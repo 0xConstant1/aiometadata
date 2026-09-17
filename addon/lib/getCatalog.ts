@@ -1,5 +1,6 @@
 require("dotenv").config();
 import { getGenreList } from "./getGenreList.js";
+import { stampListedAt } from "../utils/listedAt";
 import { getLanguages } from "./getLanguages.js";
 import { fetchMDBListItems, parseMDBListItems, fetchMDBListBatchMediaInfo, fetchMDBListUpNext, parseMDBListUpNextItems, usesMdblistExternalItemsEndpoint, supportsMdblistScoreFilters } from "../utils/mdbList.js";
 import { fetchStremThruCatalog, parseStremThruItems } from "../utils/stremthru.js";
@@ -1030,6 +1031,9 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
     }
     
     let metas = await parseMDBListItems(response.items, type, language, config, includeVideos);
+    if (listId === 'watchlist') {
+      metas = stampListedAt(metas, response.items, (item: any) => ({ imdb: item?.imdb_id, tmdb: item?.id, tvdb: item?.tvdb_id }), (item: any) => item?.watchlist_at);
+    }
 
     return metas;
   }
@@ -2318,6 +2322,9 @@ async function getTraktCatalog(
     const useShowPoster = catalogConfig?.metadata?.useShowPosterForUpNext || false;
     logger.debug(`Up Next: useShowPosterForUpNext = ${useShowPoster}`);
     let metas = await parseTraktItems(response.items, type, language, config, includeVideos, useShowPoster);
+    if (catalogId.startsWith('trakt.watchlist')) {
+      metas = stampListedAt(metas, response.items, (item: any) => (item?.movie ?? item?.show)?.ids ?? {}, (item: any) => item?.listed_at);
+    }
     const parseTime = Date.now() - parseStart;
     logger.info(`Up Next: parseTraktItems took ${parseTime}ms for ${response.items.length} items`);
     
@@ -2458,9 +2465,10 @@ async function getAniListCatalog(
     
     // Resolve AniList media IDs to Stremio metas
     const metas = await resolveAniListItemsToMetas(response.items, type, language, config, userUUID, includeVideos);
+    const listedMetas = stampListedAt(metas, response.items, (item: any) => ({ anilist: item?.media?.id, mal: item?.media?.idMal }), (item: any) => item?.createdAt ? item.createdAt * 1000 : null);
     
     logger.success(`[AniList] Processed ${metas.length} items for catalog ${catalogId} (page ${page})`);
-    return metas;
+    return listedMetas;
     
   } catch (err: any) {
     const errorLine = err.stack?.split('\n')[1]?.trim() || 'unknown';
@@ -2617,7 +2625,8 @@ async function getMalUserListCatalog(
     });
 
     const metas = await Utils.parseAnimeCatalogMetaBatch(newItems, config, language);
-    const validMetas = metas.filter((meta: any) => meta !== null);
+    const listedMetas = stampListedAt(metas, response.items, (item: any) => ({ mal: item?.node?.id }), (item: any) => item?.list_status?.updated_at);
+    const validMetas = listedMetas.filter((meta: any) => meta !== null);
 
     logger.success(`[MAL] Processed ${validMetas.length} items for catalog ${catalogId} (page ${page})`);
     return validMetas;
@@ -3182,6 +3191,7 @@ async function getSimklCatalog(
               type: itemType,
               ...media,
               simkl_status: item.status,
+              simkl_added_to_watchlist_at: item.added_to_watchlist_at,
               simkl_rating: item.user_rating,
               simkl_last_watched: item.last_watched,
               simkl_next_to_watch: item.next_to_watch,
@@ -3244,6 +3254,7 @@ async function getSimklCatalog(
       || (catalogId.startsWith('simkl.recipe.') && catalogId.endsWith('.anime'));
     const parseStart = Date.now();
     let metas = await parseSimklItems(response.items, type as 'movie' | 'series', config, userUUID, includeVideos, isAnimeCatalog);
+    metas = stampListedAt(metas, response.items, (item: any) => item?.ids ?? {}, (item: any) => item?.simkl_added_to_watchlist_at);
     const parseTime = Date.now() - parseStart;
     logger.info(`[Simkl] parseSimklItems took ${parseTime}ms for ${response.items.length} items`);
     

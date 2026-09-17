@@ -1238,6 +1238,7 @@ const CATALOG_META_FIELDS = [
   '_kitsuId',
   '_anilistId',
   '_anidbId',
+  '_listedAt',
   'slug',
   'links',
   'behaviorHints',
