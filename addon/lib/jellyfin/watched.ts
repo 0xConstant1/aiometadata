@@ -178,7 +178,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
 
   const counts = {
     watched: Number(entry?.watched_episodes_count) || 0,
-    total: Number(entry?.total_episodes_count) || 0,
+    total: Math.max(0, (Number(entry?.total_episodes_count) || 0) - (Number(entry?.not_aired_episodes_count) || 0)),
     at: Date.parse(entry?.last_watched_at ?? '') || undefined,
   };
   for (const key of keys) snapshot.series.set(key, counts);
@@ -369,6 +369,12 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
     if (!Number.isFinite(season) || !Number.isFinite(number)) continue;
     const resolved = await videoIdFor(item?.show?.ids ?? {}, season, number, config);
     if (!resolved) continue;
+    const total = Number(item?.progress?.total_episode_count) || 0;
+    if (total > 0) {
+      const counts = series.get(resolved.metaId) ?? { watched: Number(item?.progress?.watched_episode_count) || 0, total: 0 };
+      counts.total = total;
+      series.set(resolved.metaId, counts);
+    }
     nextUp.push({
       metaId: resolved.metaId,
       videoId: resolved.mediaType === 'anime' ? resolved.videoId : null,
@@ -787,20 +793,9 @@ export function isWatched(snapshot: WatchedSnapshot, stremioId: string): boolean
  * item's own guid, so this stays one pass over a finished list rather than a
  * parameter threaded through every builder.
  */
-const airedIds = new LRUCache<string, string[]>({
-  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) * 10,
-  ttl: envInt('JELLYFIN_WATCHED_TTL', 3600, 1) * 1000,
-});
-
-/** The ids of a show's aired episodes, specials left out: what a progress bar counts. */
-async function airedEpisodeIds(userUUID: string, descriptor: any): Promise<string[]> {
-  const key = `${descriptor.t}:${descriptor.i}`;
-  const held = airedIds.get(key);
-  if (held) return held;
-  const { fetchMeta } = require('./items');
-  const meta = await fetchMeta(userUUID, 'series', String(descriptor.i)).catch(() => null);
+function airedFrom(videos: any[]): string[] {
   const now = Date.now();
-  const aired = (Array.isArray(meta?.videos) ? meta.videos : [])
+  return videos
     .filter((v: any) => {
       if (Number(v?.season) === 0) return false;
       const at = Date.parse(v?.released ?? v?.firstAired ?? '');
@@ -808,8 +803,25 @@ async function airedEpisodeIds(userUUID: string, descriptor: any): Promise<strin
     })
     .map((v: any) => String(v?.id ?? ''))
     .filter(Boolean);
-  airedIds.set(key, aired);
-  return aired;
+}
+
+const indexBuilding = new Set<string>();
+
+/** A show's aired episode ids from the episode index; null while an unindexed show is indexed off the request. */
+async function airedEpisodeIds(userUUID: string, descriptor: any): Promise<string[] | null> {
+  const { seriesIndex } = require('./episodeIndex');
+  const metaId = String(descriptor.i);
+  const indexed = await seriesIndex(userUUID, metaId, { held: true }).catch(() => null);
+  if (indexed) return airedFrom(Array.isArray(indexed.videos) ? indexed.videos : []);
+
+  const key = `${userUUID}:${metaId}`;
+  if (!indexBuilding.has(key)) {
+    indexBuilding.add(key);
+    seriesIndex(userUUID, metaId)
+      .catch(() => undefined)
+      .finally(() => indexBuilding.delete(key));
+  }
+  return null;
 }
 
 export async function applyWatchedState(
@@ -862,11 +874,11 @@ export async function applyWatchedState(
         // has none. Without either nothing is claimed, since zero unplayed
         // reads as fully watched.
         const aired = userUUID ? await airedEpisodeIds(userUUID, descriptor) : [];
-        const total = aired.length || counts.total;
+        const total = aired?.length || counts.total;
         if (total <= 0) return;
-        const watched = aired.length
+        const watched = aired?.length
           ? aired.filter((videoId) => snapshot.episodes.has(videoId)).length
-          : counts.watched;
+          : Math.min(counts.watched, total);
         const unplayed = Math.max(0, total - watched);
         item.UserData = {
           ...item.UserData,

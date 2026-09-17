@@ -79,8 +79,8 @@ async function build(userUUID: string, metaId: string): Promise<SeriesIndex | nu
   return index;
 }
 
-/** The series' episodes as this configuration publishes them; fetched once per TTL. */
-export async function seriesIndex(userUUID: string, metaId: string): Promise<SeriesIndex | null> {
+/** The series' episodes as this configuration publishes them; fetched once per TTL. With `held`, only what is already stored. */
+export async function seriesIndex(userUUID: string, metaId: string, opts: { held?: boolean } = {}): Promise<SeriesIndex | null> {
   const key = keyFor(userUUID, metaId);
   const held = memory.get(key);
   if (held) return held;
@@ -96,6 +96,7 @@ export async function seriesIndex(userUUID: string, metaId: string): Promise<Ser
       // fall through to a fresh build
     }
   }
+  if (opts.held) return null;
   return build(userUUID, metaId);
 }
 
