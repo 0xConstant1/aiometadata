@@ -307,8 +307,14 @@ function remoteTrailers(meta: any): any[] {
 
 const EPOCH_DATE = new Date(0).toISOString();
 
+function isoDate(value: any): string | null {
+  const at = value instanceof Date ? value.getTime() : Date.parse(String(value ?? ''));
+  return Number.isFinite(at) ? new Date(at).toISOString() : null;
+}
+
 function premiereDate(meta: any): string | null {
-  if (typeof meta.released === 'string' && meta.released) return meta.released;
+  const released = isoDate(meta.released);
+  if (released) return released;
   const year = parseInt(String(meta.year || meta.releaseInfo || ''), 10);
   return Number.isFinite(year) ? new Date(Date.UTC(year, 0, 1)).toISOString() : null;
 }
@@ -572,8 +578,8 @@ export function buildEpisodes(
       ParentIndexNumber: hasSeason ? video.season : null,
       IndexNumber: Number(video.episode),
       Overview: video.overview || null,
-      PremiereDate: video.released || null,
-      DateCreated: video.released || EPOCH_DATE,
+      PremiereDate: isoDate(video.released),
+      DateCreated: isoDate(video.released) || EPOCH_DATE,
       RunTimeTicks: parseRuntimeTicks(video.runtime),
       ProviderIds: {},
       ImageTags: video.thumbnail ? { Primary: 'p' } : {},
