@@ -1,6 +1,8 @@
+import { LRUCache } from 'lru-cache';
+import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId } from './ids';
 import { collectionFolder, EMPTY_USER_DATA } from './dto';
-import { fetchWindow, includeTypesFilter, metaToBaseItem, rememberImages } from './items';
+import { fetchWindow, includeTypesFilter, knownCatalogLength, metaToBaseItem, rememberImages } from './items';
 import { getCatalogs, type CatalogRef } from './views';
 import { profileTags } from './profiles';
 import type { CollectionDraft, FolderDraft, SourceDraft } from '../collectionBuilder/types';
@@ -153,7 +155,19 @@ export interface MembersPage {
   hasMore: boolean;
 }
 
-// Sources walked in order with one running offset, deduped by id.
+interface MemberCursor {
+  nextIndex: number;
+  sourceIndex: number;
+  sourceOffset: number;
+  seen: Set<string>;
+}
+
+const memberCursors = new LRUCache<string, MemberCursor>({
+  max: 50,
+  ttl: envInt('JELLYFIN_FOLDER_CURSOR_TTL', 600, 30) * 1000,
+});
+const MEMBER_CURSOR_MAX_IDS = 25000;
+
 export async function boxSetMembers(
   userUUID: string,
   config: any,
@@ -167,39 +181,73 @@ export async function boxSetMembers(
   const sources = visibleSources(await getCatalogs(userUUID, config), folder);
   const parentId = boxSetId(collection, folder);
   const tags = profileTags(config);
+  const extrasOf = (source: SourceDraft): Record<string, string> =>
+    typeof source.genre === 'string' && source.genre && source.genre !== 'None' ? { genre: source.genre } : {};
 
-  const seen = new Set<string>();
+  const cursorKey = JSON.stringify([
+    userUUID, collection.id, folder.id, includeItemTypes ?? '', tags,
+    sources.map(({ source, catalog }) => [catalog.type, catalog.id, String(source.genre ?? '')]),
+  ]);
+  const held = memberCursors.get(cursorKey);
+
+  let sourceIndex = 0;
+  let from = 0;
+  let seen: Set<string>;
+  if (held && held.nextIndex === startIndex) {
+    sourceIndex = held.sourceIndex;
+    from = held.sourceOffset;
+    seen = new Set(held.seen);
+  } else {
+    seen = new Set<string>();
+    let passed = 0;
+    while (sourceIndex < sources.length) {
+      const { source, catalog } = sources[sourceIndex];
+      const known = knownCatalogLength(catalog, extrasOf(source), tags);
+      if (known === undefined || passed + known > startIndex) break;
+      passed += known;
+      sourceIndex += 1;
+    }
+    from = Math.max(0, startIndex - passed);
+  }
+
   const collected: any[] = [];
-  let offset = 0;
+  let nextIndex = startIndex;
   let more = false;
 
-  outer: for (const { source, catalog } of sources) {
-    const extras: Record<string, string> = {};
-    if (typeof source.genre === 'string' && source.genre && source.genre !== 'None') extras.genre = source.genre;
+  while (sourceIndex < sources.length && !more) {
+    const { source, catalog } = sources[sourceIndex];
+    const extras = extrasOf(source);
     const keep = includeTypesFilter(catalog.type, includeItemTypes);
 
-    let from = 0;
     for (;;) {
-      if (collected.length >= limit) {
-        more = true;
-        break outer;
-      }
-      const want = limit - collected.length + Math.max(0, startIndex - offset);
-      const page = await fetchWindow(userUUID, catalog, from, want, extras, keep, tags)
+      const page = await fetchWindow(userUUID, catalog, from, limit - collected.length, extras, keep, tags)
         .catch(() => ({ items: [] as any[], hasMore: false }));
 
       for (const meta of page.items) {
         if (!meta?.id || seen.has(String(meta.id))) continue;
         seen.add(String(meta.id));
-        if (offset >= startIndex && collected.length < limit) {
-          collected.push(metaToBaseItem(meta, catalog.type, serverId, parentId));
-        }
-        offset += 1;
+        collected.push(metaToBaseItem(meta, catalog.type, serverId, parentId));
+        nextIndex += 1;
       }
-
-      if (!page.hasMore || page.items.length === 0) break;
       from += page.items.length;
+
+      if (!page.hasMore || page.items.length === 0) {
+        sourceIndex += 1;
+        from = 0;
+        break;
+      }
+      if (collected.length >= limit) {
+        more = true;
+        break;
+      }
     }
+  }
+
+  more = more || sourceIndex < sources.length;
+  if (more && collected.length > 0 && seen.size <= MEMBER_CURSOR_MAX_IDS) {
+    memberCursors.set(cursorKey, { nextIndex, sourceIndex, sourceOffset: from, seen });
+  } else {
+    memberCursors.delete(cursorKey);
   }
 
   return { items: collected, hasMore: more };
