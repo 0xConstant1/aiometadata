@@ -939,12 +939,17 @@ class Database {
     const out = new Map<string, any>();
     if (!videoIds.length) return out;
 
-    const marks = videoIds.map((_, i) => (this.type === 'sqlite' ? '?' : `$${i + 3}`)).join(', ');
-    const query = this.type === 'sqlite'
-      ? `SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND profile = ? AND video_id IN (${marks})`
-      : `SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND profile = $2 AND video_id IN (${marks})`;
-    const rows = await this.allQuery(query, [userUUID, profile, ...videoIds]);
-    for (const row of rows || []) out.set(row.video_id, row);
+    // Bound parameters are capped per statement, so a whole history is looked up in slices.
+    const slice = 500;
+    for (let at = 0; at < videoIds.length; at += slice) {
+      const ids = videoIds.slice(at, at + slice);
+      const marks = ids.map((_, i) => (this.type === 'sqlite' ? '?' : `$${i + 3}`)).join(', ');
+      const query = this.type === 'sqlite'
+        ? `SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND profile = ? AND video_id IN (${marks})`
+        : `SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND profile = $2 AND video_id IN (${marks})`;
+      const rows = await this.allQuery(query, [userUUID, profile, ...ids]);
+      for (const row of rows || []) out.set(row.video_id, row);
+    }
     return out;
   }
 
