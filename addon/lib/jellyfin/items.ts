@@ -418,24 +418,44 @@ export function filterByIncludeTypes(items: any[], includeItemTypes: string | un
   return items.filter((item) => wanted.has(item.Type));
 }
 
+const metaMemo = new LRUCache<string, any>({
+  max: envInt('JELLYFIN_META_MEMO_MAX', 300, 1),
+  ttl: envInt('JELLYFIN_META_MEMO_TTL', 60, 1) * 1000,
+});
+const metaInFlight = new Map<string, Promise<any | null>>();
+
 export async function fetchMeta(
   userUUID: string,
   stremioType: string,
   id: string
 ): Promise<any | null> {
+  const key = `${userUUID}|${stremioType}|${id}`;
+  const held = metaMemo.get(key);
+  if (held) return held;
+  const running = metaInFlight.get(key);
+  if (running) return running;
+
   const url = `${localBase()}/stremio/${encodeURIComponent(userUUID)}/meta/${encodeURIComponent(stremioType)}/${encodeURIComponent(id)}.json`;
-  try {
-    const response = await loopbackFetch(url);
-    if (!response.ok) {
-      logger.debug(`Meta ${stremioType}/${id} returned ${response.status}`);
+  const work = (async () => {
+    try {
+      const response = await loopbackFetch(url);
+      if (!response.ok) {
+        logger.debug(`Meta ${stremioType}/${id} returned ${response.status}`);
+        return null;
+      }
+      const body: any = await response.json();
+      const meta = body?.meta ?? null;
+      if (meta) metaMemo.set(key, meta);
+      return meta;
+    } catch (error: any) {
+      logger.warn(`Meta ${stremioType}/${id} failed: ${error?.message || error}`);
       return null;
+    } finally {
+      metaInFlight.delete(key);
     }
-    const body: any = await response.json();
-    return body?.meta ?? null;
-  } catch (error: any) {
-    logger.warn(`Meta ${stremioType}/${id} failed: ${error?.message || error}`);
-    return null;
-  }
+  })();
+  metaInFlight.set(key, work);
+  return work;
 }
 
 function seasonNumbersFrom(videos: any[]): number[] {

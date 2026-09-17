@@ -491,6 +491,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1000,
   },
   {
+    key: 'JELLYFIN_META_MEMO_TTL',
+    envVar: 'JELLYFIN_META_MEMO_TTL',
+    label: 'Jellyfin Meta Memo (seconds)',
+    description: 'How long a title\'s meta is held in memory after a Jellyfin request read it, so the row, the series and the season a client asks for in turn share one read. Short by design: a play or a mark is reflected on the next read after it lapses.',
+    category: 'Features',
+    type: 'number',
+    default: 60,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_SEGMENTS_TTL',
     envVar: 'JELLYFIN_SEGMENTS_TTL',
     label: 'Jellyfin Skip Markers Cache (seconds)',
