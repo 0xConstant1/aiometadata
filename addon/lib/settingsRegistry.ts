@@ -715,7 +715,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'JELLYFIN_LIST_PAGE_MAX',
     envVar: 'JELLYFIN_LIST_PAGE_MAX',
     label: 'Jellyfin Folder Page Cap',
-    description: 'The most items one collection folder page carries, whatever the client asks for. A catalog page costs a read per title, so a client asking for 500 at once is answered in pages of this size and, guided by the count, reads on. Rows and library listings fill the client\'s Limit.',
+    description: 'The most items one collection folder page carries when a client asks for more than twice this at once. A catalog page costs a read per title, so a client asking for 500 is answered in pages of this size and, guided by the count, reads on. A smaller Limit, as a row asks, is filled as asked.',
     category: 'Features',
     type: 'number',
     default: 50,

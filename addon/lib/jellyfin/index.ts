@@ -735,7 +735,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           res.json(itemList([], 0, startIndex));
           return;
         }
-        const folderLimit = Math.min(limit, envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20));
+        const pageCap = envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20);
+        const folderLimit = limit > pageCap * 2 ? pageCap : limit;
         const page = await boxSetMembers(
           userUUID, config, serverId, collection, folder, startIndex, folderLimit,
           includeItemTypes ? String(includeItemTypes) : undefined
