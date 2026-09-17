@@ -340,10 +340,29 @@ function Shelf({ title, count, children }: { title: string; count: number; child
 
 type View = "cards" | "table";
 
+function useRemembered<T>(key: string, initial: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = sessionStorage.getItem(key);
+      return stored === null ? initial : (JSON.parse(stored) as T);
+    } catch {
+      return initial;
+    }
+  });
+  const remember = (next: T) => {
+    setValue(next);
+    try {
+      if (next === initial) sessionStorage.removeItem(key);
+      else sessionStorage.setItem(key, JSON.stringify(next));
+    } catch {}
+  };
+  return [value, remember];
+}
+
 function Configuration({ userUUID, activeTab, onClose }: { userUUID: string; activeTab: DashboardTab; onClose: () => void }) {
-  const [profile, setProfile] = useState<string | null>(null);
-  const [view, setView] = useState<View>("cards");
-  const [rows, setRows] = useState<number | null>(null);
+  const [profile, setProfile] = useRemembered<string | null>(`jellyfin.profile.${userUUID}`, null);
+  const [view, setView] = useRemembered<View>("jellyfin.view", "cards");
+  const [rows, setRows] = useRemembered<number | null>("jellyfin.rows", null);
   const [exporting, setExporting] = useState(false);
   const exportJson = useJellyfinExport();
   const { data, isLoading, isError, isFetching } = useJellyfinConfiguration(userUUID, profile, rows, { activeTab });
@@ -437,7 +456,7 @@ function Configuration({ userUUID, activeTab, onClose }: { userUUID: string; act
 export default function DashboardJellyfin({ activeTab }: { activeTab: DashboardTab }) {
   const [typed, setTyped] = useState("");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useRemembered<string | null>("jellyfin.selected", null);
   useEffect(() => {
     const timer = setTimeout(() => setQuery(typed.trim()), 300);
     return () => clearTimeout(timer);
