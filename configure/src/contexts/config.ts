@@ -169,6 +169,7 @@ export interface AppConfig {
   blurThumbs: boolean;
   showPrefix: boolean;
   showMetaProviderAttribution: boolean;
+  hideErrors?: boolean;
   castCount: number;
   displayAgeRating: boolean;
   providers: {
