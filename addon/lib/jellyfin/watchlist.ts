@@ -1,5 +1,5 @@
 import { fetchMeta, metaToBaseItem } from './items';
-import { profileKey, readsTrackers, writesTrackers } from './profiles';
+import { profileKey, writesTrackers } from './profiles';
 import { trackerWatchlist, writeWatchlist, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { LRUCache } from 'lru-cache';
@@ -8,26 +8,35 @@ import { envInt } from '../../utils/envNumber';
 const database: any = require('../database');
 const idMapper: any = require('../id-mapper');
 
-const trackerMemo = new LRUCache<string, WatchlistEntry[]>({
+interface HeldWatchlist {
+  rows: WatchlistEntry[];
+  exhausted: boolean;
+}
+
+const trackerMemo = new LRUCache<string, HeldWatchlist>({
   max: envInt('JELLYFIN_RESUME_CACHE_MAX', 500, 1),
   ttl: envInt('JELLYFIN_WATCHLIST_MEMO_TTL', 60, 1) * 1000,
 });
-const trackerInFlight = new Map<string, Promise<WatchlistEntry[]>>();
+const trackerInFlight = new Map<string, Promise<HeldWatchlist>>();
 
 function trackerMemoKey(config: any, userUUID: string): string {
   return `${userUUID}:${profileKey(config)}:${JSON.stringify(config?.jellyfinWatchlistServices ?? null)}`;
 }
 
-function trackerWatchlistShared(config: any, userUUID: string): Promise<WatchlistEntry[]> {
-  const key = trackerMemoKey(config, userUUID);
-  const held = trackerMemo.get(key);
-  if (held) return Promise.resolve(held);
+/** A shelf is read only as far as the caller needs; a held read serves any smaller window. */
+function trackerWatchlistShared(config: any, userUUID: string, need: number): Promise<HeldWatchlist> {
+  const key = `${trackerMemoKey(config, userUUID)}:${need}`;
+  for (const [candidate, held] of trackerMemo.entries()) {
+    if (!candidate.startsWith(`${trackerMemoKey(config, userUUID)}:`)) continue;
+    if (held.exhausted || held.rows.length >= need) return Promise.resolve(held);
+  }
   const running = trackerInFlight.get(key);
   if (running) return running;
-  const work = trackerWatchlist(config, userUUID)
+  const work = trackerWatchlist(config, userUUID, need)
     .then((built) => {
-      if (built.complete) trackerMemo.set(key, built.rows);
-      return built.rows;
+      const held = { rows: built.rows, exhausted: built.exhausted };
+      if (built.complete) trackerMemo.set(key, held);
+      return held;
     })
     .finally(() => {
       if (trackerInFlight.get(key) === work) trackerInFlight.delete(key);
@@ -43,10 +52,11 @@ export function invalidateWatchlist(userUUID: string): void {
 }
 
 // The table wins over a tracker, as for the resume shelf.
-export async function watchlistEntries(userUUID: string, config: any): Promise<WatchlistEntry[]> {
+export async function watchlistEntries(userUUID: string, config: any, need = Number.MAX_SAFE_INTEGER): Promise<{ entries: WatchlistEntry[]; exhausted: boolean }> {
   const profile = profileKey(config);
   const local: any[] = await database.listWatchlist(userUUID, profile).catch(() => []);
-  const tracker = readsTrackers(config) ? await trackerWatchlistShared(config, userUUID) : [];
+  const held = await trackerWatchlistShared(config, userUUID, need);
+  const tracker = held.rows;
 
   const out = new Map<string, WatchlistEntry>();
   for (const row of tracker) out.set(row.metaId, row);
@@ -59,7 +69,7 @@ export async function watchlistEntries(userUUID: string, config: any): Promise<W
       out.delete(metaId);
     }
   }
-  return [...out.values()].sort((a, b) => b.addedAt - a.addedAt);
+  return { entries: [...out.values()].sort((a, b) => b.addedAt - a.addedAt), exhausted: held.exhausted };
 }
 
 export async function watchlistItems(userUUID: string, config: any, serverId: string, entries: WatchlistEntry[], concurrency: number): Promise<any[]> {
@@ -91,7 +101,7 @@ export async function applyWatchlistState(items: any[], userUUID: string, config
   });
   if (!titles.length) return;
 
-  const listed = new Set((await watchlistEntries(userUUID, config)).map((entry) => entry.metaId));
+  const listed = new Set((await watchlistEntries(userUUID, config)).entries.map((entry) => entry.metaId));
   for (const item of titles) {
     const own = String(descriptors.get(String(item.Id)).i);
     if (listed.has(own) || listedKeys(item).some((key) => listed.has(key))) {

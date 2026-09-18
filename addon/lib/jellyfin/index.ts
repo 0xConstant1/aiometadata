@@ -475,6 +475,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const includeItemTypes = req.query.IncludeItemTypes ?? req.query.includeItemTypes;
     const parentId = req.query.ParentId ?? req.query.parentId;
     const filters = String(req.query.Filters ?? req.query.filters ?? '');
+    const favouriteFlag = String(req.query.IsFavorite ?? req.query.isFavorite ?? '').toLowerCase() === 'true';
 
     const config = await loadConfig(req);
     if (!config) {
@@ -485,20 +486,29 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const serverId = serverIdFor(userUUID);
 
     // The watchlist, newest first, is what a client calls favourites.
-    if (filters.includes('IsFavorite')) {
+    if (filters.includes('IsFavorite') || favouriteFlag) {
       const started = Date.now();
       const wanted = includeItemTypes
         ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
         : null;
-      const entries = (await watchlistEntries(userUUID, config)).filter((entry) =>
+      if (wanted && !wanted.has('Movie') && !wanted.has('Series')) {
+        res.json(itemList([], 0, startIndex));
+        return;
+      }
+      // A shelf is read one page deeper than asked for, so a client paging the
+      // row keeps its count without the whole watchlist being built up front.
+      const need = startIndex + limit * 2;
+      const read = await watchlistEntries(userUUID, config, need);
+      const entries = read.entries.filter((entry) =>
         !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
       );
       const listed = Date.now() - started;
       const page = entries.slice(startIndex, startIndex + limit);
       const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
       await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
-      logger.debug(`Favourites for ${userUUID}: ${items.length} of ${entries.length} in ${Date.now() - started}ms (entries ${listed}ms)`);
-      res.json(itemList(items, entries.length, startIndex));
+      const count = read.exhausted ? entries.length : Math.max(entries.length, startIndex + items.length + limit);
+      logger.debug(`Favourites for ${userUUID} from ${clientInfo(req).client}/${clientInfo(req).version}: ${items.length} of ${count}, types ${includeItemTypes ?? 'any'}, from ${startIndex}, in ${Date.now() - started}ms (entries ${listed}ms)`);
+      res.json(itemList(items, count, startIndex));
       return;
     }
     const searchTerm = req.query.SearchTerm ?? req.query.searchTerm;

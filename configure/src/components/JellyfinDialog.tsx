@@ -185,7 +185,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             <Label className="text-xs font-medium">Watchlist</Label>
             <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel={main ? 'Every connected' : 'Same as you'} />
             <p className="text-[11px] text-muted-foreground">
-              A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
+              A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. This server only leaves favourites to the hearts set here. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
             </p>
           </div>
         )}
@@ -213,9 +213,12 @@ type WatchlistShelf = 'movies' | 'series' | 'anime';
 type WatchlistOption = { value: string; label: string; shelves: WatchlistShelf[] };
 const SHELF_LABELS: Record<WatchlistShelf, string> = { movies: 'Movies', series: 'Series', anime: 'Anime' };
 
+const WATCHLIST_NONE = 'none';
+
 /** A pick is `service:shelf`; none picked means every shelf of every connected service. */
 function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: string[]; options: WatchlistOption[]; onChange: (next: string[] | undefined) => void; inheritLabel: string }) {
-  const picked = (value ?? []).flatMap((token) => {
+  const serverOnly = (value ?? []).includes(WATCHLIST_NONE);
+  const picked = serverOnly ? [] : (value ?? []).flatMap((token) => {
     const [service, shelf] = token.split(':');
     const option = options.find((o) => o.value === service);
     if (!option) return [];
@@ -227,7 +230,10 @@ function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: s
   };
   return (
     <div className="space-y-1">
-      <TagChip name={inheritLabel} onClick={() => onChange(undefined)} pressed={picked.length === 0} dimmed={picked.length > 0} />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <TagChip name={inheritLabel} onClick={() => onChange(undefined)} pressed={!serverOnly && picked.length === 0} dimmed={serverOnly || picked.length > 0} />
+        <TagChip name="This server only" onClick={() => onChange(serverOnly ? undefined : [WATCHLIST_NONE])} pressed={serverOnly} dimmed={!serverOnly} />
+      </div>
       {options.map((opt) => (
         <div key={opt.value} className="flex flex-wrap items-center gap-1.5">
           <span className="w-24 shrink-0 text-xs text-muted-foreground">{opt.label}</span>
@@ -243,7 +249,7 @@ function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: s
 
 function resumeSourceCaption(value: string, options: Array<{ value: string; label: string }>): string {
   if (value === 'off') {
-    return 'This server only: Continue Watching, Next Up and the watched ticks come from what you play through this server, on this configuration. Nothing watched elsewhere appears, and nothing is read from your trackers; plays are still reported to them.';
+    return 'This server only: Continue Watching, Next Up and the watched ticks come from what you play through this server, on this configuration. Nothing watched elsewhere appears, and nothing is read from your trackers; plays are still reported to them. Favourites follow the watchlist picks below, which have their own "This server only".';
   }
   if (value === 'auto') {
     const names = options.map((o) => o.label);

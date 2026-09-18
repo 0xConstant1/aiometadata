@@ -19,6 +19,8 @@ export type WatchlistIds = { imdb?: string; tmdb?: number | string; tvdb?: numbe
 
 
 export type WatchlistService = 'mdblist' | 'trakt' | 'simkl' | 'anilist' | 'mal' | 'publicmetadb';
+/** The pick that says a client's favourites are the hearts set here, and nothing else. */
+export const WATCHLIST_NONE = 'none';
 export const WATCHLIST_SERVICES: WatchlistService[] = ['mdblist', 'trakt', 'simkl', 'anilist', 'mal', 'publicmetadb'];
 export const SERVICE_KINDS: Record<WatchlistService, WatchlistKind[]> = {
   mdblist: ['movies', 'series'],
@@ -44,8 +46,8 @@ function connected(config: any, service: WatchlistService): boolean {
  */
 export function watchlistPicks(config: any): Map<WatchlistService, Set<WatchlistKind>> {
   const out = new Map<WatchlistService, Set<WatchlistKind>>();
-  if ((config?.jellyfinResumeSource ?? 'auto') === 'off') return out;
   const picked: string[] = Array.isArray(config?.jellyfinWatchlistServices) ? config.jellyfinWatchlistServices.map(String) : [];
+  if (picked.includes(WATCHLIST_NONE)) return out;
   for (const service of WATCHLIST_SERVICES) {
     if (!connected(config, service)) continue;
     const kinds = new Set<WatchlistKind>();
@@ -88,12 +90,12 @@ async function shelfCatalog(config: any, service: WatchlistService, kind: Watchl
   return { type: catalog.type, id: catalog.id, keep: (meta: any) => meta?.type === wanted };
 }
 
-async function shelfEntries(userUUID: string, config: any, service: WatchlistService, kind: WatchlistKind): Promise<{ rows: WatchlistEntry[]; ok: boolean }> {
+async function shelfEntries(userUUID: string, config: any, service: WatchlistService, kind: WatchlistKind, need: number): Promise<{ rows: WatchlistEntry[]; ok: boolean; exhausted: boolean }> {
   const catalog = await shelfCatalog(config, service, kind);
-  if (!catalog) return { rows: [], ok: true };
+  if (!catalog) return { rows: [], ok: true, exhausted: true };
   const { fetchWindow } = require('./items');
   const { profileTags } = require('./profiles');
-  const max = envInt('JELLYFIN_WATCHLIST_MAX_ITEMS', 5000, 100);
+  const max = Math.min(envInt('JELLYFIN_WATCHLIST_MAX_ITEMS', 5000, 100), Math.max(1, need));
   try {
     const window = await fetchWindow(userUUID, { id: catalog.id, type: catalog.type, name: catalog.id, pageSize: 0, extra: [] }, 0, max, {}, catalog.keep, profileTags(config));
     const rows: WatchlistEntry[] = [];
@@ -102,29 +104,35 @@ async function shelfEntries(userUUID: string, config: any, service: WatchlistSer
       const mediaType: WatchlistEntry['mediaType'] = kind === 'anime' ? 'anime' : meta.type === 'movie' ? 'movie' : 'series';
       rows.push({ metaId: String(meta.id), mediaType, kind, addedAt: Date.parse(meta._listedAt ?? '') || -rank });
     });
-    return { rows, ok: !window.failed };
+    return { rows, ok: !window.failed, exhausted: !window.hasMore };
   } catch (error: any) {
     logger.warn(`Watchlist ${catalog.id} failed: ${error?.message || error}`);
-    return { rows: [], ok: false };
+    return { rows: [], ok: false, exhausted: false };
   }
 }
 
 export interface TrackerWatchlist {
   rows: WatchlistEntry[];
   complete: boolean;
+  /** Every shelf ended inside the window, so the rows are the whole watchlist. */
+  exhausted: boolean;
 }
 
-export async function trackerWatchlist(config: any, userUUID: string): Promise<TrackerWatchlist> {
+export async function trackerWatchlist(config: any, userUUID: string, need = Number.MAX_SAFE_INTEGER): Promise<TrackerWatchlist> {
   const picks = watchlistPicks(config);
   const parts = await Promise.all(
-    [...picks].flatMap(([service, kinds]) => [...kinds].map((kind) => shelfEntries(userUUID, config, service, kind)))
+    [...picks].flatMap(([service, kinds]) => [...kinds].map((kind) => shelfEntries(userUUID, config, service, kind, need)))
   );
   const merged = new Map<string, WatchlistEntry>();
   for (const row of parts.flatMap((part) => part.rows)) {
     const held = merged.get(row.metaId);
     if (!held || row.addedAt > held.addedAt) merged.set(row.metaId, row);
   }
-  return { rows: [...merged.values()].sort((a, b) => b.addedAt - a.addedAt), complete: parts.every((part) => part.ok) };
+  return {
+    rows: [...merged.values()].sort((a, b) => b.addedAt - a.addedAt),
+    complete: parts.every((part) => part.ok),
+    exhausted: parts.every((part) => part.exhausted),
+  };
 }
 
 function traktHeaders(accessToken: string): Record<string, string> {
