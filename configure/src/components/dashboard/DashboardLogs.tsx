@@ -228,18 +228,23 @@ export function DashboardLogs({ data, loading, paused = false, onPauseToggle, on
     setServiceFilter("all");
   };
 
-  const copyRow = useCallback((entry: LogEntry) => {
-    navigator.clipboard.writeText(formatEntryForCopy(entry))
-      .then(() => toast.success("Log entry copied"))
+  const copyText = (text: string, done: string) => {
+    if (!navigator.clipboard?.writeText) {
+      toast.error("Copy needs a secure (https) page here; use Export instead");
+      return;
+    }
+    navigator.clipboard.writeText(text)
+      .then(() => toast.success(done))
       .catch(() => toast.error("Failed to copy"));
+  };
+
+  const copyRow = useCallback((entry: LogEntry) => {
+    copyText(formatEntryForCopy(entry), "Log entry copied");
   }, []);
 
   const copyAll = () => {
     if (filteredEntries.length === 0) return;
-    const text = filteredEntries.map(formatEntryForCopy).join("\n");
-    navigator.clipboard.writeText(text)
-      .then(() => toast.success(`Copied ${filteredEntries.length} entries`))
-      .catch(() => toast.error("Failed to copy"));
+    copyText(filteredEntries.map(formatEntryForCopy).join("\n"), `Copied ${filteredEntries.length} entries`);
   };
 
   const downloadLogs = () => {
