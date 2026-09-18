@@ -3342,7 +3342,11 @@ async function getPublicMetaDBCatalog(
       const listId = catalogId.replace('publicmetadb.list.', '');
       const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
       const [data, listType] = await Promise.all([
-        fetchListItems(apiKey, listId, page, pageSize),
+        fetchListItems(apiKey, listId, page, pageSize).catch((error: any) => {
+          if (!String(error?.message || '').includes('403')) throw error;
+          logger.warn(`[PublicMetaDB] List ${listId} is not on this account; it is a row left over from an older configuration. Remove it, or reinstall the addon in the client.`);
+          return { items: [] };
+        }),
         publicMetaDBListType(config, catalogId),
       ]);
       let metas = await parseListItems(data.items || [], type, language, config);

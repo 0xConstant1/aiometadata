@@ -1422,6 +1422,12 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     };
   }
 
+  if (idOnly.startsWith('publicmetadb.')) {
+    catalogConfig.apiKeys = {
+      publicmetadb: config.apiKeys?.publicmetadb || ''
+    };
+  }
+
   if (idOnly.startsWith('mal.userlist.') || idOnly === 'mal.suggestions') {
     catalogConfig.apiKeys = {
       malTokenId: config.apiKeys?.malTokenId || ''
