@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { type ManifestCatalog } from '@/lib/collectionBuilder/manifestSources';
 import { TERMS, type Target } from '@/lib/collectionBuilder/terms';
-import { hasNuvioCollectionSettings, type CollectionDraft, type FolderDraft, type SourceDraft } from '@shared/types';
+import { findFolder, hasNuvioCollectionSettings, mapFolder, parentFolderOf, type CollectionDraft, type FolderDraft, type SourceDraft } from '@shared/types';
 import { isNativeSource } from '@shared/catalogReconstruction';
 
 import { FolderCard } from './FolderCard';
@@ -36,6 +36,8 @@ export function CollectionEditor({
   selectedFolderId,
   onAddFolder,
   onRemoveFolder,
+  onAddSubFolder,
+  onSelectFolder,
   focusFolderTitle,
   onFolderTitleFocused,
   focusTitle,
@@ -66,6 +68,8 @@ export function CollectionEditor({
   selectedFolderId: string | null;
   onAddFolder: () => void;
   onRemoveFolder: () => void;
+  onAddSubFolder: (parentId: string) => void;
+  onSelectFolder: (folderId: string) => void;
   focusFolderTitle?: boolean;
   onFolderTitleFocused?: () => void;
   focusTitle?: boolean;
@@ -90,7 +94,8 @@ export function CollectionEditor({
 
   const update = (patch: Partial<CollectionDraft>) => onChange({ ...entry, ...patch });
 
-  const activeFolder = entry.folders.find(folder => folder.id === selectedFolderId) ?? null;
+  const activeFolder = selectedFolderId ? findFolder(entry.folders, selectedFolderId) ?? null : null;
+  const parentFolder = activeFolder ? parentFolderOf(entry.folders, activeFolder.id) ?? null : null;
   const folderNativeCount = activeFolder?.sources.filter(isNativeSource).length ?? 0;
 
   return (
@@ -242,16 +247,19 @@ export function CollectionEditor({
           pendingKeys={pendingKeys}
           target={target}
           onChange={next => update({
-            folders: entry.folders.map(f => (f.id === activeFolder.id ? next : f)),
+            folders: mapFolder(entry.folders, activeFolder.id, () => next),
           })}
           onUndoableChange={onUndoableChange && ((label, apply, undo) => {
             const over = (fn: (folder: FolderDraft) => FolderDraft) =>
               (current: CollectionDraft): CollectionDraft => ({
                 ...current,
-                folders: current.folders.map(f => (f.id === activeFolder.id ? fn(f) : f)),
+                folders: mapFolder(current.folders, activeFolder.id, fn),
               });
             onUndoableChange(label, over(apply), over(undo));
           })}
+          parent={parentFolder}
+          onOpenFolder={onSelectFolder}
+          onAddSubFolder={() => onAddSubFolder(activeFolder.id)}
           onRemove={onRemoveFolder}
           onAddSource={() => onAddSource(activeFolder.id)}
           onReplaceSource={index => onReplaceSource(activeFolder.id, index)}

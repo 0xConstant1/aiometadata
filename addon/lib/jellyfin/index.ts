@@ -33,7 +33,7 @@ import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickCo
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
-import { allBoxSets, boxSetMembers, boxSetsFor, collectionById, collectionView, folderCoverSize } from './collections';
+import { allBoxSets, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById, folderCoverSize } from './collections';
 import { setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyWatchedState, isWatched, ownNextUpRows, upcomingFollowed, watchedSnapshot, type NextUpRow } from './watched';
 import { registerStubs } from './stubs';
@@ -732,21 +732,28 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
       if (descriptor?.k === 'boxset') {
         const collection = collectionById(config, descriptor.c);
-        const folder = (collection?.folders ?? []).find((f: any) => f?.id === descriptor.f);
+        const folder = folderById(collection, descriptor.f);
         if (!collection || !folder) {
           res.json(itemList([], 0, startIndex));
           return;
         }
+        const wantedTypes = includeItemTypes ? String(includeItemTypes).split(',').map((t) => t.trim()) : [];
+        const children = !wantedTypes.length || wantedTypes.includes('BoxSet')
+          ? await boxSetsUnder(userUUID, config, serverId, collection, folder)
+          : [];
         const pageCap = envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20);
         const folderLimit = limit > pageCap * 2 ? pageCap : limit;
-        const page = await boxSetMembers(
-          userUUID, config, serverId, collection, folder, startIndex, folderLimit,
-          includeItemTypes ? String(includeItemTypes) : undefined
-        );
+        const ahead = children.slice(startIndex, startIndex + folderLimit);
+        const titlesFrom = Math.max(0, startIndex - children.length);
+        const room = folderLimit - ahead.length;
+        const page = room > 0
+          ? await boxSetMembers(userUUID, config, serverId, collection, folder, titlesFrom, room, includeItemTypes ? String(includeItemTypes) : undefined)
+          : { items: [], hasMore: true };
         await applyWatchedState(page.items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
+        const items = [...ahead, ...page.items];
         res.json(itemList(
-          page.items,
-          page.hasMore && page.items.length > 0 ? startIndex + page.items.length + folderLimit : startIndex + page.items.length,
+          items,
+          page.hasMore && items.length > 0 ? startIndex + items.length + folderLimit : startIndex + items.length,
           startIndex
         ));
         return;
@@ -1494,7 +1501,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const collection = config ? collectionById(config, descriptor.c) : null;
       if (!collection) return undefined;
       if (descriptor.k === 'collection') collectionView(scope, collection, null);
-      else await boxSetsFor(userUUID, config, scope, collection);
+      else await boxSetsDeep(userUUID, config, scope, collection);
       return recallImages(scope, itemId);
     }
 
@@ -2447,9 +2454,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (descriptor.k === 'collection' || descriptor.k === 'boxset') {
       const config = await loadConfig(req);
       const collection = config ? collectionById(config, descriptor.c) : null;
-      const sets = collection ? await boxSetsFor(userUUID, config, serverIdFor(userUUID), collection) : [];
+      const sets = collection ? await boxSetsDeep(userUUID, config, serverIdFor(userUUID), collection) : [];
       const item = descriptor.k === 'collection'
-        ? (collection && sets.length ? collectionView(serverIdFor(userUUID), collection, sets.length) : null)
+        ? (collection && sets.length ? collectionView(serverIdFor(userUUID), collection, sets.filter((set: any) => set.ParentId === normaliseJellyfinId(String(req.params.itemId))).length) : null)
         : sets.find((set: any) => set.Id === normaliseJellyfinId(String(req.params.itemId))) ?? null;
       if (!item) {
         res.status(404).json({ Message: 'Item not found' });

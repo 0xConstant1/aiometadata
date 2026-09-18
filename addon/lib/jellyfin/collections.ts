@@ -5,7 +5,7 @@ import { collectionFolder, EMPTY_USER_DATA } from './dto';
 import { fetchWindow, includeTypesFilter, knownCatalogLength, metaToBaseItem, rememberImages } from './items';
 import { getCatalogs, type CatalogRef } from './views';
 import { profileTags } from './profiles';
-import type { CollectionDraft, FolderDraft, SourceDraft } from '../collectionBuilder/types';
+import { findFolder, subFolders, type CollectionDraft, type FolderDraft, type SourceDraft } from '../collectionBuilder/types';
 
 // A builder collection is a library of box sets; a folder is one box set whose sources are its members.
 
@@ -39,6 +39,9 @@ export function collectionViewId(collection: CollectionDraft): string {
   return encodeJellyfinId({ k: 'collection', c: collection.id });
 }
 
+export function folderById(collection: CollectionDraft | null, folderId: string): FolderDraft | null {
+  return collection ? findFolder(Array.isArray(collection.folders) ? collection.folders : [], folderId) ?? null : null;
+}
 
 export function boxSetId(collection: CollectionDraft, folder: FolderDraft): string {
   return encodeJellyfinId({ k: 'boxset', c: collection.id, f: folder.id });
@@ -73,7 +76,11 @@ export function collectionView(serverId: string, collection: CollectionDraft, fo
   return view;
 }
 
-function boxSetItem(serverId: string, collection: CollectionDraft, folder: FolderDraft, sourceCount: number): any {
+function visibleDeep(catalogs: CatalogRef[], folder: FolderDraft): number {
+  return visibleSources(catalogs, folder).length + subFolders(folder).reduce((sum, child) => sum + visibleDeep(catalogs, child), 0);
+}
+
+function boxSetItem(serverId: string, collection: CollectionDraft, folder: FolderDraft, sourceCount: number, parentId: string): any {
   const id = boxSetId(collection, folder);
   const cover = imageOf(folder.coverImageUrl);
   const backdrop = imageOf(folder.heroBackdropUrl);
@@ -96,7 +103,7 @@ function boxSetItem(serverId: string, collection: CollectionDraft, folder: Folde
     RemoteTrailers: [],
     ProviderIds: {},
     IsFolder: true,
-    ParentId: collectionViewId(collection),
+    ParentId: parentId,
     Type: 'BoxSet',
     People: [],
     Studios: [],
@@ -119,23 +126,39 @@ function boxSetItem(serverId: string, collection: CollectionDraft, folder: Folde
   };
 }
 
+function boxSetsOf(catalogs: CatalogRef[], serverId: string, collection: CollectionDraft, folders: FolderDraft[], parentId: string, deep: boolean): any[] {
+  const out: any[] = [];
+  for (const folder of folders) {
+    if (!folder?.id || typeof folder.title !== 'string') continue;
+    const count = visibleDeep(catalogs, folder);
+    if (!count) continue;
+    const set = boxSetItem(serverId, collection, folder, count, parentId);
+    out.push(set);
+    if (deep) out.push(...boxSetsOf(catalogs, serverId, collection, subFolders(folder), set.Id, true));
+  }
+  return out;
+}
+
 /** The folders of a collection this user can see anything in. */
 export async function boxSetsFor(userUUID: string, config: any, serverId: string, collection: CollectionDraft): Promise<any[]> {
   const catalogs = await getCatalogs(userUUID, config);
-  const out: any[] = [];
-  for (const folder of Array.isArray(collection.folders) ? collection.folders : []) {
-    if (!folder?.id || typeof folder.title !== 'string') continue;
-    const sources = visibleSources(catalogs, folder);
-    if (!sources.length) continue;
-    out.push(boxSetItem(serverId, collection, folder, sources.length));
-  }
-  return out;
+  return boxSetsOf(catalogs, serverId, collection, Array.isArray(collection.folders) ? collection.folders : [], collectionViewId(collection), false);
+}
+
+export async function boxSetsUnder(userUUID: string, config: any, serverId: string, collection: CollectionDraft, folder: FolderDraft): Promise<any[]> {
+  const catalogs = await getCatalogs(userUUID, config);
+  return boxSetsOf(catalogs, serverId, collection, subFolders(folder), boxSetId(collection, folder), false);
+}
+
+export async function boxSetsDeep(userUUID: string, config: any, serverId: string, collection: CollectionDraft): Promise<any[]> {
+  const catalogs = await getCatalogs(userUUID, config);
+  return boxSetsOf(catalogs, serverId, collection, Array.isArray(collection.folders) ? collection.folders : [], collectionViewId(collection), true);
 }
 
 export async function allBoxSets(userUUID: string, config: any, serverId: string): Promise<any[]> {
   const out: any[] = [];
   for (const collection of builderCollections(config)) {
-    out.push(...(await boxSetsFor(userUUID, config, serverId, collection)));
+    out.push(...(await boxSetsDeep(userUUID, config, serverId, collection)));
   }
   return out;
 }
@@ -255,7 +278,7 @@ export async function boxSetMembers(
 
 /** The pixel box a folder's cover is cropped to, matching the tile shape a client draws. */
 export function folderCoverSize(config: any, collectionId: string, folderId: string): { width: number; height: number } {
-  const folder = (collectionById(config, collectionId)?.folders ?? []).find((f: any) => f?.id === folderId);
+  const folder = folderById(collectionById(config, collectionId), folderId);
   const shape = folder?.shape;
   if (shape === 'LANDSCAPE') return { width: 960, height: 540 };
   if (shape === 'SQUARE') return { width: 600, height: 600 };

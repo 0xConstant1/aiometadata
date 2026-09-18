@@ -10,6 +10,7 @@ import type {
   NuvioFolder,
   SourceDraft,
 } from './types';
+import { folderSources } from './types';
 import {
   createBlueprintWriter,
   isNativeSource,
@@ -94,7 +95,7 @@ function toFolder(
 
   const sources: NuvioAddonSource[] = [];
   let nativeSkipped = 0;
-  for (const source of folder.sources) {
+  for (const source of folderSources(folder)) {
     if (isNativeSource(source)) {
       if (nativeOrigin(source) === 'nuvio' && source.native) {
         sources.push(source.native as NuvioAddonSource);

@@ -1,4 +1,4 @@
-import { newId, type BuilderEntry, type FolderDraft, type SourceDraft } from '@shared/types';
+import { allFolders, newId, type BuilderEntry, type FolderDraft, type SourceDraft } from '@shared/types';
 import { isNativeSource } from '@shared/catalogReconstruction';
 
 export type ImportMode = 'append' | 'merge' | 'replace';
@@ -56,8 +56,8 @@ export function countImport(entries: BuilderEntry[], current: BuilderEntry[]): I
       continue;
     }
     collections += 1;
-    folders += entry.folders.length;
-    for (const folder of entry.folders) sources += folder.sources.length;
+    folders += allFolders(entry.folders).length;
+    for (const folder of allFolders(entry.folders)) sources += folder.sources.length;
   }
 
   return { collections, folders, sources, existing };
@@ -67,7 +67,7 @@ function collectFolderIds(entries: BuilderEntry[]): Set<string> {
   const ids = new Set<string>();
   for (const entry of entries) {
     if (entry.kind !== 'collection') continue;
-    for (const folder of entry.folders) ids.add(folder.id);
+    for (const folder of allFolders(entry.folders)) ids.add(folder.id);
   }
   return ids;
 }
