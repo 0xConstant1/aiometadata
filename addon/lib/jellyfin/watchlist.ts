@@ -2,15 +2,51 @@ import { fetchMeta, metaToBaseItem } from './items';
 import { profileKey, readsTrackers, writesTrackers } from './profiles';
 import { trackerWatchlist, writeWatchlist, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
+import { LRUCache } from 'lru-cache';
+import { envInt } from '../../utils/envNumber';
 
 const database: any = require('../database');
 const idMapper: any = require('../id-mapper');
+
+const trackerMemo = new LRUCache<string, WatchlistEntry[]>({
+  max: envInt('JELLYFIN_RESUME_CACHE_MAX', 500, 1),
+  ttl: envInt('JELLYFIN_WATCHLIST_MEMO_TTL', 60, 1) * 1000,
+});
+const trackerInFlight = new Map<string, Promise<WatchlistEntry[]>>();
+
+function trackerMemoKey(config: any, userUUID: string): string {
+  return `${userUUID}:${profileKey(config)}:${JSON.stringify(config?.jellyfinWatchlistServices ?? null)}`;
+}
+
+function trackerWatchlistShared(config: any, userUUID: string): Promise<WatchlistEntry[]> {
+  const key = trackerMemoKey(config, userUUID);
+  const held = trackerMemo.get(key);
+  if (held) return Promise.resolve(held);
+  const running = trackerInFlight.get(key);
+  if (running) return running;
+  const work = trackerWatchlist(config, userUUID)
+    .then((built) => {
+      if (built.complete) trackerMemo.set(key, built.rows);
+      return built.rows;
+    })
+    .finally(() => {
+      if (trackerInFlight.get(key) === work) trackerInFlight.delete(key);
+    });
+  trackerInFlight.set(key, work);
+  return work;
+}
+
+export function invalidateWatchlist(userUUID: string): void {
+  for (const key of [...trackerMemo.keys()]) {
+    if (String(key).startsWith(`${userUUID}:`)) trackerMemo.delete(key);
+  }
+}
 
 // The table wins over a tracker, as for the resume shelf.
 export async function watchlistEntries(userUUID: string, config: any): Promise<WatchlistEntry[]> {
   const profile = profileKey(config);
   const local: any[] = await database.listWatchlist(userUUID, profile).catch(() => []);
-  const tracker = readsTrackers(config) ? await trackerWatchlist(config, userUUID) : [];
+  const tracker = readsTrackers(config) ? await trackerWatchlistShared(config, userUUID) : [];
 
   const out = new Map<string, WatchlistEntry>();
   for (const row of tracker) out.set(row.metaId, row);
@@ -94,6 +130,7 @@ export async function setWatchlisted(userUUID: string, config: any, descriptor: 
   if (!meta) return false;
 
   await database.setWatchlisted(userUUID, profileKey(config), String(meta.id), descriptor.t, listed);
+  invalidateWatchlist(userUUID);
   if (writesTrackers(config)) {
     writeWatchlist(config, userUUID, idsFor(meta, stremioType), stremioType === 'movie' ? 'movie' : 'show', listed).catch(() => undefined);
   }
