@@ -600,7 +600,7 @@ async function cacheWrapInternal(key: string, method: () => Promise<any>, ttl: n
 
         if (finalTtl > 0) {
         if (classification.type !== 'SUCCESS') {
-            cacheLogger.warn(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
+            (classification.type === 'EMPTY_RESULT' ? cacheLogger.debug : cacheLogger.warn)(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
         }
 
         try {
@@ -744,7 +744,7 @@ async function cacheWrapGlobalInternal(key: string, method: () => Promise<any>, 
 
       if (finalTtl > 0) {
       if (classification.type !== 'SUCCESS') {
-        globalCacheLogger.warn(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
+        (classification.type === 'EMPTY_RESULT' ? globalCacheLogger.debug : globalCacheLogger.warn)(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
     }
 
     if (result !== null && result !== undefined) {
@@ -1478,6 +1478,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
 
   const catalogConfigString = JSON.stringify(catalogConfig);
   const configHash = hashConfig(catalogConfigString);
+  const catalogConfigShown = JSON.stringify(catalogConfig, (field, value) => (field === 'apiKeys' && value && typeof value === 'object' ? Object.keys(value) : value));
 
   let cacheTTL = CATALOG_TTL();
   let cachingDisabled = false;
@@ -1560,7 +1561,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
   const isUserScopedCatalog = isAuthCatalog || idOnly.includes('stremthru.') || idOnly.startsWith('custom.') || idOnly.startsWith('letterboxd.');
   const cacheKeyIdentifier = isAuthCatalog ? (config.sessionId || 'no-session') : (isUserScopedCatalog ? (userUUID || '') : '');
   const catalogSig = shortSignature(`${cacheKeyIdentifier}|${idOnly}|${configHash}|ttl:${cacheTTL}`);
-  cacheLogger.debug(`[Catalog] Key detail (${idOnly}) [sig:${catalogSig}] scope:${contentScope} userScoped:${isUserScopedCatalog} ttl:${cacheTTL}s catalogConfig:${catalogConfigString} catalogKey:${catalogKey}`);
+  cacheLogger.debug(`[Catalog] Key detail (${idOnly}) [sig:${catalogSig}] scope:${contentScope} userScoped:${isUserScopedCatalog} ttl:${cacheTTL}s catalogConfig:${catalogConfigShown} catalogKey:${catalogKey}`);
 
   if (isMDBListCatalog) {
     options = {
@@ -1584,7 +1585,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
       if (typeof existingOnHit === 'function') {
         existingOnHit(hit);
       }
-      cacheLogger.debug(`[Catalog] HIT detail (${idOnly}) [sig:${catalogSig}] catalogConfig:${catalogConfigString} catalogKey:${catalogKey}`);
+      cacheLogger.debug(`[Catalog] HIT detail (${idOnly}) [sig:${catalogSig}] catalogConfig:${catalogConfigShown} catalogKey:${catalogKey}`);
     },
   };
   // The key keeps the configured TTL so it stays stable across runs; only the
