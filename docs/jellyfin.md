@@ -16,6 +16,8 @@ It is optional. With it switched off the addon behaves exactly as before.
 
 Open your configuration, save it, and press **Jellyfin** next to **Install**. The dialog shows everything a client needs.
 
+![The Jellyfin dialog: server address, Quick Connect, client password and the stream addon](images/jellyfin/connect.jpg)
+
 | | |
 |---|---|
 | Server address | `https://<your-host>/jellyfin/<configuration id>` |
@@ -36,6 +38,8 @@ Sign-ins last thirty days (`JELLYFIN_TOKEN_TTL`, seconds); after that the client
 ## Users
 
 The server shows a list of users on the sign-in screen, the way a household's Jellyfin does. The first user is you. Any further user is a card in the dialog, and a user is made of:
+
+![Two user cards: your own, and an anime user marked as the same person as you](images/jellyfin/users.jpg)
 
 - **Tags.** The catalogs, collections and search catalogs the user sees are the ones carrying any of the user's tags. Tags themselves are made in **Catalogs**; a tag with a content rating caps what the user can open. A user with no tags sees everything.
 - **Same person as you.** On, the user is you on another set of catalogs: shares your Continue Watching and watched marks, and what they play is written to your trackers. Off, the user is someone else, with their own Continue Watching, watched marks and watchlist kept apart from yours; nothing they play or favourite reaches your trackers. What they read from your trackers is their card's **Trackers** pick, so a user who should see your history without writing to it is one with the switch off and the pick left on Automatic.
@@ -67,9 +71,13 @@ The collection builder's entries are served in the order they hold on the home s
 - A **classic row** is a catalog placed early: its catalog becomes one of the first libraries, and does not appear a second time further down.
 - A **collection** becomes a library of its own, typed as a box set library so clients draw it as one, with the collection's backdrop as its artwork. Each **folder** in it is one box set, carrying the folder's cover, backdrop and logo, drawn in the folder's shape (poster, landscape or square). Opening a box set lists the folder's **sources** walked in order, one after the other, with a source's genre applied where one is set and duplicates dropped, paged the way any library is. A folder whose sources are all outside the user's catalogs is not shown, and a collection with no folder left is not shown either.
 
+![A collection in the builder, its Users field marked Jellyfin only](images/jellyfin/collection-users.jpg)
+
 Both can be restricted to users through the **Users** field in the editor. An entry with no users is for everyone. A collection or row cannot be created or edited from a client; the server declines the request and points at the configuration.
 
 ### Search
+
+![Search catalogs, each row carrying its tag chip](images/jellyfin/search-tags.jpg)
 
 Search catalogs are tagged too, from the tag chip on each row under **Search**. Once any search catalog carries a tag, a user searches only the search catalogs holding one of their tags, so a child's user can search the kids catalog and nothing else, and an anime user is not offered a film search. While no search catalog is tagged, every user searches everywhere. A user with no tags always searches everywhere.
 
@@ -113,6 +121,8 @@ Each lookup sends the title, season and episode to the service asked. AniSkip is
 ## Watch history
 
 ### What the server records
+
+![Watch Tracking in General, with When to record set to playback start and stop](images/jellyfin/watch-tracking.jpg)
 
 Clients report playback the way they would to Jellyfin: a start, progress every few seconds, pauses, and a stop. The server writes the position to the playstate table and reports the play to every tracker with watch tracking on, through the same path the addon uses for its own playback reporting. A title is marked played once a stop lands at or past `JELLYFIN_PLAYED_THRESHOLD` percent of its runtime (80, the same point the trackers mark a watch); the runtime is the player's own length when the client reports one in the play state's `Item.RunTimeTicks`, else the file's length as the stream addon reported it, else the metadata's. A stop before that keeps the position for Continue Watching.
 
