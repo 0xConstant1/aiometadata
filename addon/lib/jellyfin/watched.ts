@@ -431,7 +431,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
  * gated on the activities digest and the snapshot is otherwise served from
  * cache however often a client asks.
  */
-export async function watchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
+async function readWatchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
   const { readsTrackers } = require('./profiles');
   if (!readsTrackers(config)) return EMPTY;
 
@@ -745,6 +745,113 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): P
     failed.set(`mdblist:${keyHash}`, String(error?.message || error));
     logger.warn(`Watched snapshot from mdblist failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
     return EMPTY;
+  }
+}
+
+export async function watchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
+  const snapshot = await readWatchedSnapshot(userUUID, config);
+  if (snapshot.fingerprint) await followTrackerUnmarks(userUUID, config, snapshot);
+  return snapshot;
+}
+
+const unmarksFollowed = new LRUCache<string, string>({ max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) });
+const unmarksInFlight = new Map<string, Promise<void>>();
+
+/**
+ * The table wins on what it holds, so a title unmarked on the tracker would stay
+ * watched here. A title the tracker listed at its previous digest and no longer
+ * lists was unmarked there, and its rows are cleared unless this server played
+ * it since that list was read.
+ */
+async function followTrackerUnmarks(userUUID: string, config: any, snapshot: WatchedSnapshot): Promise<void> {
+  const service = sourceFor(config);
+  const credential = service ? credentialFor(config, service) : undefined;
+  if (!service || !credential) return;
+
+  const { profileKey } = require('./profiles');
+  const profile = profileKey(config);
+  const source = createHash('sha256').update(`${service}:${credential}`).digest('hex').substring(0, 16);
+  const key = `${userUUID}:${profile}:${source}`;
+  if (unmarksFollowed.get(key) === snapshot.fingerprint) return;
+
+  const running = unmarksInFlight.get(key);
+  if (running) return running;
+  const started = (async () => {
+    try {
+      await reconcileUnmarks(userUUID, profile, service, key, config, snapshot);
+      unmarksFollowed.set(key, snapshot.fingerprint);
+    } catch (error: any) {
+      logger.debug(`Tracker unmarks not followed for ${userUUID}: ${error?.message || error}`);
+    } finally {
+      unmarksInFlight.delete(key);
+    }
+  })();
+  unmarksInFlight.set(key, started);
+  return started;
+}
+
+async function reconcileUnmarks(userUUID: string, profile: string, service: string, key: string, config: any, snapshot: WatchedSnapshot): Promise<void> {
+  const database: any = require('../database');
+  if (!(await database.listPlayedVideoIds(userUUID, 1, profile)).length) return;
+
+  const ids = [...snapshot.episodes, ...snapshot.movies];
+  if (!ids.length) return;
+
+  const { readGlobalCache, writeGlobalCache } = require('../getCache');
+  const storeKey = `jellyfin_tracker_seen_v1:${key}`;
+  const held = await readGlobalCache(storeKey);
+  if (held?.fingerprint === snapshot.fingerprint) return;
+
+  if (Array.isArray(held?.ids)) {
+    const cleared = await clearUnmarked(userUUID, profile, config, held.ids, Number(held.seenAt) || 0, new Set(ids));
+    if (cleared) {
+      const { invalidateResume } = require('./resume');
+      invalidateResume(userUUID);
+      logger.info(`${cleared} title(s) unmarked on ${service} cleared from the playstate of ${userUUID}`);
+    }
+  }
+  await writeGlobalCache(storeKey, { fingerprint: snapshot.fingerprint, seenAt: Date.now(), ids }, envInt('JELLYFIN_TRACKER_SEEN_DAYS', 30, 1) * 24 * 60 * 60);
+}
+
+async function clearUnmarked(userUUID: string, profile: string, config: any, before: string[], seenAt: number, current: Set<string>): Promise<number> {
+  const gone = before.filter((id) => !current.has(id));
+  if (!gone.length) return 0;
+  // A list that lost most of itself is a short read, not a user's doing.
+  if (gone.length > Math.max(10, before.length / 2)) {
+    logger.warn(`Tracker history for ${userUUID} lost ${gone.length} of ${before.length} titles at once; not treated as unmarks`);
+    return 0;
+  }
+
+  const database: any = require('../database');
+  const { parseStremioId } = require('./ids');
+  const { videoIdAliases } = require('./aliases');
+  let cleared = 0;
+  for (const id of gone) {
+    const parsed = parseStremioId(id);
+    const isEpisode = Boolean(parsed && parsed.episode !== null && parsed.episode !== undefined);
+    const spellings = [id, ...(isEpisode ? await videoIdAliases(id) : await movieSpellings(id, config))];
+    // Still listed under another spelling: the id resolved differently this time.
+    if (spellings.some((spelling) => current.has(spelling))) continue;
+
+    const rows = [...(await database.getPlaystates(userUUID, spellings, profile)).values()].filter((row: any) => row.played);
+    if (!rows.length) continue;
+    if (rows.some((row: any) => Number(row.position_ms) > 0 || Number(row.last_played_at) > seenAt)) continue;
+
+    for (const row of rows) {
+      await database.upsertPlaystate(userUUID, row.video_id, { positionMs: 0, played: false, lastPlayedAt: null }, profile);
+    }
+    cleared += 1;
+  }
+  return cleared;
+}
+
+async function movieSpellings(id: string, config: any): Promise<string[]> {
+  try {
+    const { resolveAllIds } = require('../id-resolver');
+    const ids = await resolveAllIds(id, 'movie', config, {}, [id.startsWith('tmdb:') ? 'imdb' : 'tmdb']);
+    return [ids?.imdbId, ids?.tmdbId ? `tmdb:${ids.tmdbId}` : null].filter((spelling): spelling is string => Boolean(spelling) && spelling !== id);
+  } catch {
+    return [];
   }
 }
 

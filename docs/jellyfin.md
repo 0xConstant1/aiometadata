@@ -179,6 +179,8 @@ Every `JELLYFIN_PLAYSTATE_SYNC_INTERVAL` seconds (thirty minutes) the server pul
 - a title the table holds at a position is only marked finished when the tracker dates the watch after that position, since an older watch is the earlier viewing this one is a rewatch of;
 - a title the table already marks played is left alone.
 
+A title unmarked on the tracker is followed as well. The titles the tracker listed as watched are remembered for `JELLYFIN_TRACKER_SEEN_DAYS` days, and one that has left the list by the next read is cleared from the table, unless it was played through this server since the earlier read or is part way through a rewatch. A read that loses more than half the list, and more than ten titles, at once is treated as a failed read and clears nothing.
+
 The sync is logged under the configuration it runs for, so the log filter by configuration id shows it.
 
 ## Watchlist

@@ -691,6 +691,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_TRACKER_SEEN_DAYS',
+    envVar: 'JELLYFIN_TRACKER_SEEN_DAYS',
+    label: 'Jellyfin Tracker History Memory (days)',
+    description: 'How long the titles a tracker last listed as watched are remembered. A title that has left the list since is taken as unmarked on the tracker and cleared from this server, unless it was played here after that list was read.',
+    category: 'Features',
+    type: 'number',
+    default: 30,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_WATCHED_RETRY',
     envVar: 'JELLYFIN_WATCHED_RETRY',
     label: 'Jellyfin Watched Read Retry (seconds)',
