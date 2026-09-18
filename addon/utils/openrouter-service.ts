@@ -77,7 +77,7 @@ async function performOpenRouterSearch(apiKey: string, query: string, type: 'mov
       );
     }
     logger.debug("Stack trace:", error.stack);
-    return [];
+    throw error;
   }
 }
 

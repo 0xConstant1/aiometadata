@@ -612,7 +612,7 @@ export function SearchSettings() {
                         ? `Any OpenRouter model ID, ${config.search.ai_openrouter_web_search !== false ? 'with Web Search' : 'without Web Search'}`
                         : (() => {
                             const selected = GEMINI_MODELS.find(m => m.id === resolveGeminiModel(config.search.ai_model));
-                            return (selected?.grounding || config.search.ai_web_search) ? 'with Web Search' : 'without Web Search';
+                            return (selected?.grounding && config.search.ai_web_search) ? 'with Web Search' : 'without Web Search';
                           })()
                     }
                     control={
@@ -727,14 +727,14 @@ export function SearchSettings() {
                     const provider = config.search.ai_provider || 'gemini';
                     if (provider !== 'gemini') return null;
                     const selected = GEMINI_MODELS.find(m => m.id === resolveGeminiModel(config.search.ai_model));
-                    if (selected?.grounding) return null; // already has free grounding
+                    if (selected && !selected.grounding) return null;
 
                     return (
                       <>
                         <SettingRow
                           htmlFor="ai-web-search"
                           label="Web Search"
-                          description="Requires a paid Gemini API key. Free keys will get 429 errors."
+                          description="Billed by Google on most models. If the key is refused, the search runs without it."
                           control={
                             <Switch
                               id="ai-web-search"
@@ -749,8 +749,8 @@ export function SearchSettings() {
                         />
                         {!config.search.ai_web_search && (
                           <Callout variant="warn" className="text-xs">
-                            This model cannot search the web on free tier — results may be less accurate for recent or niche content.
-                            If you have a paid Gemini key, enable "Web Search" above.
+                            Answers come from the model's own knowledge, so recent or niche titles may be missed.
+                            Turn on "Web Search" above if your Gemini key is billed for it.
                           </Callout>
                         )}
                       </>

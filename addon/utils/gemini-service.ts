@@ -45,85 +45,93 @@ function supportsGrounding(model: string): boolean {
   return entry?.grounding ?? false;
 }
 
-async function performGeminiSearch(apiKey: string, query: string, type: string, language: string, model: string, forceGrounding: boolean = false): Promise<Suggestion[]> {
-  const startTime = Date.now();
+function groundingRefused(error: any): boolean {
+  const status = Number(error?.statusCode);
+  const message = String(error?.message || '').toLowerCase();
+  if (status === 429 || status === 403) return true;
+  return /quota|billing|not available|not supported|permission|grounding/.test(message);
+}
 
+async function performGeminiSearch(apiKey: string, query: string, type: string, language: string, model: string, forceGrounding: boolean = false): Promise<Suggestion[]> {
   if (!apiKey) {
     logger.warn("Search failed: no API key provided.");
     return [];
   }
 
   const selectedModel = resolveGeminiModel(model);
-  const useGrounding = forceGrounding || supportsGrounding(selectedModel);
+  const wantsGrounding = forceGrounding && supportsGrounding(selectedModel);
+
+  try {
+    return await geminiSearch(apiKey, query, type, selectedModel, wantsGrounding);
+  } catch (error: any) {
+    if (wantsGrounding && groundingRefused(error)) {
+      logger.warn(`Gemini refused web search on ${selectedModel} (${error?.message || error}); retrying without it`);
+      return geminiSearch(apiKey, query, type, selectedModel, false);
+    }
+    throw error;
+  }
+}
+
+async function geminiSearch(apiKey: string, query: string, type: string, selectedModel: string, useGrounding: boolean): Promise<Suggestion[]> {
+  const startTime = Date.now();
   const timeout = useGrounding ? 45000 : 30000;
 
   logger.debug(`Using model: ${selectedModel}, grounding: ${useGrounding}, timeout: ${timeout}ms`);
 
-  try {
-    const generationStart = Date.now();
+  const generationStart = Date.now();
 
-    const prompt = buildPrompt(query, type, 20, useGrounding ? 'gemini' : false);
+  const prompt = buildPrompt(query, type, 20, useGrounding ? 'gemini' : false);
 
-    const response = await generateContent({
-      apiKey,
-      model: selectedModel,
-      prompt,
-      useGrounding,
-      timeout,
-    });
+  const response = await generateContent({
+    apiKey,
+    model: selectedModel,
+    prompt,
+    useGrounding,
+    timeout,
+  });
 
-    const rawText = response.text;
+  const rawText = response.text;
 
-    if (!rawText) {
-      logger.debug(`Gemini returned no text. Response details:`);
-      if (response.finishReason) {
-        logger.debug(`Finish reason: ${response.finishReason}`);
-      }
-      if (response.safetyRatings) {
-        logger.debug(`Safety ratings: ${JSON.stringify(response.safetyRatings)}`);
-      }
-      if (response.finishReason === 'SAFETY') {
-        logger.warn('Response blocked due to safety filters');
-      }
-      if (response.promptFeedback) {
-        logger.debug(`Prompt feedback: ${JSON.stringify(response.promptFeedback)}`);
-      }
+  if (!rawText) {
+    logger.debug(`Gemini returned no text. Response details:`);
+    if (response.finishReason) {
+      logger.debug(`Finish reason: ${response.finishReason}`);
     }
-
-    const searchQueries = response.groundingMetadata?.webSearchQueries;
-    if (searchQueries && searchQueries.length > 0) {
-      logger.debug(`Gemini utilized Google Search grounding with ${searchQueries.length} queries: ${searchQueries.join(', ')}`);
+    if (response.safetyRatings) {
+      logger.debug(`Safety ratings: ${JSON.stringify(response.safetyRatings)}`);
     }
-
-    const generationTime = Date.now() - generationStart;
-    logger.debug(`AI generation completed in ${generationTime}ms`);
-    logger.debug(`Gemini raw response: ${rawText}`);
-
-    const parsingStart = Date.now();
-
-    const suggestions = parseAIResponse(rawText, type);
-
-    const parsingTime = Date.now() - parsingStart;
-    logger.debug(`Parsing completed in ${parsingTime}ms`);
-
-    const totalTime = Date.now() - startTime;
-    logger.debug(`Total search time: ${totalTime}ms, returned ${suggestions.length} suggestions`);
-
-    if (totalTime > 10000) {
-      logger.warn(`WARNING: AI search took longer than 10 seconds (${totalTime}ms)`);
+    if (response.finishReason === 'SAFETY') {
+      logger.warn('Response blocked due to safety filters');
     }
-
-    return suggestions;
-
-  } catch (error: any) {
-    const keyHint = apiKey ? `...${apiKey.slice(-4)}` : 'none';
-    logger.error(`Error during AI search (model: ${selectedModel}, grounding: ${useGrounding}, key: ${keyHint}):`, error.message);
-    if (error.statusCode) {
-      logger.error(`HTTP status: ${error.statusCode}`);
+    if (response.promptFeedback) {
+      logger.debug(`Prompt feedback: ${JSON.stringify(response.promptFeedback)}`);
     }
-    logger.debug("Stack trace:", error.stack);
-    return [];
   }
+
+  const searchQueries = response.groundingMetadata?.webSearchQueries;
+  if (searchQueries && searchQueries.length > 0) {
+    logger.debug(`Gemini utilized Google Search grounding with ${searchQueries.length} queries: ${searchQueries.join(', ')}`);
+  }
+
+  const generationTime = Date.now() - generationStart;
+  logger.debug(`AI generation completed in ${generationTime}ms`);
+  logger.debug(`Gemini raw response: ${rawText}`);
+
+  const parsingStart = Date.now();
+
+  const suggestions = parseAIResponse(rawText, type);
+
+  const parsingTime = Date.now() - parsingStart;
+  logger.debug(`Parsing completed in ${parsingTime}ms`);
+
+  const totalTime = Date.now() - startTime;
+  logger.debug(`Total search time: ${totalTime}ms, returned ${suggestions.length} suggestions`);
+
+  if (totalTime > 10000) {
+    logger.warn(`WARNING: AI search took longer than 10 seconds (${totalTime}ms)`);
+  }
+
+  return suggestions;
 }
 
 function buildPrompt(query: string, type: string, numResults: number = 10, searchMode: string | false = false): string {

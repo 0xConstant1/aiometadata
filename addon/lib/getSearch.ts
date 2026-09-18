@@ -1326,7 +1326,7 @@ async function matchAndEnrichFromTMDB(suggestion: { title: string; year: string 
 }
 
 
-async function performAiSearch(query: string, language: string, config: any): Promise<any[]> {
+async function performAiSearch(query: string, language: string, config: any): Promise<{ metas: any[]; error?: string }> {
   const startTime = Date.now();
   const aiProvider = config.search?.ai_provider || 'gemini';
   const aiModel = aiProvider === 'openrouter'
@@ -1354,7 +1354,7 @@ async function performAiSearch(query: string, language: string, config: any): Pr
 
     if (!suggestions || suggestions.length === 0) {
       logger.info('AI search returned no suggestions.');
-      return [];
+      return { metas: [] };
     }
 
     logger.debug(`AI search returned ${suggestions.length} suggestions`);
@@ -1388,12 +1388,15 @@ async function performAiSearch(query: string, language: string, config: any): Pr
     const totalTime = Date.now() - startTime;
     logger.success(`AI search completed in ${totalTime}ms. Returning ${filteredResults.length} results.`);
 
-    return filteredResults;
+    return { metas: filteredResults };
 
   } catch (error: any) {
     const totalTime = Date.now() - startTime;
     logger.error(`AI search failed after ${totalTime}ms:`, error.message);
-    return [];
+    return {
+      metas: [],
+      error: `${aiProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} (${aiModel}): ${error?.message || 'request failed'}`,
+    };
   }
 }
 
@@ -2363,7 +2366,7 @@ function getProviderFromSearchId(searchId: string): string {
   }
 }
 
-async function getSearch(id: string, type: string, language: string, extra: any, config: any): Promise<{ metas: any[] }> {
+async function getSearch(id: string, type: string, language: string, extra: any, config: any): Promise<{ metas: any[]; error?: string }> {
   const searchStartTime = Date.now();
 
   const queryText = extra?.search || extra?.genre_id || extra?.va_id || 'N/A';
@@ -2408,7 +2411,9 @@ async function getSearch(id: string, type: string, language: string, extra: any,
       case 'gemini.search':
         if (extra.search) {
           const query = extra.search;
-          metas = await performAiSearch(query, language, config);
+          const aiResult = await performAiSearch(query, language, config);
+          if (aiResult.error) return { metas: [], error: aiResult.error };
+          metas = aiResult.metas;
         }
         break;
 
