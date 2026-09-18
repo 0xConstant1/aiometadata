@@ -520,20 +520,24 @@ export async function tvContentRatings(id: string, config: UserConfig) {
   );
 }
 
+const EXTERNAL_IDS_NOT_FOUND = { status: 'not_found' };
+
 export async function movieExternalIds(id: string, config: UserConfig) {
-  return cacheWrapGlobal(`tmdb:movie:external_ids:${id}`, () =>
+  const found = await cacheWrapGlobal(`tmdb:movie:external_ids:${id}`, () =>
     makeTmdbRequest(`/movie/${id}/external_ids`, getApiKey(config), {}, 'GET', null, config)
-      .then(normalizeTmdbExternalIdsForCache),
+      .then((ids: any) => (ids ? normalizeTmdbExternalIdsForCache(ids) : EXTERNAL_IDS_NOT_FOUND)),
     24 * 60 * 60 // 24 hours
   );
+  return found?.status === EXTERNAL_IDS_NOT_FOUND.status ? null : found;
 }
 
 export async function tvExternalIds(id: string, config: UserConfig) {
-  return cacheWrapGlobal(`tmdb:tv:external_ids:${id}`, () => 
+  const found = await cacheWrapGlobal(`tmdb:tv:external_ids:${id}`, () =>
     makeTmdbRequest(`/tv/${id}/external_ids`, getApiKey(config), {}, 'GET', null, config)
-      .then(normalizeTmdbExternalIdsForCache),
+      .then((ids: any) => (ids ? normalizeTmdbExternalIdsForCache(ids) : EXTERNAL_IDS_NOT_FOUND)),
     24 * 60 * 60 // 24 hours
   );
+  return found?.status === EXTERNAL_IDS_NOT_FOUND.status ? null : found;
 }
 
 export async function movieCredits(params: any, config: UserConfig) {
