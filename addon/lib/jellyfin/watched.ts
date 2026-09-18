@@ -3,7 +3,7 @@ import { LRUCache } from 'lru-cache';
 import { createHash } from 'crypto';
 import { envInt } from '../../utils/envNumber';
 import { credentialFor, sourceFor } from './trackerSource';
-import { videoIdFor } from './resume';
+import { generationOf, videoIdFor } from './resume';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -824,6 +824,36 @@ async function airedEpisodeIds(userUUID: string, descriptor: any): Promise<strin
   return null;
 }
 
+const ownPlayedMemo = new LRUCache<string, Set<string>>({
+  max: envInt('JELLYFIN_RESUME_CACHE_MAX', 500, 1),
+  ttl: envInt('JELLYFIN_RESUME_TTL', 60, 1) * 1000,
+});
+
+async function ownPlayedEpisodes(userUUID: string, profile: string): Promise<Set<string>> {
+  const key = `${userUUID}:${profile}:${generationOf(userUUID)}`;
+  const held = ownPlayedMemo.get(key);
+  if (held) return held;
+  const played = new Set<string>();
+  try {
+    const database: any = require('../database');
+    const ids = await database.listPlayedVideoIds(userUUID, envInt('JELLYFIN_OWN_PLAYED_LIMIT', 20000, 100), profile);
+    for (const id of ids) if (/:\d+:\d+$/.test(id)) played.add(id);
+  } catch {
+    return played;
+  }
+  ownPlayedMemo.set(key, played);
+  return played;
+}
+
+async function playedUnderAnySpelling(videoId: string, snapshot: WatchedSnapshot, ownPlayed: Set<string>): Promise<boolean> {
+  if (snapshot.episodes.has(videoId) || ownPlayed.has(videoId)) return true;
+  const { videoIdAliases } = require('./aliases');
+  for (const alias of await videoIdAliases(videoId)) {
+    if (snapshot.episodes.has(alias) || ownPlayed.has(alias)) return true;
+  }
+  return false;
+}
+
 export async function applyWatchedState(
   items: any[],
   snapshot: WatchedSnapshot,
@@ -861,13 +891,17 @@ export async function applyWatchedState(
     }
   }
 
+  const ownPlayed = userUUID && [...descriptors.values()].some((d) => d.k === 'series')
+    ? await ownPlayedEpisodes(userUUID, profile)
+    : new Set<string>();
+
   await Promise.all(
     items.map(async (item: any) => {
       const descriptor = descriptors.get(String(item?.Id));
       if (!descriptor) return;
 
       if (descriptor.k === 'series') {
-        const counts = snapshot.series.get(String(descriptor.i));
+        const counts = snapshot.series.get(String(descriptor.i)) ?? (ownPlayed.size ? { watched: 0, total: 0 } : null);
         if (!counts) return;
         // The show's aired episodes are the whole, specials and what has not
         // aired left out; a tracker's own counts stand in only when the meta
@@ -877,8 +911,9 @@ export async function applyWatchedState(
         const total = aired?.length || counts.total;
         if (total <= 0) return;
         const watched = aired?.length
-          ? aired.filter((videoId) => snapshot.episodes.has(videoId)).length
+          ? (await Promise.all(aired.map((videoId) => playedUnderAnySpelling(videoId, snapshot, ownPlayed)))).filter(Boolean).length
           : Math.min(counts.watched, total);
+        if (!watched && !snapshot.series.has(String(descriptor.i))) return;
         const unplayed = Math.max(0, total - watched);
         item.UserData = {
           ...item.UserData,

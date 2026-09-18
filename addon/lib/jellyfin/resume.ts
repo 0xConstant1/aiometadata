@@ -31,7 +31,7 @@ const snapshots = new LRUCache<string, ResumeRow[]>({
 const inFlight = new Map<string, Promise<ResumeRow[]>>();
 
 const generations = new Map<string, number>();
-const generationOf = (userUUID: string): number => generations.get(userUUID) ?? 0;
+export const generationOf = (userUUID: string): number => generations.get(userUUID) ?? 0;
 
 /**
  * A tracker names an episode in its own space, which for anime is rarely the

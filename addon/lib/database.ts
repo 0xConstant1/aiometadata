@@ -1017,6 +1017,14 @@ class Database {
     return (await this.allQuery(query, profile === null ? [userUUID, limit] : this.type === 'sqlite' ? [userUUID, profile, limit] : [userUUID, limit, profile])) || [];
   }
 
+  async listPlayedVideoIds(userUUID: string, limit: number, profile = ''): Promise<string[]> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT video_id FROM jellyfin_playstate WHERE user_uuid = ? AND profile = ? AND played = 1 ORDER BY COALESCE(last_played_at, updated_at) DESC LIMIT ?'
+      : 'SELECT video_id FROM jellyfin_playstate WHERE user_uuid = $1 AND profile = $2 AND played = 1 ORDER BY COALESCE(last_played_at, updated_at) DESC LIMIT $3';
+    const rows = (await this.allQuery(query, [userUUID, profile, limit])) || [];
+    return rows.map((row: any) => String(row.video_id));
+  }
+
   async listPlaystateFor(userUUID: string): Promise<any[]> {
     const query = this.type === 'sqlite'
       ? 'SELECT * FROM jellyfin_playstate WHERE user_uuid = ? ORDER BY profile, COALESCE(last_played_at, updated_at) DESC'
