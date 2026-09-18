@@ -5033,6 +5033,10 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
 
         responseData = await cacheWrapSearch(userUUID, searchKey, async () => {
           const searchResult = await getSearch(cleanId, searchType, language, searchExtraArgs, config);
+          if (searchResult.error) {
+            consola.error(`[SEARCH] ${cleanId} failed: ${searchResult.error}`);
+            return { metas: [], error: searchResult.error };
+          }
           return { metas: searchResult.metas || [] };
         }, searchEngine, cacheOptions);
       }
@@ -5273,6 +5277,15 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
       }
     }
 
+    if ((responseData as any)?.error) {
+      const { dynamicError, showsNotices } = require('./lib/errorNotice');
+      const reason = String((responseData as any).error);
+      delete (responseData as any).error;
+      if (showsNotices(config)) {
+        responseData = dynamicError('catalog', { title: 'Search unavailable', description: reason }, actualType === 'series' ? 'series' : 'movie');
+      }
+    }
+
     const httpCacheOpts = { cacheMaxAge: 0, staleRevalidate: 5 * 60 }; // No cache for regular catalogs, 5 min stale-while-revalidate
     respond(req, res, responseData, httpCacheOpts);
 
@@ -5284,6 +5297,12 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
 // --- Meta Route (with enhanced caching) ---
 addon.get("/stremio/:userUUID/meta/:type/:id.json", async function (req, res) {
   const { userUUID, type, id: stremioId } = req.params;
+
+  {
+    const { readNoticeId, dynamicError } = require('./lib/errorNotice');
+    const notice = readNoticeId(stremioId);
+    if (notice) return res.json(dynamicError('meta', notice, type === 'series' ? 'series' : 'movie'));
+  }
   
   // Load config from database
   const config = await loadConfigFromDatabase(userUUID);

@@ -131,6 +131,10 @@ export function GeneralSettings() {
     setConfig(prevConfig => ({ ...prevConfig, showMetaProviderAttribution: checked }));
   };
 
+  const handleHideErrorsChange = (checked: boolean) => {
+    setConfig(prevConfig => ({ ...prevConfig, hideErrors: checked ? undefined : true }));
+  };
+
   const handleCastCountChange = (value: string) => {
     const count = parseInt(value, 10);
     setConfig(prevConfig => ({ ...prevConfig, castCount: count === -1 ? undefined : count }));
@@ -283,6 +287,14 @@ export function GeneralSettings() {
                 <p className="text-sm text-muted-foreground">Show "[Meta provided by Provider]" in overview.</p>
               </div>
               <Switch id="show-meta-provider-attribution" checked={config.showMetaProviderAttribution} onCheckedChange={handleShowMetaProviderAttributionChange} />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 rounded-lg hover:bg-accent/50 transition-colors">
+              <div className="min-w-[12rem] flex-1">
+                <Label htmlFor="show-errors" className="font-medium">Show Errors</Label>
+                <p className="text-sm text-muted-foreground">When a provider refuses a request, show the reason as a card in the row instead of an empty one.</p>
+              </div>
+              <Switch id="show-errors" checked={config.hideErrors !== true} onCheckedChange={handleHideErrorsChange} />
             </div>
 
             <div className="space-y-3 p-3 rounded-lg">
