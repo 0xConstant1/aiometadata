@@ -642,10 +642,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       let passed = 0;
       const tags = profileTags(config);
 
+      const typesKey = includeItemTypes ? String(includeItemTypes) : '';
       for (const catalog of pool) {
         if (collected.length >= limit) break;
 
-        const known = knownCatalogLength(catalog, extras, tags);
+        const known = knownCatalogLength(userUUID, catalog, extras, tags, typesKey);
         if (known !== undefined && passed + known <= startIndex) {
           passed += known;
           continue;
@@ -658,8 +659,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           skip,
           limit - collected.length,
           extras,
-          includeTypesFilter(catalog.type, includeItemTypes ? String(includeItemTypes) : undefined),
-          tags
+          includeTypesFilter(catalog.type, typesKey || undefined),
+          tags,
+          typesKey
         ).catch(() => ({ items: [] as any[], hasMore: false }));
 
         const viewId = encodeJellyfinId({ k: 'view', t: catalog.type, c: catalog.id });
@@ -669,7 +671,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         }
 
         if (page.hasMore) break;
-        passed += knownCatalogLength(catalog, extras, tags) ?? skip + page.items.length;
+        passed += knownCatalogLength(userUUID, catalog, extras, tags, typesKey) ?? skip + page.items.length;
       }
 
       const across = filterByIncludeTypes(
@@ -1279,7 +1281,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const pages = await Promise.all(
       catalogs.map((catalog: any) =>
         fetchCatalogPage(userUUID, catalog.type, catalog.id, { search: term, light: '1' }, profileTags(config))
-          .then((items) => ({ catalog, items: items.slice(0, limit) }))
+          .then((items) => ({ catalog, items: (items ?? []).slice(0, limit) }))
           .catch(() => ({ catalog, items: [] as any[] }))
       )
     );

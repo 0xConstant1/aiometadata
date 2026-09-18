@@ -102,7 +102,7 @@ export async function fetchCatalogPage(
   catalogId: string,
   extras: Record<string, string> = {},
   tags: string[] = []
-): Promise<any[]> {
+): Promise<any[] | null> {
   const parts = Object.entries(extras)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
@@ -110,20 +110,20 @@ export async function fetchCatalogPage(
   const profile = tags.length ? `?${tags.map((t) => `tag=${encodeURIComponent(t)}`).join('&')}` : '';
   const url = `${localBase()}/stremio/${encodeURIComponent(userUUID)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraSegment}.json${profile}`;
 
-  if (failedPages.has(url)) return [];
+  if (failedPages.has(url)) return null;
   try {
     const response = await loopbackFetch(url);
     if (!response.ok) {
       failedPages.set(url, true);
       logger.debug(`Catalog ${type}/${catalogId} returned ${response.status}`);
-      return [];
+      return null;
     }
     const body: any = await response.json();
     return Array.isArray(body?.metas) ? body.metas : [];
   } catch (error: any) {
     failedPages.set(url, true);
     logger.warn(`Catalog ${type}/${catalogId} failed: ${error?.message || error}; not asked again for ${envInt('JELLYFIN_CATALOG_RETRY', 60, 1)}s`);
-    return [];
+    return null;
   }
 }
 
@@ -136,6 +136,7 @@ const failedPages = new LRUCache<string, true>({
 export interface Window {
   items: any[];
   hasMore: boolean;
+  failed?: boolean;
 }
 
 /**
@@ -161,12 +162,12 @@ const catalogLengths = new LRUCache<string, number>({
   ttl: envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60) * 1000,
 });
 
-function lengthKeyFor(catalog: CatalogRef, extras: Record<string, string>, tags: string[]): string {
-  return `${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}`;
+function lengthKeyFor(userUUID: string, catalog: CatalogRef, extras: Record<string, string>, tags: string[], keepKey = ''): string {
+  return `${userUUID}|${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}|${keepKey}`;
 }
 
-export function knownCatalogLength(catalog: CatalogRef, extras: Record<string, string> = {}, tags: string[] = []): number | undefined {
-  return catalogLengths.get(lengthKeyFor(catalog, extras, tags));
+export function knownCatalogLength(userUUID: string, catalog: CatalogRef, extras: Record<string, string> = {}, tags: string[] = [], keepKey = ''): number | undefined {
+  return catalogLengths.get(lengthKeyFor(userUUID, catalog, extras, tags, keepKey));
 }
 
 /**
@@ -185,20 +186,22 @@ export async function fetchWindow(
   limit: number,
   extras: Record<string, string> = {},
   keep?: (meta: any) => boolean,
-  tags: string[] = []
+  tags: string[] = [],
+  keepKey = ''
 ): Promise<Window> {
-  const lengthKey = lengthKeyFor(catalog, extras, tags);
-  let pageLength = pageLengths.get(lengthKey);
+  const lengthKey = lengthKeyFor(userUUID, catalog, extras, tags, keepKey);
+  const pageKey = lengthKeyFor(userUUID, catalog, extras, tags);
+  let pageLength = pageLengths.get(pageKey);
 
-  if (!pageLength && startIndex > 0) {
+  if (!pageLength && startIndex > 0 && !keep) {
     const probe = await fetchCatalogPage(userUUID, catalog.type, catalog.id, extras, tags);
-    if (probe.length > 0) {
+    if (probe && probe.length > 0) {
       pageLength = probe.length;
-      pageLengths.set(lengthKey, pageLength);
+      pageLengths.set(pageKey, pageLength);
     }
   }
 
-  const alignedSkip = pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
+  const alignedSkip = keep ? 0 : pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
   let offset = startIndex - alignedSkip;
 
   const collected: any[] = [];
@@ -206,14 +209,25 @@ export async function fetchWindow(
   let skip = alignedSkip;
   let pages = 0;
   let exhausted = false;
+  let failed = false;
+  const budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength || 0);
 
-  while (collected.length < offset + limit && pages < maxPages(offset + limit, pageLength || 0)) {
+  const knownLength = keep ? undefined : catalogLengths.get(lengthKey);
+  while (collected.length < offset + limit && pages < budget) {
+    if (knownLength !== undefined && skip >= knownLength) {
+      exhausted = true;
+      break;
+    }
     const page = await fetchCatalogPage(userUUID, catalog.type, catalog.id, {
       ...extras,
       ...(skip > 0 ? { skip: String(skip) } : {}),
     }, tags);
     pages++;
 
+    if (!page) {
+      failed = true;
+      break;
+    }
     if (page.length === 0) {
       exhausted = true;
       break;
@@ -223,7 +237,7 @@ export async function fetchWindow(
     const minPage = envInt('JELLYFIN_CATALOG_MIN_PAGE', 10, 1);
     if (pages === 1 && !pageLength && page.length >= minPage) {
       pageLength = page.length;
-      pageLengths.set(lengthKey, pageLength);
+      pageLengths.set(pageKey, pageLength);
     }
 
     for (const meta of page) {
@@ -244,7 +258,7 @@ export async function fetchWindow(
     }
   }
 
-  if (exhausted) catalogLengths.set(lengthKey, alignedSkip + collected.length);
+  if (exhausted && !failed) catalogLengths.set(lengthKey, alignedSkip + collected.length);
 
   // Duplicates are dropped above, so trimming by count would cut into the window
   // itself; the offset only ever covers items that came before startIndex.
@@ -252,7 +266,8 @@ export async function fetchWindow(
 
   return {
     items: collected.slice(offset, offset + limit),
-    hasMore: !exhausted && collected.length >= offset + limit,
+    hasMore: collected.length > offset + limit || (!exhausted && !failed && collected.length >= offset + limit),
+    ...(failed ? { failed: true } : {}),
   };
 }
 

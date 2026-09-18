@@ -39,6 +39,7 @@ export function collectionViewId(collection: CollectionDraft): string {
   return encodeJellyfinId({ k: 'collection', c: collection.id });
 }
 
+
 export function boxSetId(collection: CollectionDraft, folder: FolderDraft): string {
   return encodeJellyfinId({ k: 'boxset', c: collection.id, f: folder.id });
 }
@@ -193,16 +194,20 @@ export async function boxSetMembers(
   let sourceIndex = 0;
   let from = 0;
   let seen: Set<string>;
+  let toSkip = 0;
   if (held && held.nextIndex === startIndex) {
     sourceIndex = held.sourceIndex;
     from = held.sourceOffset;
     seen = new Set(held.seen);
+  } else if (sources.length > 1) {
+    seen = new Set<string>();
+    toSkip = startIndex;
   } else {
     seen = new Set<string>();
     let passed = 0;
     while (sourceIndex < sources.length) {
       const { source, catalog } = sources[sourceIndex];
-      const known = knownCatalogLength(catalog, extrasOf(source), tags);
+      const known = knownCatalogLength(userUUID, catalog, extrasOf(source), tags, includeItemTypes ?? '');
       if (known === undefined || passed + known > startIndex) break;
       passed += known;
       sourceIndex += 1;
@@ -212,38 +217,33 @@ export async function boxSetMembers(
 
   const collected: any[] = [];
   let nextIndex = startIndex;
-  let more = false;
 
-  while (sourceIndex < sources.length && !more) {
+  while (sourceIndex < sources.length && collected.length < limit) {
     const { source, catalog } = sources[sourceIndex];
     const extras = extrasOf(source);
     const keep = includeTypesFilter(catalog.type, includeItemTypes);
+    const page = await fetchWindow(userUUID, catalog, from, toSkip + limit - collected.length, extras, keep, tags, includeItemTypes ?? '')
+      .catch(() => ({ items: [] as any[], hasMore: false }));
 
-    for (;;) {
-      const page = await fetchWindow(userUUID, catalog, from, limit - collected.length, extras, keep, tags)
-        .catch(() => ({ items: [] as any[], hasMore: false }));
+    for (const meta of page.items) {
+      if (!meta?.id || seen.has(String(meta.id))) continue;
+      seen.add(String(meta.id));
+      if (toSkip > 0) {
+        toSkip -= 1;
+        continue;
+      }
+      collected.push(metaToBaseItem(meta, catalog.type, serverId, parentId));
+      nextIndex += 1;
+    }
+    from += page.items.length;
 
-      for (const meta of page.items) {
-        if (!meta?.id || seen.has(String(meta.id))) continue;
-        seen.add(String(meta.id));
-        collected.push(metaToBaseItem(meta, catalog.type, serverId, parentId));
-        nextIndex += 1;
-      }
-      from += page.items.length;
-
-      if (!page.hasMore || page.items.length === 0) {
-        sourceIndex += 1;
-        from = 0;
-        break;
-      }
-      if (collected.length >= limit) {
-        more = true;
-        break;
-      }
+    if (!page.hasMore || page.items.length === 0) {
+      sourceIndex += 1;
+      from = 0;
     }
   }
 
-  more = more || sourceIndex < sources.length;
+  const more = sourceIndex < sources.length;
   if (more && collected.length > 0 && seen.size <= MEMBER_CURSOR_MAX_IDS) {
     memberCursors.set(cursorKey, { nextIndex, sourceIndex, sourceOffset: from, seen });
   } else {
