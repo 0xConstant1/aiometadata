@@ -89,6 +89,7 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
   [/(bearer\s+)[A-Za-z0-9._\-]{8,}/gi, '$1***'],
   [/\b(api[_-]?key|apikey|access[_-]?token|token|secret|password|client_secret)(["']?\s*[:=]\s*["']?)[A-Za-z0-9._\-]{6,}/gi, '$1$2***'],
   [/([?&](?:api_?key|apikey|token|key|password|client_secret|access_token)=)[^&\s"'#]+/gi, '$1***'],
+  [/\bpm-[A-Za-z0-9]{20,}/g, 'pm-***'],
 ];
 
 function redact(s: string): string {
