@@ -908,11 +908,13 @@ export function isWatched(snapshot: WatchedSnapshot, stremioId: string): boolean
  */
 function airedFrom(videos: any[]): string[] {
   const now = Date.now();
+  const dates = videos.some((v: any) => Number(v?.season) !== 0 && Number.isFinite(Date.parse(v?.released ?? v?.firstAired ?? '')));
   return videos
     .filter((v: any) => {
       if (Number(v?.season) === 0) return false;
       const at = Date.parse(v?.released ?? v?.firstAired ?? '');
-      return !Number.isFinite(at) || at <= now;
+      if (!Number.isFinite(at)) return !dates;
+      return at <= now;
     })
     .map((v: any) => String(v?.id ?? ''))
     .filter(Boolean);

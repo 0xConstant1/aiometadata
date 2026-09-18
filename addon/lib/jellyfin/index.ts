@@ -2087,6 +2087,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} airs ${next.PremiereDate}`);
         return;
       }
+      if (!Number.isFinite(airedAt) && episodes.some((episode: any) => Number.isFinite(Date.parse(episode?.PremiereDate || '')))) {
+        skipped += 1;
+        logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} has no air date`);
+        return;
+      }
       items[index] = next;
     });
 
