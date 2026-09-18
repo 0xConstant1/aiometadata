@@ -12,35 +12,41 @@ export async function ownNextUpRows(userUUID: string, profile: string): Promise<
   const database: any = require('../database');
   const { parseStremioId } = require('./ids');
   const { envInt } = require('../../utils/envNumber');
-
-  let records: any[] = [];
-  try {
-    const since = Date.now() - envInt('JELLYFIN_NEXTUP_OWN_DAYS', 120, 1) * 24 * 60 * 60 * 1000;
-    records = await database.listRecentlyPlayed(userUUID, since, envInt('JELLYFIN_NEXTUP_OWN_LIMIT', 300, 1), profile);
-  } catch {
-    return [];
-  }
-
-  // A play is stored under every spelling of the episode; one show, one candidate.
   const { videoIdAliases } = require('./aliases');
+
+  const since = Date.now() - envInt('JELLYFIN_NEXTUP_OWN_DAYS', 120, 1) * 24 * 60 * 60 * 1000;
+  const shows = envInt('JELLYFIN_NEXTUP_OWN_LIMIT', 300, 1);
+  const scanCap = envInt('JELLYFIN_OWN_PLAYED_LIMIT', 20000, 100);
+  const batch = 500;
+
   const rows: NextUpRow[] = [];
   const seen = new Set<string>();
-  for (const r of records) {
-    const parsed = parseStremioId(String(r.video_id));
-    if (!parsed || parsed.episode === null || parsed.episode === undefined || seen.has(parsed.base)) continue;
-    seen.add(parsed.base);
-    for (const alias of await videoIdAliases(String(r.video_id))) {
-      const base = parseStremioId(alias)?.base;
-      if (base) seen.add(base);
+  for (let offset = 0; rows.length < shows && offset < scanCap; offset += batch) {
+    let records: any[];
+    try {
+      records = await database.listRecentlyPlayed(userUUID, since, batch, profile, offset);
+    } catch {
+      return rows;
     }
-    rows.push({
-      metaId: parsed.base,
-      videoId: String(r.video_id),
-      season: parsed.season ?? null,
-      episode: parsed.episode,
-      mediaType: parsed.idType === 'kitsu' || parsed.idType === 'mal' || parsed.idType === 'anilist' ? 'anime' : 'series',
-      lastWatchedAt: Number(r.last_played_at) || Number(r.updated_at) || 0,
-    });
+    for (const r of records) {
+      if (rows.length >= shows) break;
+      const parsed = parseStremioId(String(r.video_id));
+      if (!parsed || parsed.episode === null || parsed.episode === undefined || seen.has(parsed.base)) continue;
+      seen.add(parsed.base);
+      for (const alias of await videoIdAliases(String(r.video_id))) {
+        const base = parseStremioId(alias)?.base;
+        if (base) seen.add(base);
+      }
+      rows.push({
+        metaId: parsed.base,
+        videoId: String(r.video_id),
+        season: parsed.season ?? null,
+        episode: parsed.episode,
+        mediaType: parsed.idType === 'kitsu' || parsed.idType === 'mal' || parsed.idType === 'anilist' ? 'anime' : 'series',
+        lastWatchedAt: Number(r.last_played_at) || Number(r.updated_at) || 0,
+      });
+    }
+    if (records.length < batch) break;
   }
   return rows;
 }

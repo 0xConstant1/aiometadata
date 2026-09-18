@@ -432,6 +432,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_NEXTUP_OWN_LIMIT',
+    envVar: 'JELLYFIN_NEXTUP_OWN_LIMIT',
+    label: 'Jellyfin Next Up Shows',
+    description: 'How many shows finished through this server, most recent first, the Next Up and Upcoming rows consider.',
+    category: 'Features',
+    type: 'number',
+    default: 300,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_NEXTUP_OWN_DAYS',
     envVar: 'JELLYFIN_NEXTUP_OWN_DAYS',
     label: 'Jellyfin Next Up Window (days)',
