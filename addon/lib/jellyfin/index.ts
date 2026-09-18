@@ -2624,7 +2624,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const id = normaliseJellyfinId(String(req.params.itemId));
       res.json({
         ...playedState(id, state.played),
-        PlaybackPositionTicks: state.positionMs * 10000,
+        PlaybackPositionTicks: Math.round(state.positionMs * 10000),
         PlayedPercentage: state.played ? 100 : 0,
       });
     } catch (error: any) {

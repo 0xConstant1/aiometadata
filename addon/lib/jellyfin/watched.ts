@@ -942,7 +942,7 @@ export async function applyWatchedState(
           ...item.UserData,
           Played: Boolean(record.played),
           PlayCount: Number(record.play_count) || 0,
-          PlaybackPositionTicks: position * 10000,
+          PlaybackPositionTicks: Math.round(position * 10000),
           PlayedPercentage: position > 0 && runtime > 0 ? (position / runtime) * 100 : record.played ? 100 : 0,
           ...(record.last_played_at ? { LastPlayedDate: new Date(Number(record.last_played_at)).toISOString() } : {}),
         };

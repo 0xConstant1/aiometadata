@@ -526,7 +526,7 @@ export function mediaSourceFor(
     Name: playable.name,
     IsRemote: true,
     ETag: playable.id,
-    RunTimeTicks: playable.durationMs ? playable.durationMs * 10000 : runtimeTicks,
+    RunTimeTicks: playable.durationMs ? Math.round(playable.durationMs * 10000) : runtimeTicks,
     ...(playable.bitrate ? { Bitrate: playable.bitrate } : {}),
     ReadAtNativeFramerate: false,
     IgnoreDts: false,

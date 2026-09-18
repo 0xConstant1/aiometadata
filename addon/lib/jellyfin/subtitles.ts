@@ -196,8 +196,8 @@ export function cuesToJellyfinJson(cues: Cue[]): string {
     TrackEvents: cues.map((c, i) => ({
       Id: String(i + 1),
       Text: c.text,
-      StartPositionTicks: c.startMs * 10_000,
-      EndPositionTicks: c.endMs * 10_000,
+      StartPositionTicks: Math.round(c.startMs * 10_000),
+      EndPositionTicks: Math.round(c.endMs * 10_000),
     })),
   });
 }
