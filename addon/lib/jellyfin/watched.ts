@@ -712,7 +712,14 @@ async function mdblistFingerprint(apiKey: string): Promise<string> {
 async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): Promise<WatchedSnapshot> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   if (failed.has(`mdblist:${keyHash}`)) return EMPTY;
-  const key = `${keyHash}:${await mdblistFingerprint(apiKey)}`;
+  let key: string;
+  try {
+    key = `${keyHash}:${await mdblistFingerprint(apiKey)}`;
+  } catch (error: any) {
+    failed.set(`mdblist:${keyHash}`, String(error?.message || error));
+    logger.warn(`MDBList activities failed: ${error?.message || error}; watched state not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
+    return EMPTY;
+  }
 
   const memo = hydrated.get(key);
   if (memo) return memo;
