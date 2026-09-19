@@ -363,6 +363,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 60,
   },
   {
+    key: 'REDIS_AUTOTUNE',
+    envVar: 'REDIS_AUTOTUNE',
+    label: 'Tune Redis On Startup',
+    description: "Set the Redis server's own eviction, lazy-free and defragmentation settings to suit this addon each time it starts. Turn this off when Redis is shared with other applications, since those settings are server-wide. Never sets maxmemory, which stays yours to choose.",
+    category: 'Cache',
+    type: 'boolean',
+    default: true,
+    envOnly: true,
+  },
+  {
     key: 'CONFIG_CACHE_TTL_SEC',
     envVar: 'CONFIG_CACHE_TTL_SEC',
     label: 'Config Cache TTL',
