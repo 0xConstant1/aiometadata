@@ -126,10 +126,12 @@ Each lookup sends the title, season and episode to the service asked. AniSkip is
 
 Clients report playback the way they would to Jellyfin: a start, progress every few seconds, pauses, and a stop. The server writes the position to the playstate table and reports the play to every tracker with watch tracking on, through the same path the addon uses for its own playback reporting. A title is marked played once a stop lands at or past `JELLYFIN_PLAYED_THRESHOLD` percent of its runtime (80, the same point the trackers mark a watch); the runtime is the player's own length when the client reports one in the play state's `Item.RunTimeTicks`, else the file's length as the stream addon reported it, else the metadata's. A stop before that keeps the position for Continue Watching.
 
+The table records every play and every watched mark whatever **When to record** is set to, so Continue Watching, the ticks and **This server only** work either way. The trackers are another matter.
+
 A tracker records a play only when all three hold:
 
 1. the service is connected under **Integrations**;
-2. its switch under **Watch Tracking** in **General** is on, and the media type is one the service's options include;
+2. its switch under **Watch Tracking** in **General** is on, the media type is one the service's options include, and **When to record** in the same section is set to **When playback starts and stops**;
 3. the play went through a server that reports playback: this addon's Jellyfin server, or AIOStreams' with the handoff described further down.
 
 A title played in any other client, or on a Jellyfin server that was not signed in to through this addon, records nothing here, whatever the trackers show for it.

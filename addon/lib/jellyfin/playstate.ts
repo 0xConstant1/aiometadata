@@ -209,6 +209,12 @@ async function recordPlaystate(
   }
 }
 
+// The table records every play; trackers hear these reports only in playback mode.
+function tellsTrackers(config: any): boolean {
+  const { writesTrackers } = require('./profiles');
+  return Boolean(config?.playbackReporting) && writesTrackers(config);
+}
+
 async function report(
   req: any,
   body: any,
@@ -220,7 +226,7 @@ async function report(
 
   const { loadConfig } = require('./context');
   const config = await loadConfig(req);
-  if (!config?.playbackReporting) return;
+  if (!config) return;
 
   const session = await resolvePlaying(userUUID, itemId, body);
   if (!session) {
@@ -229,7 +235,7 @@ async function report(
   }
   logger.debug(`${event} from ${String(req.get?.('user-agent') || '').split(' ')[0] || 'unknown client'} for ${session.videoId} source ${body?.MediaSourceId ?? '?'}: runtime ${session.runtimeMs ?? 0}ms from the ${session.runtimeFrom ?? 'metadata'}`);
 
-  const { profileKey, writesTrackers } = require('./profiles');
+  const { profileKey } = require('./profiles');
   const profile = profileKey(config);
   const key = `${userUUID}:${profile}:${itemId}`;
   const known = await getPosition(key);
@@ -267,8 +273,11 @@ async function report(
     undropOnWatch(userUUID, config, [session.descriptor.i]);
   }
 
-  // A separate viewer's plays are not the account's history.
-  if (!writesTrackers(config)) return;
+  if (!tellsTrackers(config)) {
+    const { invalidateResume } = require('./resume');
+    invalidateResume(userUUID);
+    return;
+  }
 
   // A pause at zero is what a collapsed position looks like, and a real one says
   // nothing a tracker can use, so it is remembered without writing a resume
@@ -334,9 +343,9 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
 
   const { loadConfig } = require('./context');
   const config = await loadConfig(req);
-  if (!config?.playbackReporting) return;
+  if (!config) return;
 
-  const { profileKey, writesTrackers } = require('./profiles');
+  const { profileKey } = require('./profiles');
   const profile = profileKey(config);
   const played = event === 'played';
 
@@ -345,7 +354,7 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
   if (open && !open.paused && isPlayable(await decodeJellyfinId(itemId))) {
     const session = await resolveSession(userUUID, itemId);
     deletePosition(`${userUUID}:${profile}:${itemId}`);
-    if (session && writesTrackers(config)) {
+    if (session && tellsTrackers(config)) {
       const at = played ? (session.runtimeMs ?? open.positionMs) : open.positionMs;
       await tellTrackers(userUUID, config, session, 'stop', at, played, false).catch((error: any) =>
         logger.debug(`Closing the open session before a mark failed for ${itemId}: ${error?.message || error}`)
@@ -369,7 +378,11 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
     const { undropOnWatch } = require('./dropped');
     undropOnWatch(userUUID, config, sessions.filter((session) => session.descriptor.k === 'episode').map((session) => session.descriptor.i));
   }
-  if (!writesTrackers(config)) return;
+  if (!tellsTrackers(config)) {
+    const { invalidateResume } = require('./resume');
+    invalidateResume(userUUID);
+    return;
+  }
   // A season or series goes to the trackers as one batch, not an event per episode.
   if (marked.scope) {
     const { handlePlaybackReport } = require('../playbackHandler');
@@ -494,10 +507,7 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
 
   const { loadConfig } = require('./context');
   const config = await loadConfig(req);
-  if (!config?.playbackReporting) {
-    logger.debug(`User data for ${itemId} ignored: playback reporting is off`);
-    return null;
-  }
+  if (!config) return null;
 
   const session = await resolveSession(userUUID, itemId);
   if (!session) {
@@ -515,8 +525,7 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
 
   // Cleared here means cleared on the trackers too, or their copy would come
   // back through the shelf on any device reading them directly.
-  const { writesTrackers } = require('./profiles');
-  if (positionMs === 0 && writesTrackers(config)) {
+  if (positionMs === 0 && tellsTrackers(config)) {
     const { parseMediaId, clearResumePoint } = require('../subtitleHandler');
     const parsed = parseMediaId(session.videoId);
     if (parsed) {
