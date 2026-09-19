@@ -844,6 +844,11 @@ Art the addon **passes through without storing** is decided by a chain of its ow
 - **Description**: Also cache cast/actor headshots. Numerous, at roughly ten to twenty per title, and each one is a separate image, so expect this to take a real bite out of `POSTER_CACHE_MAX_SIZE` on a large library.
 - **Example**: `POSTER_CACHE_CAST=true`
 
+### `POSTER_CACHE_COLLECTIONS`
+- **Default**: `true` (when `ENABLE_BUILTIN_POSTER_CACHE` is on)
+- **Description**: Caches the images of collections served through the image cache: folder covers, backdrops, title logos and focus GIFs, for the collection export and the Jellyfin server alike. They are stored as they are, never reshaped to 2:3 the way posters are, and a collection's images are pinned so eviction leaves them alone. Set to `false` to proxy them without storing them.
+- **Example**: `POSTER_CACHE_COLLECTIONS=false`
+
 ### `POSTER_CACHE_PROCESSED_IMAGES`
 - **Default**: `true` (when `ENABLE_BUILTIN_POSTER_CACHE` is on)
 - **Description**: Caches the images the addon renders itself — rating-overlaid posters from the `/poster` route (active when **Proxy Rating & Custom Art** is on) plus the `/api/image/blur` and `/api/image/banner-to-background` transforms. Enabled by default with the cache; without it those requests re-render on every view. Total volume is still bounded by `POSTER_CACHE_MAX_SIZE`.

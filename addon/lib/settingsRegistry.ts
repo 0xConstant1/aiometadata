@@ -2229,6 +2229,15 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: false,
   },
   {
+    key: 'POSTER_CACHE_COLLECTIONS',
+    envVar: 'POSTER_CACHE_COLLECTIONS',
+    label: 'Cache Collection Images',
+    description: 'Cache the covers, backdrops, logos and focus GIFs of collections served through the image cache, as they are, without reshaping them to posters. Off, they are still proxied but not stored.',
+    category: 'Images & Art',
+    type: 'boolean',
+    default: true,
+  },
+  {
     key: 'POSTER_CACHE_PROCESSED_IMAGES',
     envVar: 'POSTER_CACHE_PROCESSED_IMAGES',
     label: 'Cache Processed Images',

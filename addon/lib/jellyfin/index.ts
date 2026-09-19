@@ -1574,8 +1574,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
     url = tmdbSized(url, kind, qInt(req, 'MaxWidth', 0));
+    const descriptor = await decodeJellyfinId(String(req.params.itemId));
+    const collectionArt = descriptor?.k === 'collection' || descriptor?.k === 'boxset';
 
-    const cached = throughPosterCache(url, kind);
+    const cached = throughPosterCache(url, collectionArt ? 'collection' : kind);
     if (cached) {
       const local = builtinPosterCachePath(cached);
       if (local) {
@@ -1586,7 +1588,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.redirect(302, cached);
       return;
     }
-    if (kind === 'primary') {
+    if (kind === 'primary' && !collectionArt) {
       await streamShaped(res, url);
       return;
     }
@@ -1664,7 +1666,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const selfOrigin: string = posterCache.getSelfOrigin?.() || '';
     if ((prefix && url.startsWith(prefix)) || (selfOrigin && url.startsWith(selfOrigin))) return url;
     if (!prefix) return null;
-    const imageClass = kind === 'backdrop' ? 'background' : kind === 'logo' ? 'logo' : kind === 'thumb' ? 'landscape' : 'poster';
+    const imageClass = kind === 'collection' ? 'collection' : kind === 'backdrop' ? 'background' : kind === 'logo' ? 'logo' : kind === 'thumb' ? 'landscape' : 'poster';
     return posterCache.buildCachedUrl(prefix, imageClass, url);
   };
 

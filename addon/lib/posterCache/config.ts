@@ -5,7 +5,7 @@ import { parseDurationMs } from './duration';
 const logger = consola.withTag('PosterCache');
 
 
-export type ImageClass = 'poster' | 'background' | 'landscape' | 'logo' | 'thumbnail' | 'cast' | 'processed';
+export type ImageClass = 'poster' | 'background' | 'landscape' | 'logo' | 'thumbnail' | 'cast' | 'collection' | 'processed';
 
 /** Every class the store can hold — used for stats, purging and eviction. */
 export const IMAGE_CLASSES: ImageClass[] = [
@@ -15,6 +15,7 @@ export const IMAGE_CLASSES: ImageClass[] = [
   'logo',
   'thumbnail',
   'cast',
+  'collection',
   'processed',
 ];
 
@@ -37,6 +38,7 @@ const CLASS_ENV: Record<Exclude<ImageClass, 'poster'>, string> = {
   logo: 'POSTER_CACHE_LOGOS',
   thumbnail: 'POSTER_CACHE_THUMBNAILS',
   cast: 'POSTER_CACHE_CAST',
+  collection: 'POSTER_CACHE_COLLECTIONS',
   processed: 'POSTER_CACHE_PROCESSED_IMAGES',
 };
 
@@ -55,7 +57,7 @@ export function isBuiltinPosterCacheEnabled(): boolean {
 export function isClassEnabled(imageClass: ImageClass): boolean {
   if (!isBuiltinPosterCacheEnabled()) return false;
   if (imageClass === 'poster') return true;
-  if (imageClass === 'processed') return !isExplicitlyDisabled(process.env.POSTER_CACHE_PROCESSED_IMAGES);
+  if (imageClass === 'processed' || imageClass === 'collection') return !isExplicitlyDisabled(process.env[CLASS_ENV[imageClass]]);
   return isTruthy(process.env[CLASS_ENV[imageClass]]);
 }
 
@@ -105,7 +107,7 @@ export function getPosterProxyPrefix(): string {
 export function getCollectionImagePrefix(): string {
   const prefix = getPosterProxyPrefix();
   if (!prefix) return '';
-  return isBuiltinPosterCacheEnabled() ? `${prefix}/poster` : prefix;
+  return isBuiltinPosterCacheEnabled() ? `${prefix}/collection` : prefix;
 }
 
 export function getPosterWarmupBase(): string {
