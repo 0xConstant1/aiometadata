@@ -250,6 +250,9 @@ async function startServer(): Promise<void> {
   performEpochCleanup().catch((error: any) => {
     consola.error('Background epoch cleanup failed:', error.message);
   });
+  require('./lib/metaHashMigration').sweepLegacyMetaComponentKeys().catch((error: any) => {
+    consola.error('Background legacy meta key sweep failed:', error.message);
+  });
 
   await mapWithConcurrency(initializationTasks, BOOTSTRAP_CONCURRENCY, async (task) => {
     try {
