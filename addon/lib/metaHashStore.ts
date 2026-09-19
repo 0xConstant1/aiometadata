@@ -5,6 +5,48 @@ const { encodeCachePayload }: any = require('./cacheCodec');
 
 const logger = consola.withTag('Meta-Hash');
 
+/** Per-field hash expiry, which the meta cache is built on: Redis 8.0 and up. */
+const REQUIRED_COMMANDS = ['HSETEX', 'HTTL'];
+
+async function reportedVersion(): Promise<string | null> {
+  try {
+    return /redis_version:(\S+)/.exec(await redis.info('server'))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refuses the boot rather than let every write fail into a cache that never
+ * holds anything. Asked of the server, not read off its version, so a fork
+ * carrying the commands still runs.
+ */
+export async function assertMetaHashSupport(): Promise<void> {
+  const missing: string[] = [];
+  for (const name of REQUIRED_COMMANDS) {
+    const reply = await redis.command('INFO', name.toLowerCase());
+    if (!Array.isArray(reply) || reply[0] == null) missing.push(name);
+  }
+  if (missing.length === 0) {
+    logger.debug(`Redis supports ${REQUIRED_COMMANDS.join(' and ')}`);
+    return;
+  }
+
+  const version = await reportedVersion();
+  const error: any = new Error([
+    `This Redis cannot run AIOMetadata: it does not have ${missing.join(' or ')}.`
+      + (version ? ` It reports version ${version}.` : ''),
+    '',
+    "Each title's metadata is kept in one Redis hash whose fields expire",
+    'individually, which needs Redis 8.0 or newer.',
+    '',
+    'Point REDIS_URL at a Redis 8.0+ server. The bundled compose file uses the',
+    'redis:latest image, which is new enough.',
+  ].join('\n'));
+  error.code = 'STARTUP_REQUIREMENT';
+  throw error;
+}
+
 /**
  * One component bound for a title's hash. `legacyKey` is the per-component key
  * the component lived under before the hash, which is still how the cold store
@@ -48,7 +90,8 @@ async function execOrWarn(tx: any, key: string): Promise<any[] | null> {
 
 /** Reads the given fields and `basic`'s remaining TTL in one round trip. */
 export async function readMetaHash(key: string, fields: string[]): Promise<{ values: Array<Buffer | null>; basicTtl: number }> {
-  if (!redis || fields.length === 0) return { values: fields.map(() => null), basicTtl: -2 };
+  const empty = { values: fields.map(() => null), basicTtl: -2 };
+  if (!redis || fields.length === 0) return empty;
   const results = await redis.pipeline()
     .hmgetBuffer(key, ...fields)
     .httl(key, 'FIELDS', 1, 'basic')

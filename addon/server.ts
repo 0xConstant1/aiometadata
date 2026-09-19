@@ -237,6 +237,8 @@ async function startServer(): Promise<void> {
     }
   });
   shutdownSequence.register('redis', () => redis.quit().then(() => undefined));
+  // Before anything is cached, so an unusable Redis stops the boot outright.
+  await require('./lib/metaHashStore').assertMetaHashSupport();
   readiness.markReady('redis');
   ok('redis');
 
@@ -299,9 +301,15 @@ async function startServer(): Promise<void> {
   process.stdout.write('\n');
 }
 
-startServer().catch((error: Error) => {
+startServer().catch((error: any) => {
   endQuietWindow();
-  consola.error('--- FATAL STARTUP ERROR ---');
-  consola.error(error);
+  if (error?.code === 'STARTUP_REQUIREMENT') {
+    // A configuration problem; the stack says nothing the operator can act on.
+    consola.error('Cannot start.');
+    consola.error(error.message);
+  } else {
+    consola.error('--- FATAL STARTUP ERROR ---');
+    consola.error(error);
+  }
   void shutdownAndExit(1, 'startup failure');
 });
