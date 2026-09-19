@@ -1,6 +1,6 @@
 import { fetchMeta, metaToBaseItem } from './items';
 import { profileKey, writesTrackers } from './profiles';
-import { trackerWatchlist, writeWatchlist, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
+import { shelfCacheWindowMs, trackerWatchlist, watchlistPicks, writeWatchlist, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
@@ -51,12 +51,15 @@ export function invalidateWatchlist(userUUID: string): void {
   }
 }
 
-// The table wins over a tracker, as for the resume shelf.
+// Picked shelves are the favourites; a change made here stands only until their caches catch up.
 export async function watchlistEntries(userUUID: string, config: any, need = Number.MAX_SAFE_INTEGER): Promise<{ entries: WatchlistEntry[]; exhausted: boolean }> {
   const profile = profileKey(config);
-  const local: any[] = await database.listWatchlist(userUUID, profile).catch(() => []);
+  const rows: any[] = await database.listWatchlist(userUUID, profile).catch(() => []);
   const held = await trackerWatchlistShared(config, userUUID, need);
   const tracker = held.rows;
+
+  const since = watchlistPicks(config).size ? Date.now() - (await shelfCacheWindowMs(config)) : -Infinity;
+  const local = rows.filter((row) => (Number(row.updated_at) || 0) >= since);
 
   const out = new Map<string, WatchlistEntry>();
   for (const row of tracker) out.set(row.metaId, row);

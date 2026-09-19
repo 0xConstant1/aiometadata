@@ -90,6 +90,22 @@ async function shelfCatalog(config: any, service: WatchlistService, kind: Watchl
   return { type: catalog.type, id: catalog.id, keep: (meta: any) => meta?.type === wanted };
 }
 
+export async function shelfCacheWindowMs(config: any): Promise<number> {
+  const { getSetting } = require('../settingsService');
+  const fallback = Number(getSetting('CATALOG_TTL')) || 24 * 60 * 60;
+  let longest = 0;
+  for (const [service, kinds] of watchlistPicks(config)) {
+    for (const kind of kinds) {
+      const catalog = await shelfCatalog(config, service, kind);
+      if (!catalog) continue;
+      const own = (config?.catalogs ?? []).find((c: any) => c?.id === catalog.id)?.cacheTTL;
+      const ttl = Number.isFinite(own) && own >= 0 ? own : fallback;
+      longest = Math.max(longest, ttl);
+    }
+  }
+  return longest * 1000;
+}
+
 async function shelfEntries(userUUID: string, config: any, service: WatchlistService, kind: WatchlistKind, need: number): Promise<{ rows: WatchlistEntry[]; ok: boolean; exhausted: boolean }> {
   const catalog = await shelfCatalog(config, service, kind);
   if (!catalog) return { rows: [], ok: true, exhausted: true };
