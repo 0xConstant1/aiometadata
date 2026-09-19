@@ -1,7 +1,7 @@
 import { allCatalogDefinitions } from '@/data/catalogs';
 import { SUFFIX_TYPES } from './catalogBlueprints';
 import type { AppConfig, CatalogConfig } from '@/contexts/config';
-import type { AddonIdentity, BuilderEntry, SourceDraft } from '@shared/types';
+import { allFolders, mapFoldersDeep, type AddonIdentity, type BuilderEntry, type SourceDraft } from '@shared/types';
 import { isNativeSource } from '@shared/catalogReconstruction';
 import { isUserSpecific } from '@shared/catalogSharing';
 
@@ -310,7 +310,7 @@ export function findUnknownSources(
   for (const entry of entries) {
     const sources = entry.kind === 'classicRow'
       ? (entry.source ? [entry.source] : [])
-      : entry.folders.flatMap(folder => folder.sources);
+      : allFolders(entry.folders).flatMap(folder => folder.sources);
     for (const source of sources) {
       if (isNativeSource(source)) continue;
       if (!known.has(catalogKey(source))) unknown.push(source);
@@ -336,7 +336,7 @@ function mapSources(
     }
 
     let entryChanged = false;
-    const folders = entry.folders.map(folder => {
+    const folders = mapFoldersDeep(entry.folders, folder => {
       let folderChanged = false;
       const sources = folder.sources.map(source => {
         const next = rewrite(source);
@@ -488,7 +488,7 @@ export function findSourceIssues(
 
   for (const entry of entries) {
     if (entry.kind === 'collection') {
-      for (const folder of entry.folders) {
+      for (const folder of allFolders(entry.folders)) {
         for (const source of folder.sources) {
           check(source, entry.id, folder.title || entry.title, folder.id);
         }

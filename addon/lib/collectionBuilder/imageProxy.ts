@@ -1,4 +1,4 @@
-import type { BuilderEntry, FolderDraft } from './types';
+import { allFolders, mapFoldersDeep, type BuilderEntry, type FolderDraft } from './types';
 
 const IMAGE_URL = /^https?:\/\//i;
 
@@ -11,7 +11,7 @@ export function collectionImageUrls(entries: BuilderEntry[] | undefined): string
   for (const entry of entries || []) {
     if (entry?.kind === 'collection') {
       add(entry.backdropImageUrl);
-      for (const folder of entry.folders || []) {
+      for (const folder of allFolders(entry.folders || [])) {
         add(folder.coverImageUrl);
         add(folder.heroBackdropUrl);
         add(folder.titleLogoUrl);
@@ -43,7 +43,7 @@ export function proxyCollectionImages(entries: BuilderEntry[], prefix: string): 
   });
   return entries.map((entry) => {
     if (entry?.kind === 'collection') {
-      return { ...entry, backdropImageUrl: via(entry.backdropImageUrl), folders: (entry.folders || []).map(folder) };
+      return { ...entry, backdropImageUrl: via(entry.backdropImageUrl), folders: mapFoldersDeep(entry.folders || [], folder) };
     }
     if (entry?.kind === 'classicRow') return { ...entry, backgroundImageURL: via(entry.backgroundImageURL) };
     return entry;
