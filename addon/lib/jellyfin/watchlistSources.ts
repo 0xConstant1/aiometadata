@@ -81,6 +81,13 @@ const SHELF_CATALOGS: Record<WatchlistService, Partial<Record<WatchlistKind, { t
   publicmetadb: {},
 };
 
+interface Shelf {
+  type: string;
+  id: string;
+  keep?: (meta: any) => boolean;
+  kind?: WatchlistKind;
+}
+
 async function shelfCatalog(config: any, service: WatchlistService, kind: WatchlistKind): Promise<{ type: string; id: string; keep?: (meta: any) => boolean } | null> {
   if (service !== 'publicmetadb') return SHELF_CATALOGS[service][kind] ?? null;
   const { publicMetaDBWatchlistCatalog } = require('../../utils/publicmetadbUtils');
@@ -90,25 +97,42 @@ async function shelfCatalog(config: any, service: WatchlistService, kind: Watchl
   return { type: catalog.type, id: catalog.id, keep: (meta: any) => meta?.type === wanted };
 }
 
+function mdblistSplitOnly(config: any): boolean {
+  const ids = new Set((config?.catalogs ?? []).map((c: any) => c?.id));
+  return !ids.has('mdblist.watchlist') && (ids.has('mdblist.watchlist.movies') || ids.has('mdblist.watchlist.series'));
+}
+
+async function shelvesFor(config: any, service: WatchlistService, kinds: Set<WatchlistKind>): Promise<Shelf[]> {
+  if (service === 'mdblist' && kinds.has('movies') && kinds.has('series') && !mdblistSplitOnly(config)) {
+    return [{ type: 'all', id: 'mdblist.watchlist' }];
+  }
+  const shelves: Shelf[] = [];
+  for (const kind of kinds) {
+    const catalog = await shelfCatalog(config, service, kind);
+    if (catalog) shelves.push({ ...catalog, kind });
+  }
+  return shelves;
+}
+
+async function pickedShelves(config: any): Promise<Shelf[]> {
+  const shelves: Shelf[] = [];
+  for (const [service, kinds] of watchlistPicks(config)) shelves.push(...(await shelvesFor(config, service, kinds)));
+  return shelves;
+}
+
 export async function shelfCacheWindowMs(config: any): Promise<number> {
   const { getSetting } = require('../settingsService');
   const fallback = Number(getSetting('CATALOG_TTL')) || 24 * 60 * 60;
   let longest = 0;
-  for (const [service, kinds] of watchlistPicks(config)) {
-    for (const kind of kinds) {
-      const catalog = await shelfCatalog(config, service, kind);
-      if (!catalog) continue;
-      const own = (config?.catalogs ?? []).find((c: any) => c?.id === catalog.id)?.cacheTTL;
-      const ttl = Number.isFinite(own) && own >= 0 ? own : fallback;
-      longest = Math.max(longest, ttl);
-    }
+  for (const shelf of await pickedShelves(config)) {
+    const own = (config?.catalogs ?? []).find((c: any) => c?.id === shelf.id)?.cacheTTL;
+    const ttl = Number.isFinite(own) && own >= 0 ? own : fallback;
+    longest = Math.max(longest, ttl);
   }
   return longest * 1000;
 }
 
-async function shelfEntries(userUUID: string, config: any, service: WatchlistService, kind: WatchlistKind, need: number): Promise<{ rows: WatchlistEntry[]; ok: boolean; exhausted: boolean }> {
-  const catalog = await shelfCatalog(config, service, kind);
-  if (!catalog) return { rows: [], ok: true, exhausted: true };
+async function shelfEntries(userUUID: string, config: any, catalog: Shelf, need: number): Promise<{ rows: WatchlistEntry[]; ok: boolean; exhausted: boolean }> {
   const { fetchWindow } = require('./items');
   const { profileTags } = require('./profiles');
   const max = Math.min(envInt('JELLYFIN_WATCHLIST_MAX_ITEMS', 5000, 100), Math.max(1, need));
@@ -117,6 +141,7 @@ async function shelfEntries(userUUID: string, config: any, service: WatchlistSer
     const rows: WatchlistEntry[] = [];
     window.items.forEach((meta: any, rank: number) => {
       if (!meta?.id) return;
+      const kind: WatchlistKind = catalog.kind ?? (meta.type === 'movie' ? 'movies' : 'series');
       const mediaType: WatchlistEntry['mediaType'] = kind === 'anime' ? 'anime' : meta.type === 'movie' ? 'movie' : 'series';
       rows.push({ metaId: String(meta.id), mediaType, kind, addedAt: Date.parse(meta._listedAt ?? '') || -rank });
     });
@@ -135,10 +160,8 @@ export interface TrackerWatchlist {
 }
 
 export async function trackerWatchlist(config: any, userUUID: string, need = Number.MAX_SAFE_INTEGER): Promise<TrackerWatchlist> {
-  const picks = watchlistPicks(config);
-  const parts = await Promise.all(
-    [...picks].flatMap(([service, kinds]) => [...kinds].map((kind) => shelfEntries(userUUID, config, service, kind, need)))
-  );
+  const shelves = await pickedShelves(config);
+  const parts = await Promise.all(shelves.map((shelf) => shelfEntries(userUUID, config, shelf, need)));
   const merged = new Map<string, WatchlistEntry>();
   for (const row of parts.flatMap((part) => part.rows)) {
     const held = merged.get(row.metaId);

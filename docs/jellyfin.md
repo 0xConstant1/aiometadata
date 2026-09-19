@@ -203,6 +203,8 @@ The watchlist is the client's favourites. Marking a title favourite adds it to t
 
 **Watchlist** on a user card picks which shelves are read and written: each connected tracker offers its shelves (MDBList movies and series, Simkl movies, series and anime, AniList and MyAnimeList anime), and picking none means every connected one. A write goes to every picked shelf that takes the title's kind, so an anime lands on Simkl's anime shelf and AniList, not on the movies shelf. Entries are matched to titles by IMDb, TMDB, TVDB, Kitsu and MyAnimeList ids, so the same title on two catalogs shows one heart. The picked shelves are the favourites. A heart set or cleared through the client shows at once and stands until the shelves' cached catalogs can have caught up with it, their longest cache TTL; after that the trackers decide, so a heart cleared long ago never hides a title the tracker lists again. **This server only** shows the hearts set through this server and nothing else.
 
+**Each shelf is read through its watchlist catalog**, the same one the addon serves: `mdblist.watchlist` (or `mdblist.watchlist.movies` and `mdblist.watchlist.series`), `trakt.watchlist.movies` and `trakt.watchlist.series`, Simkl's Plan to Watch catalogs, AniList's Planning and MyAnimeList's Plan to Watch, and the PublicMetaDB watchlist list. The favourites are therefore as fresh as that catalog's cache: a title added or removed in the tracker's own app shows up once the catalog's cache TTL has run out, then `JELLYFIN_WATCHLIST_MEMO_TTL`. A watchlist catalog in your catalogs uses its own **Cache TTL**; one you never added uses the instance **Catalog Cache TTL**, a day by default. To see tracker-side changes sooner, add the watchlist catalog from the tracker's integration (use **Remove from Home** on it if you don't want the row) and give it a short cache TTL. With both MDBList shelves picked, the unified `mdblist.watchlist` is read in one request, unless your catalogs hold only the separate movies and series catalogs, in which case those are read so their cache is shared. **Jellyfin Playstate Sync Interval** has no effect here; it covers watched state.
+
 ## AIOMetadata inside AIOStreams' Jellyfin server
 
 AIOStreams has a Jellyfin server of its own. In that setup the client signs in to AIOStreams, not to this addon, and AIOMetadata is one of the addons installed in it, supplying the catalogs and title pages. Nothing in this guide's sign-in, users or shelves sections applies then; AIOStreams builds those. What AIOMetadata still does is the tracking, through two resources it declares in its manifest once **Playback reporting** under **General** is set to **When playback starts and stops**:
@@ -279,7 +281,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | `JELLYFIN_UPCOMING_TTL` | `21600` | How long the list of followed shows is kept. |
 | `JELLYFIN_UPCOMING_LOCAL_SHOWS` | `60` | Shows known only from local plays checked for an upcoming episode. |
 | `JELLYFIN_UPCOMING_WATCHLIST_LIMIT` (env) | `100` | Watchlist films checked for a release date. |
-| `JELLYFIN_WATCHLIST_TTL` (env) | `300` | How long the merged watchlist is kept. |
+| `JELLYFIN_WATCHLIST_MEMO_TTL` | `60` | How long the merged watchlist is held in memory after a read, on top of the watchlist catalogs' cache. |
 | `WATCH_STATE_PULL_TTL` | `300` | How long a front end reading watch state from the addon may reuse an answer. |
 | `WATCH_STATE_PULL_ITEMS` | `100` | In-progress titles a watch state read returns. |
 
