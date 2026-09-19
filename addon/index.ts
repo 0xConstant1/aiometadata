@@ -1508,11 +1508,15 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
     
-    // Delete OAuth token from database if it exists
+    // Every configuration on the same Simkl account shares this token.
     if (config.apiKeys?.simklTokenId) {
-      const held = await database.getOAuthToken(config.apiKeys.simklTokenId).catch(() => null);
-      if (held?.refresh_token) revokeSimklGrant(held.refresh_token);
-      await database.deleteOAuthToken(config.apiKeys.simklTokenId);
+      const tokenId = config.apiKeys.simklTokenId;
+      const sharing = (await database.getUsersByOAuthTokenIds('simklTokenId', [tokenId])).filter(u => u.id !== userUUID);
+      if (!sharing.length) {
+        const held = await database.getOAuthToken(tokenId).catch(() => null);
+        if (held?.refresh_token) revokeSimklGrant(held.refresh_token);
+        await database.deleteOAuthToken(tokenId);
+      }
       delete config.apiKeys.simklTokenId;
     }
     
