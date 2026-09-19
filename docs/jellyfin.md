@@ -156,6 +156,8 @@ Reading and writing are two different things here. Every play through the server
 
 A user that is not you never writes to your trackers, whatever their card says. Their card's own **Trackers** pick still decides what they read: left on Automatic they see your trackers' paused titles and history on top of their own plays, which is how a user set up as someone else can follow your history without touching it; set to **This server only** they see their own plays alone.
 
+**Dropping a show.** A thumbs-down on a series, in a client that offers one, drops it: it leaves Continue Watching, Next Up and Upcoming, and the series reports the dislike back so the button shows its state. Playing an episode of it to the end, or marking one watched, takes the drop back. The drop is written to every connected tracker with watch tracking on (Simkl's dropped list, MDBList's and PublicMetaDB's dropped shows, Trakt's hidden dropped), and a thumbs-up or clearing the rating takes it back; Simkl has no undrop, so the show moves to Watching there. When the tracker read is Simkl, MDBList or PublicMetaDB, that tracker's dropped list is what counts, so a show dropped or taken back on its website follows; otherwise the drop is kept on this server. A thumbs-down on a film or an episode stores nothing.
+
 Not every tracker holds every kind of state:
 
 | | Paused positions | Watch history | Next Up | Upcoming | Watchlist |

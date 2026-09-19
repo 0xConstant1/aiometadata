@@ -296,6 +296,13 @@ class Database {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_dropped (
+        user_uuid TEXT NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
+        meta_id TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_uuid, profile, meta_id)
+      )`,
       `CREATE TABLE IF NOT EXISTS trusted_uuids (
         user_uuid TEXT UNIQUE NOT NULL,
         trusted_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -415,6 +422,13 @@ class Database {
         meta_id TEXT NOT NULL,
         media_type TEXT NOT NULL,
         listed INTEGER NOT NULL DEFAULT 1,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (user_uuid, profile, meta_id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_dropped (
+        user_uuid VARCHAR(64) NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
+        meta_id TEXT NOT NULL,
         updated_at BIGINT NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
@@ -1099,6 +1113,29 @@ class Database {
       : `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, listed, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, listed = EXCLUDED.listed, updated_at = EXCLUDED.updated_at`;
     await this.runQuery(query, [userUUID, profile, metaId, mediaType, listed ? 1 : 0, Date.now()]);
+  }
+
+  async listDropped(userUUID: string, profile = ''): Promise<any[]> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT meta_id, updated_at FROM jellyfin_dropped WHERE user_uuid = ? AND profile = ?'
+      : 'SELECT meta_id, updated_at FROM jellyfin_dropped WHERE user_uuid = $1 AND profile = $2';
+    return this.allQuery(query, [userUUID, profile]);
+  }
+
+  async setDropped(userUUID: string, profile: string, metaIds: string[], dropped: boolean): Promise<void> {
+    for (const metaId of metaIds) {
+      if (dropped) {
+        const query = this.type === 'sqlite'
+          ? 'INSERT INTO jellyfin_dropped (user_uuid, profile, meta_id, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET updated_at = excluded.updated_at'
+          : 'INSERT INTO jellyfin_dropped (user_uuid, profile, meta_id, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET updated_at = EXCLUDED.updated_at';
+        await this.runQuery(query, [userUUID, profile, metaId, Date.now()]);
+      } else {
+        const query = this.type === 'sqlite'
+          ? 'DELETE FROM jellyfin_dropped WHERE user_uuid = ? AND profile = ? AND meta_id = ?'
+          : 'DELETE FROM jellyfin_dropped WHERE user_uuid = $1 AND profile = $2 AND meta_id = $3';
+        await this.runQuery(query, [userUUID, profile, metaId]);
+      }
+    }
   }
 
   async deletePlaystate(userUUID: string, videoId: string, profile = ''): Promise<void> {

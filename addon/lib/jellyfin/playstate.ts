@@ -261,6 +261,10 @@ async function report(
 
   // The table is written before any tracker is told, so a read never waits on one.
   await recordPlaystate(userUUID, profile, session, event, positionMs, played);
+  if (played === true && session.descriptor.k === 'episode') {
+    const { undropOnWatch } = require('./dropped');
+    undropOnWatch(userUUID, config, [session.descriptor.i]);
+  }
 
   // A separate viewer's plays are not the account's history.
   if (!writesTrackers(config)) return;
@@ -360,6 +364,10 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
     return session;
   })).filter((s): s is ResolvedSession => s !== null);
 
+  if (played) {
+    const { undropOnWatch } = require('./dropped');
+    undropOnWatch(userUUID, config, sessions.filter((session) => session.descriptor.k === 'episode').map((session) => session.descriptor.i));
+  }
   if (!writesTrackers(config)) return;
   // A season or series goes to the trackers as one batch, not an event per episode.
   if (marked.scope) {

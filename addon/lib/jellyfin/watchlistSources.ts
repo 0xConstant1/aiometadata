@@ -151,7 +151,7 @@ export async function trackerWatchlist(config: any, userUUID: string, need = Num
   };
 }
 
-function traktHeaders(accessToken: string): Record<string, string> {
+export function traktHeaders(accessToken: string): Record<string, string> {
   return { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': process.env.TRAKT_CLIENT_ID || '', Authorization: `Bearer ${accessToken}` };
 }
 

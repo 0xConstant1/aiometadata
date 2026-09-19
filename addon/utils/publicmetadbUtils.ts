@@ -189,6 +189,14 @@ async function fetchDropped(apiKey: string, page: number = 1, perPage: number = 
   return { items: Array.isArray(data?.items) ? data.items : [], total: Number(data?.total) || 0, totalPages: Number(data?.totalPages) || 1 };
 }
 
+async function setDropped(apiKey: string, tmdbId: number | string, dropped: boolean): Promise<void> {
+  if (dropped) {
+    await makeRequest('/api/external/dropped', apiKey, 'POST', { tmdb_id: Number(tmdbId), media_type: 'tv' });
+    return;
+  }
+  await makeRequest(`/api/external/dropped/${encodeURIComponent(String(tmdbId))}/tv`, apiKey, 'DELETE');
+}
+
 async function fetchWatched(apiKey: string, page: number = 1, perPage: number = 500): Promise<{ items: any[]; total: number; totalPages: number }> {
   const data = await makeRequest(`/api/external/watched?page=${page}&perPage=${Math.min(Math.max(1, perPage), 500)}`, apiKey);
   return {
@@ -651,6 +659,7 @@ export {
   publicMetaDBListType,
   publicMetaDBWatchlistCatalog,
   setListItem,
+  setDropped,
   fetchPicks,
   fetchPickItems,
   markWatched,

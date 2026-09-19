@@ -1760,7 +1760,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const startIndex = Math.max(0, qInt(req, 'StartIndex', 0));
     const limit = Math.min(Math.max(1, qInt(req, 'Limit', 20)), 100);
-    const rows = await resumeSnapshot(userUUID, config);
+    const watched = await watchedSnapshot(userUUID, config);
+    const rows = (await resumeSnapshot(userUUID, config)).filter((row) => row.kind === 'movie' || !watched.dropped.has(row.metaId));
     if (!rows.length) {
       res.json(itemList([], 0, startIndex));
       return;
@@ -1768,7 +1769,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const serverId = serverIdFor(userUUID);
     const window = rows.slice(startIndex, startIndex + limit);
-    const watched = await watchedSnapshot(userUUID, config);
 
     // One meta per title, not per row: a show with several part-watched
     // episodes is the normal shape of this list.
@@ -1942,7 +1942,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const own = (await ownNextUpRows(userUUID, profileKey(config))).filter((row) => !snapshot.dropped.has(row.metaId));
     lap.own = Date.now() - t2;
     const known = new Set(own.map((row) => row.metaId));
-    const merged = [...own, ...snapshot.nextUp.filter((row) => !known.has(row.metaId))]
+    const merged = [...own, ...snapshot.nextUp.filter((row) => !known.has(row.metaId) && !snapshot.dropped.has(row.metaId))]
       .sort((a, b) => b.lastWatchedAt - a.lastWatchedAt);
 
     // A series page asks for its own next episode; an unplayed show starts at the first.
@@ -2112,7 +2112,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     let local = 0;
     const localCap = envInt('JELLYFIN_UPCOMING_LOCAL_SHOWS', 60, 0);
-    for (const row of [...own.filter((r) => !snapshot.dropped.has(r.metaId)), ...snapshot.nextUp, ...resume.filter((r) => r.kind === 'episode')]) {
+    for (const row of [...own, ...snapshot.nextUp, ...resume.filter((r) => r.kind === 'episode')].filter((r) => !snapshot.dropped.has(r.metaId))) {
       if (shows.has(row.metaId)) continue;
       if (local >= localCap) break;
       shows.set(row.metaId, row.mediaType);
@@ -2623,6 +2623,25 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const changed = await setWatchlisted(userUUID, config, descriptor, listed);
     res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, IsFavorite: changed && listed });
   };
+  const ratingHandler = (clear: boolean) => async (req: any, res: any) => {
+    const userUUID = req.params.userUUID;
+    const itemId = String(req.params.itemId);
+    const config = await loadConfig(req);
+    const descriptor = await decodeJellyfinId(itemId);
+    if (!config || !descriptor) {
+      res.status(404).json({ Message: 'Item not found' });
+      return;
+    }
+    const asked = String(req.query.likes ?? req.query.Likes ?? '').toLowerCase();
+    const likes = clear ? null : asked === 'true' ? true : asked === 'false' ? false : null;
+    const { rateSeries } = require('./dropped');
+    await rateSeries(userUUID, config, descriptor, likes).catch((error: any) => logger.warn(`Rating failed for ${itemId}: ${error?.message || error}`));
+    res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, Likes: likes });
+  };
+
+  router.post(['/UserItems/:itemId/Rating', '/Users/:userId/Items/:itemId/Rating'], ratingHandler(false));
+  router.delete(['/UserItems/:itemId/Rating', '/Users/:userId/Items/:itemId/Rating'], ratingHandler(true));
+
   router.post(['/Users/:userId/FavoriteItems/:itemId', '/UserFavoriteItems/:itemId'], favouriteHandler(true));
   router.delete(['/Users/:userId/FavoriteItems/:itemId', '/UserFavoriteItems/:itemId'], favouriteHandler(false));
 

@@ -163,7 +163,8 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
   if (metaId && entry?.status === 'watching') {
     snapshot.following.push({ metaId, mediaType: isAnime && ids.kitsu ? 'anime' : 'series' });
   }
-  if (entry?.status === 'dropped') for (const key of seriesKeysWithKitsu(ids)) snapshot.dropped.add(key);
+  // An older Simkl app is sent `notinteresting` where a newer one gets `dropped`.
+  if (entry?.status === 'dropped' || entry?.status === 'notinteresting') for (const key of seriesKeysWithKitsu(ids)) snapshot.dropped.add(key);
 
   // Simkl names a next episode for every listed show, a planned or dropped one
   // included; only a show being watched belongs on the shelf.
@@ -758,7 +759,10 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): P
 export async function watchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
   const snapshot = await readWatchedSnapshot(userUUID, config);
   if (snapshot.fingerprint) await followTrackerUnmarks(userUUID, config, snapshot);
-  return snapshot;
+  const { dropsKeptHere, localDrops } = require('./dropped');
+  if (!userUUID || !dropsKeptHere(config)) return snapshot;
+  const local: Set<string> = await localDrops(userUUID, config);
+  return local.size ? { ...snapshot, dropped: new Set([...snapshot.dropped, ...local]) } : snapshot;
 }
 
 const unmarksFollowed = new LRUCache<string, string>({ max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) });
@@ -1017,6 +1021,10 @@ export async function applyWatchedState(
       if (!descriptor) return;
 
       if (descriptor.k === 'series') {
+        const { itemKeys } = require('./dropped');
+        if (snapshot.dropped.size && itemKeys(item, String(descriptor.i)).some((key: string) => snapshot.dropped.has(key))) {
+          item.UserData = { ...item.UserData, Likes: false };
+        }
         const counts = snapshot.series.get(String(descriptor.i)) ?? (ownPlayed.size ? { watched: 0, total: 0 } : null);
         if (!counts) return;
         // The show's aired episodes are the whole, specials and what has not
