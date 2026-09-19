@@ -237,6 +237,7 @@ async function report(
   // A resume reported at zero is the client's habit, not a seek to the start.
   const resumedFrom = event === 'start' && known?.paused ? known.at : null;
   const positionMs = (resumedFrom && !reported ? known?.positionMs : reported) ?? known?.positionMs ?? 0;
+  logger.debug(`${event} ${session.videoId}: client sent ${reported ?? 'no'} position, held ${known?.positionMs ?? 'none'}, using ${positionMs}ms`);
 
   // A client re-sends Playing while it runs; reopening an already-playing
   // session is noise. A resume comes through the pause edge instead.
@@ -428,7 +429,11 @@ export async function recordProgress(req: any, body: any): Promise<void> {
   const userUUID = req.params?.userUUID;
   const itemId = bodyItemId(req, body);
   const positionMs = ticksToMs(body?.PositionTicks ?? body?.positionTicks);
-  if (!userUUID || !itemId || positionMs === null) return;
+  if (!userUUID || !itemId) return;
+  if (positionMs === null) {
+    logger.debug(`Progress for ${itemId} carries no position`);
+    return;
+  }
 
   const { loadConfig } = require('./context');
   const { profileKey } = require('./profiles');
@@ -450,8 +455,9 @@ export async function recordProgress(req: any, body: any): Promise<void> {
     const moved = positionMs !== (previous?.writtenMs ?? -1);
     if (interval > 0 && !paused && moved && now - (previous?.writtenAt ?? 0) >= interval) {
       const config = await loadConfig(req);
-      const session = config?.playbackReporting ? await resolvePlaying(userUUID, itemId, body) : null;
+      const session = config ? await resolvePlaying(userUUID, itemId, body) : null;
       if (session) {
+        logger.debug(`Progress ${session.videoId} at ${positionMs}ms`);
         await recordPlaystate(userUUID, profileKey(config), session, 'start', positionMs, null);
         next.writtenAt = now;
         next.writtenMs = positionMs;
