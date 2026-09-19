@@ -1068,6 +1068,32 @@ function buildMetaComponentCacheKeys({ config, metaId, type, useShowPoster = fal
   };
 }
 
+// Components whose value depends on more than the identity profile carry their
+// own profile hash in the field name, so users who differ only in art (or in
+// video options) share one hash and add their own fields to it.
+const HASH_SCOPED_COMPONENTS = new Set(['poster', 'rawPoster', 'background', 'landscapePoster', 'logo', 'videos']);
+
+type MetaHashLayout = { key: string; fields: Record<string, { field: string; legacyKey: string }> };
+
+/**
+ * A title's components live in one Redis hash per identity profile, so eviction
+ * removes the title whole. Each component keeps the key it used to live under
+ * as `legacyKey`, which the cold store still addresses rows by. Built on the
+ * key builder so the two can never disagree about a hash.
+ */
+function buildMetaHashLayout({ config, metaId, type, useShowPoster = false }: { config: any; metaId: string; type: string | null; useShowPoster?: boolean }): MetaHashLayout {
+  const legacyKeys = buildMetaComponentCacheKeys({ config, metaId, type, useShowPoster });
+  const hashOf = (legacyKey: string) => legacyKey.split(':')[1];
+  const fields: MetaHashLayout['fields'] = {};
+  for (const [name, legacyKey] of Object.entries(legacyKeys)) {
+    fields[name] = {
+      field: HASH_SCOPED_COMPONENTS.has(name) ? `${name}:${hashOf(legacyKey)}` : name,
+      legacyKey,
+    };
+  }
+  return { key: `meta-h:${hashOf(legacyKeys.basic)}:${metaId}`, fields };
+}
+
 function getBlurProxyPrefix(): string {
   const host = process.env.HOST_NAME?.startsWith('http')
     ? process.env.HOST_NAME
@@ -2613,7 +2639,7 @@ export {
   cacheWrapMeta,
   cacheWrapMetaComponents,
   reconstructMetaFromComponents,
-  buildMetaComponentCacheKeys,
+  buildMetaHashLayout,
   buildMetaAliasCacheKey,
   projectMetaForCatalogCache,
   projectCatalogPayloadForCache,
@@ -2648,7 +2674,7 @@ module.exports = {
   cacheWrapMeta,
   cacheWrapMetaComponents,
   reconstructMetaFromComponents,
-  buildMetaComponentCacheKeys,
+  buildMetaHashLayout,
   buildMetaAliasCacheKey,
   projectMetaForCatalogCache,
   projectCatalogPayloadForCache,
