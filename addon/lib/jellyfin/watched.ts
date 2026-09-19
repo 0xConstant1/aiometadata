@@ -703,7 +703,7 @@ async function mdblistFingerprint(apiKey: string): Promise<string> {
   );
 
   // server_time moves on every call and would defeat the whole point.
-  const parts = ['watched_at', 'season_watched_at', 'episode_watched_at', 'journal_at']
+  const parts = ['watched_at', 'season_watched_at', 'episode_watched_at', 'journal_at', 'dropped_at']
     .map((field) => activities?.[field] ?? '')
     .join('|');
 
