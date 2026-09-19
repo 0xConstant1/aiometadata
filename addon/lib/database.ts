@@ -646,7 +646,6 @@ class Database {
 
   async deleteUser(userUUID: string): Promise<boolean> {
     try {
-      await require('./configCache').del(userUUID).catch(() => undefined);
       const query = this.type === 'sqlite'
         ? 'DELETE FROM user_configs WHERE user_uuid = ?'
         : 'DELETE FROM user_configs WHERE user_uuid = $1';
@@ -663,6 +662,9 @@ class Database {
         : 'DELETE FROM user_aliases WHERE user_uuid = $1';
       await this.runAliasCleanup(deleteAliasQuery, [userUUID]);
       await this.unlinkConfigFromAllAccounts(userUUID);
+
+      // After the row is gone: clearing first lets a concurrent read cache it again.
+      await require('./configCache').del(userUUID).catch(() => undefined);
 
       logger.info(`Successfully deleted user ${userUUID} and all associated data`);
       return userDeleted;
