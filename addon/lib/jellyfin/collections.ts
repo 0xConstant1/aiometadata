@@ -275,12 +275,3 @@ export async function boxSetMembers(
 
   return { items: collected, hasMore: more };
 }
-
-/** The pixel box a folder's cover is cropped to, matching the tile shape a client draws. */
-export function folderCoverSize(config: any, collectionId: string, folderId: string): { width: number; height: number } {
-  const folder = folderById(collectionById(config, collectionId), folderId);
-  const shape = folder?.shape;
-  if (shape === 'LANDSCAPE') return { width: 960, height: 540 };
-  if (shape === 'SQUARE') return { width: 600, height: 600 };
-  return { width: 600, height: 900 };
-}

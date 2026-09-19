@@ -33,7 +33,7 @@ import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickCo
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
-import { allBoxSets, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById, folderCoverSize } from './collections';
+import { allBoxSets, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
 import { setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyWatchedState, isWatched, ownNextUpRows, upcomingFollowed, watchedSnapshot, type NextUpRow } from './watched';
 import { registerStubs } from './stubs';
@@ -1575,17 +1575,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     url = tmdbSized(url, kind, qInt(req, 'MaxWidth', 0));
 
-    // A folder cover is cropped to its tile's shape rather than letterboxed by the client.
-    if (kind === 'primary') {
-      const descriptor = await decodeJellyfinId(String(req.params.itemId));
-      if (descriptor?.k === 'boxset') {
-        const config = await loadConfig(req);
-        const size = folderCoverSize(config, descriptor.c, descriptor.f);
-        await streamCropped(res, url, size.width, size.height);
-        return;
-      }
-    }
-
     const cached = throughPosterCache(url, kind);
     if (cached) {
       const local = builtinPosterCachePath(cached);
@@ -1677,32 +1666,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (!prefix) return null;
     const imageClass = kind === 'backdrop' ? 'background' : kind === 'logo' ? 'logo' : kind === 'thumb' ? 'landscape' : 'poster';
     return posterCache.buildCachedUrl(prefix, imageClass, url);
-  };
-
-  const streamCropped = async (res: any, url: string, width: number, height: number): Promise<void> => {
-    try {
-      const { openImageStream } = require('../posterCache/upstream');
-      const sharp = require('sharp');
-      const upstream = await openImageStream(url);
-      if (upstream.notModified) {
-        res.status(404).end();
-        return;
-      }
-      const transformer = sharp({ sequentialRead: true, limitInputPixels: 10000 * 10000 })
-        .resize(width, height, { fit: 'cover', position: 'centre' })
-        .jpeg({ quality: 90 });
-      res.set('Content-Type', 'image/jpeg');
-      res.set('Cache-Control', 'public, max-age=86400');
-      transformer.on('error', (error: any) => {
-        logger.debug(`Cover crop failed for ${url}: ${error?.message || error}`);
-        res.end();
-      });
-      upstream.response.data.on('error', () => res.end());
-      upstream.response.data.pipe(transformer).pipe(res);
-    } catch (error: any) {
-      logger.debug(`Cover fetch failed for ${url}: ${error?.message || error}`);
-      res.status(404).end();
-    }
   };
 
   const streamImage = async (res: any, url: string): Promise<void> => {
