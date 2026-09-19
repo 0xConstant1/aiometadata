@@ -248,6 +248,7 @@ export interface AppConfig {
   anilistWatchTracking: boolean;
   malWatchTracking?: boolean;
   simklWatchTracking: boolean;
+  simklSyncInterval?: number;
   traktWatchTracking: boolean;
   publicmetadbWatchTracking: boolean;
   /** Optional per-service filters. Missing media-type flags preserve legacy behavior and are treated as enabled. */

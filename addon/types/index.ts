@@ -39,6 +39,8 @@ export interface UserConfig {
   mdblistWatchTracking?: boolean;
   traktWatchTracking?: boolean;
   simklWatchTracking?: boolean;
+  /** Minutes between Simkl activity checks on a V2 connection; unset follows SIMKL_ACTIVITIES_TTL */
+  simklSyncInterval?: number;
   /** Enable/disable AniList watch tracking */
   anilistWatchTracking?: boolean;
   /** Enable/disable MyAnimeList watch tracking */

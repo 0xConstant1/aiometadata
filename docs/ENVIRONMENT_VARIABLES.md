@@ -224,7 +224,7 @@ to every visitor, so which one you reach for depends on who uses the instance.
 
 #### `SIMKL_V2_CLIENT_ID`
 - **Required**: No, but Simkl retires the V1 sign-in (`SIMKL_CLIENT_ID`) around April 2027
-- **Description**: Client ID of a Simkl AUTH V2 app, registered at https://simkl.com/settings/developer/. A V1 client ID cannot be upgraded, so this is a second registration. Once it is set, every new Simkl connection, by code or through the browser, is made on the V2 app, and V2 tokens are refreshed before their seven days run out. Accounts connected on the V1 app keep working until the user disconnects and reconnects Simkl, and `SIMKL_CLIENT_ID` stays in use for them and for anonymous lookups such as search and trending.
+- **Description**: Client ID of a Simkl AUTH V2 app, registered at https://simkl.com/settings/developer/. A V1 client ID cannot be upgraded, so this is a second registration. Once it is set, every new Simkl connection, by code or through the browser, is made on the V2 app, and V2 tokens are refreshed before their seven days run out. Accounts connected on the V1 app keep working until the user disconnects and reconnects Simkl, and `SIMKL_CLIENT_ID` stays in use for them and for anonymous lookups such as search and trending. Requests made with a V2 token count against that user's own daily Simkl allowance (500 on a free account, 1,000 on PRO, 10,000 on VIP, shared with every other app the user has connected) instead of the app's, so a V2 app needs no limit increase from Simkl. When a user's allowance runs out, their Simkl calls stop until it resets at midnight New York time and catalogs serve what is cached; the configure page shows how much is left.
 - **Get it**: https://simkl.com/settings/developer/. Register it as **Server apps & services** to offer both sign-ins, with `${HOST_NAME}/api/auth/simkl/callback` (or `SIMKL_REDIRECT_URI`) as its redirect URI. A registration without a secret can only offer the code sign-in.
 
 #### `SIMKL_V2_CLIENT_SECRET`
@@ -261,7 +261,7 @@ to every visitor, so which one you reach for depends on who uses the instance.
 
 #### `SIMKL_ACTIVITIES_TTL`
 - **Default**: `1800` (30 minutes)
-- **Description**: Time-to-live (in seconds) for caching SimKL activity checks. Reduces API spam when paginating. Also caps how long Up Next keeps showing an episode you just watched, and how long a completed item can still appear when Hide Simkl Watched is on. Simkl asks callers not to check more often than every 15 minutes.
+- **Description**: Time-to-live (in seconds) for caching SimKL activity checks. Reduces API spam when paginating. Also caps how long Up Next keeps showing an episode you just watched, and how long a completed item can still appear when Hide Simkl Watched is on. This is the default: users on a V2 connection can set their own interval in the Simkl integration, since their checks count against their own Simkl allowance. V1 connections always use this value, since their checks share the app allowance.
 - **Example**: `SIMKL_ACTIVITIES_TTL=3600` (1 hour)
 
 #### `SIMKL_LIST_MIN_TTL`

@@ -1609,7 +1609,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'SIMKL_ACTIVITIES_TTL',
     envVar: 'SIMKL_ACTIVITIES_TTL',
     label: 'Simkl Activities TTL (sec)',
-    description: 'Cache lifetime for Simkl activity checks to avoid repeated polling. Also sets how long a newly completed item can still show in catalogs when Hide Simkl Watched is on, and how long Up Next can lag behind an episode you just watched. Simkl asks callers not to check more often than every 15 minutes.',
+    description: 'How long a Simkl activity check is reused before Simkl is asked again. Also sets how long a newly completed item can still show in catalogs when Hide Simkl Watched is on, and how long Up Next can lag behind an episode you just watched. This is the default; users on a V2 connection can set their own interval in the Simkl integration, since their checks count against their own Simkl allowance. V1 connections always use this value.',
     category: 'Cache',
     type: 'number',
     default: 1800,

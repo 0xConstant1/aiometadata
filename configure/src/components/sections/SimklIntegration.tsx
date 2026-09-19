@@ -25,6 +25,19 @@ interface SimklCustomList {
   itemCount: number;
 }
 
+interface SimklQuota {
+  limit: number;
+  remaining: number;
+  resetsAt: number;
+  pausedUntil?: number;
+}
+
+function formatResetIn(resetsAt: number): string {
+  const minutes = Math.max(1, Math.round((resetsAt - Date.now()) / 60000));
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
+
 interface SimklIntegrationProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,12 +46,16 @@ interface SimklIntegrationProps {
 export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
   const [simklClientId, setSimklClientId] = useState<string>("");
   const [simklAuthMode, setSimklAuthMode] = useState<'oauth' | 'pin' | 'both'>('oauth');
+  const [simklV2Available, setSimklV2Available] = useState(false);
+  const [serverSyncMinutes, setServerSyncMinutes] = useState(30);
   
   useEffect(() => {
     fetch("/api/config")
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.simkl) setSimklClientId(data.simkl);
+        setSimklV2Available(Boolean(data?.simklV2));
+        if (Number(data?.simklActivitiesTTL) > 0) setServerSyncMinutes(Math.max(1, Math.round(data.simklActivitiesTTL / 60)));
         if (data && (data.simklAuthMode === 'pin' || data.simklAuthMode === 'both' || data.simklAuthMode === 'oauth')) {
           setSimklAuthMode(data.simklAuthMode);
         }
@@ -55,6 +72,8 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
   const [disconnecting, setDisconnecting] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [loadingUsername, setLoadingUsername] = useState(false);
+  const [authVersion, setAuthVersion] = useState<'v1' | 'v2' | null>(null);
+  const [quota, setQuota] = useState<SimklQuota | null>(null);
   const [userStats, setUserStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [statsCollapsed, setStatsCollapsed] = useState(true);
@@ -76,26 +95,34 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
     return undefined;
   };
 
+  const loadTokenInfo = (tokenId: string) => {
+    setLoadingUsername(true);
+    fetch("/api/oauth/token/info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tokenId }),
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.username) setUsername(data.username);
+        setAuthVersion(data?.authVersion ?? null);
+        setQuota(data?.quota ?? null);
+      })
+      .catch(() => setUsername(null))
+      .finally(() => setLoadingUsername(false));
+  };
+
   useEffect(() => {
     if (isOpen) {
       setIsConnected(!!config.apiKeys?.simklTokenId);
       setTempTokenId(config.apiKeys?.simklTokenId || "");
       
       if (config.apiKeys?.simklTokenId) {
-        setLoadingUsername(true);
-        fetch("/api/oauth/token/info", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tokenId: config.apiKeys.simklTokenId }),
-        })
-          .then(res => res.ok ? res.json() : null)
-          .then(data => {
-            if (data?.username) setUsername(data.username);
-          })
-          .catch(() => setUsername(null))
-          .finally(() => setLoadingUsername(false));
+        loadTokenInfo(config.apiKeys.simklTokenId);
       } else {
         setUsername(null);
+        setAuthVersion(null);
+        setQuota(null);
       }
     }
   }, [isOpen, config.apiKeys?.simklTokenId]);
@@ -229,6 +256,7 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
   const applyToken = (tokenId: string, connectedUsername: string) => {
     setUsername(connectedUsername);
     setTempTokenId(tokenId);
+    loadTokenInfo(tokenId);
     setConfig(prev => ({
       ...prev,
       apiKeys: {
@@ -606,12 +634,73 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
                         ) : username ? (
                           <p className="text-xs text-muted-foreground truncate">@{username}</p>
                         ) : null}
+                        {authVersion === 'v2' && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {!quota
+                              ? 'Your daily Simkl allowance shows here after the next Simkl request'
+                              : quota.pausedUntil && quota.pausedUntil > Date.now()
+                                ? `Daily Simkl allowance used up, resets in ${formatResetIn(quota.pausedUntil)}`
+                                : `${quota.remaining.toLocaleString()} of ${quota.limit.toLocaleString()} Simkl requests left today, resets in ${formatResetIn(quota.resetsAt)}`}
+                          </p>
+                        )}
+                        {authVersion === 'v2' && (
+                          <a
+                            href="https://simkl.com/settings/connected-apps/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                          >
+                            Usage by app <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
                       </div>
                     </div>
                     <Button variant="outline" size="sm" onClick={handleDisconnect} disabled={disconnecting} className="shrink-0">
                       {disconnecting ? 'Disconnecting...' : 'Disconnect'}
                     </Button>
                   </div>
+
+                  {authVersion === 'v2' && (
+                    <div className="space-y-2 p-3 rounded-lg border border-border">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="simkl-sync-interval">Check Simkl for changes every (minutes)</Label>
+                        {config.simklSyncInterval !== undefined && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto py-0.5 px-2 text-xs"
+                            onClick={() => setConfig(prev => ({ ...prev, simklSyncInterval: undefined }))}
+                          >
+                            Use server default
+                          </Button>
+                        )}
+                      </div>
+                      <Input
+                        id="simkl-sync-interval"
+                        type="number"
+                        min={1}
+                        max={1440}
+                        step={1}
+                        placeholder={String(serverSyncMinutes)}
+                        value={config.simklSyncInterval ?? ''}
+                        onChange={(e) => {
+                          const parsed = parseInt(e.target.value, 10);
+                          setConfig(prev => ({ ...prev, simklSyncInterval: Number.isNaN(parsed) ? undefined : Math.min(Math.max(parsed, 1), 1440) }));
+                        }}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {config.simklSyncInterval === undefined ? `Following the server default of ${serverSyncMinutes} minutes. ` : ''}
+                        How quickly watchlist, Up Next and watched changes made on Simkl show up here. Each check uses one request from your daily Simkl allowance, and only happens while your catalogs are being browsed.
+                      </p>
+                    </div>
+                  )}
+
+                  {authVersion === 'v1' && simklV2Available && (
+                    <p className="text-xs text-muted-foreground p-3 rounded-lg border border-border bg-muted/30">
+                      This connection uses the older Simkl sign-in. Disconnect and connect again to switch to the new one, which gives you your own daily allowance and unlocks custom lists.
+                    </p>
+                  )}
 
                   {/* Simkl User Stats Card */}
                   {isConnected && username && (
@@ -932,7 +1021,7 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
                       </div>
                       <div className="flex-1 min-w-0 space-y-1.5">
                         <CardTitle>Import My Custom Lists</CardTitle>
-                        <CardDescription>Import the custom lists you made on Simkl</CardDescription>
+                        <CardDescription>Import the custom lists you made on Simkl. Needs a Simkl PRO or VIP account.</CardDescription>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">

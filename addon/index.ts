@@ -649,7 +649,9 @@ const respond = function (req, res, data, opts?) {
       trakt: getSetting('TRAKT_CLIENT_ID'),
       simkl: getSetting('SIMKL_CLIENT_ID') || getSetting('SIMKL_V2_CLIENT_ID'),
       simklAuthMode: resolveSimklAuthMode(),
+      simklV2: Boolean(getSetting('SIMKL_V2_CLIENT_ID')),
       simklListMinTTL: parseInt(getSetting('SIMKL_LIST_MIN_TTL'), 10) || 300,
+      simklActivitiesTTL: parseInt(getSetting('SIMKL_ACTIVITIES_TTL'), 10) || 1800,
       customDescriptionBlurb: getSetting('CUSTOM_DESCRIPTION_BLURB'),
       addonVersion: ADDON_VERSION,
       hasBuiltInTvdb: !!getSetting('BUILT_IN_TVDB_API_KEY'),
@@ -983,6 +985,14 @@ addon.post("/api/oauth/token/info", async (req, res) => {
           response.statusMessage = 'Your Trakt refresh token has expired or been revoked. Please disconnect and reconnect your account.';
         }
       } catch {}
+    }
+    if (token.provider === 'simkl') {
+      const { isSimklV2Token } = require('./lib/simkl');
+      response.authVersion = isSimklV2Token(token.access_token) ? 'v2' : 'v1';
+      if (response.authVersion === 'v2') {
+        const { getSimklQuota } = require('./utils/simklUtils');
+        response.quota = await getSimklQuota(token.access_token).catch(() => null);
+      }
     }
     res.json(response);
   } catch (error) {
@@ -4920,7 +4930,7 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
             pairs = [[parts[2], parts[3]]];
           }
           const fps = await Promise.all(
-            pairs.map(([t, s]) => getSimklActivityFingerprint(token.access_token, t, s))
+            pairs.map(([t, s]) => getSimklActivityFingerprint(token.access_token, t, s, config))
           );
           const fp = fps.filter(Boolean).join('+');
           if (fp) cacheExtraArgs._simklAct = fp;

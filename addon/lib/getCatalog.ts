@@ -3151,7 +3151,7 @@ async function getSimklCatalog(
         // No TTL override: this blob is shared across every catalog on the same status
         // and is invalidated by the activity check, so a catalog's own (much shorter)
         // TTL would expire it early and force a full re-sync instead of a delta.
-        const result = await fetchSimklWatchlistItems(accessToken, watchlistType, status);
+        const result = await fetchSimklWatchlistItems(accessToken, watchlistType, status, undefined, config);
         
         // Filter and map items
         let allItems = result.items

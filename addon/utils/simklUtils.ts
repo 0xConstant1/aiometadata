@@ -22,9 +22,18 @@ const SIMKL_WATCHLIST_TTL = 24 * 60 * 60; // Cache in Redis for 24h, relies on a
 const SIMKL_ACTIVITIES_TTL_DEFAULT = 30 * 60; // Simkl asks callers to throttle sync checks to once per 15-30 min
 const SIMKL_LIST_STATUSES = ['plantowatch', 'watching', 'completed', 'hold', 'dropped'];
 
+const SIMKL_SYNC_INTERVAL_MIN_MINUTES = 1;
+const SIMKL_SYNC_INTERVAL_MAX_MINUTES = 24 * 60;
+
 function getSimklActivitiesTtl(): number {
-  const parsed = parseInt(process.env.SIMKL_ACTIVITIES_TTL || '', 10);
+  const parsed = parseInt(getSetting('SIMKL_ACTIVITIES_TTL') || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : SIMKL_ACTIVITIES_TTL_DEFAULT;
+}
+
+function simklActivitiesTtlFor(accessToken: string, config?: any): number {
+  const minutes = Number(config?.simklSyncInterval);
+  if (!isSimklV2Token(accessToken) || !Number.isFinite(minutes) || minutes <= 0) return getSimklActivitiesTtl();
+  return Math.round(Math.min(Math.max(minutes, SIMKL_SYNC_INTERVAL_MIN_MINUTES), SIMKL_SYNC_INTERVAL_MAX_MINUTES) * 60);
 }
 const SIMKL_TRENDING_DATA_URL = 'https://data.simkl.in/discover/trending';
 const SIMKL_DISCOVER_DATA_URL = 'https://data.simkl.in/discover';
@@ -71,14 +80,144 @@ const RATE_LIMIT_CONFIG = {
   backoffMultiplier: 2
 };
 
-// Rate limiting state
-let rateLimitState = {
-  lastRequestTime: 0,
-  recentRateLimitHits: 0,
-  lastRateLimitTime: 0,
-  isRateLimited: false,
-  rateLimitResetTime: 0
-};
+const SIMKL_APP_BUCKET = 'app';
+const SIMKL_V2_GET_INTERVAL_MS = 100;
+const SIMKL_V2_POST_INTERVAL_MS = 1000;
+const SIMKL_QUOTA_KEY_PREFIX = 'simkl-quota:';
+
+interface SimklBucket {
+  lastRequestTime: number;
+  recentRateLimitHits: number;
+  cooldownUntil: number;
+  pausedUntil: number;
+}
+
+const simklBuckets = new Map<string, SimklBucket>();
+
+function simklBucket(key: string): SimklBucket {
+  let bucket = simklBuckets.get(key);
+  if (!bucket) {
+    bucket = { lastRequestTime: 0, recentRateLimitHits: 0, cooldownUntil: 0, pausedUntil: 0 };
+    simklBuckets.set(key, bucket);
+  }
+  return bucket;
+}
+
+function simklTokenHash(accessToken: string): string {
+  return crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
+}
+
+function simklBucketFor(accessToken?: string): string {
+  return accessToken && isSimklV2Token(accessToken) ? `user:${simklTokenHash(accessToken)}` : SIMKL_APP_BUCKET;
+}
+
+function nyOffsetMs(at: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hourCycle: 'h23',
+    year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+  }).formatToParts(new Date(at));
+  const get = (type: string) => Number(parts.find(p => p.type === type)?.value);
+  return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')) - Math.floor(at / 1000) * 1000;
+}
+
+function nextSimklReset(now: number = Date.now()): number {
+  const nyNow = new Date(now + nyOffsetMs(now));
+  const nyMidnight = Date.UTC(nyNow.getUTCFullYear(), nyNow.getUTCMonth(), nyNow.getUTCDate() + 1);
+  const guess = nyMidnight - nyOffsetMs(now);
+  return nyMidnight - nyOffsetMs(guess);
+}
+
+export interface SimklQuota {
+  limit: number;
+  remaining: number;
+  resetsAt: number;
+  pausedUntil?: number;
+  updatedAt: number;
+}
+
+async function readSimklQuota(bucketKey: string): Promise<SimklQuota | null> {
+  if (!redis || bucketKey === SIMKL_APP_BUCKET) return null;
+  try {
+    const raw = await redis.get(SIMKL_QUOTA_KEY_PREFIX + bucketKey);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSimklQuota(bucketKey: string, quota: SimklQuota): Promise<void> {
+  if (!redis || bucketKey === SIMKL_APP_BUCKET) return;
+  const ttl = Math.max(60, Math.ceil((Math.max(quota.resetsAt, quota.pausedUntil ?? 0) - Date.now()) / 1000));
+  await redis.set(SIMKL_QUOTA_KEY_PREFIX + bucketKey, JSON.stringify(quota), 'EX', ttl).catch(() => undefined);
+}
+
+async function getSimklQuota(accessToken: string): Promise<SimklQuota | null> {
+  const quota = await readSimklQuota(simklBucketFor(accessToken));
+  if (!quota || quota.resetsAt <= Date.now()) return null;
+  return quota;
+}
+
+function headerNumber(headers: any, name: string): number | null {
+  const value = headers?.[name];
+  const parsed = parseInt(Array.isArray(value) ? value[0] : value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function noteSimklQuota(bucketKey: string, headers: any): Promise<void> {
+  if (bucketKey === SIMKL_APP_BUCKET) return;
+  const limit = headerNumber(headers, 'x-ratelimit-limit');
+  const remaining = headerNumber(headers, 'x-ratelimit-remaining');
+  if (limit === null || remaining === null) return;
+  const resetsAt = nextSimklReset();
+  const pausedUntil = remaining <= 0 ? resetsAt : undefined;
+  if (pausedUntil) simklBucket(bucketKey).pausedUntil = pausedUntil;
+  await writeSimklQuota(bucketKey, { limit, remaining, resetsAt, pausedUntil, updatedAt: Date.now() });
+}
+
+function simklErrorCode(error: any): string | null {
+  let data = error?.response?.data;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { return null; }
+  }
+  return typeof data?.error === 'string' ? data.error : null;
+}
+
+function simklQuotaExhausted(until: number): Error {
+  const error: any = new Error(`Simkl daily allowance spent until ${new Date(until).toISOString()}`);
+  error.code = 'SIMKL_QUOTA_EXHAUSTED';
+  error.response = { status: 429, data: { error: 'user_limit_exceeded' } };
+  return error;
+}
+
+async function simklPausedUntil(bucketKey: string): Promise<number> {
+  const bucket = simklBucket(bucketKey);
+  const now = Date.now();
+  if (bucket.pausedUntil > now) return bucket.pausedUntil;
+  const stored = await readSimklQuota(bucketKey);
+  if (stored?.pausedUntil && stored.pausedUntil > now) {
+    bucket.pausedUntil = stored.pausedUntil;
+    return stored.pausedUntil;
+  }
+  return 0;
+}
+
+async function pauseSimklBucket(bucketKey: string, error: any, context: string): Promise<void> {
+  const retryAfter = headerNumber(error?.response?.headers, 'retry-after');
+  const until = retryAfter && retryAfter > 0 ? Date.now() + retryAfter * 1000 : nextSimklReset();
+  simklBucket(bucketKey).pausedUntil = until;
+  const who = bucketKey === SIMKL_APP_BUCKET ? "the app's" : "this user's";
+  logger.warn(`[Simkl] ${who} daily allowance is spent until ${new Date(until).toISOString()}, skipping Simkl calls until then - ${context}`);
+  if (bucketKey !== SIMKL_APP_BUCKET) {
+    const previous = await readSimklQuota(bucketKey);
+    await writeSimklQuota(bucketKey, {
+      limit: previous?.limit ?? 0,
+      remaining: 0,
+      resetsAt: nextSimklReset(),
+      pausedUntil: until,
+      updatedAt: Date.now(),
+    });
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -102,64 +241,87 @@ function getRetryAfterMs(error: any, fallbackMs: number): number {
   return fallbackMs;
 }
 
+interface SimklRequestOptions {
+  bucket?: string;
+  minInterval?: number;
+}
+
 async function makeRateLimitedRequest<T>(
   requestFn: () => Promise<T>,
   context: string = 'Simkl',
-  retries: number = RATE_LIMIT_CONFIG.maxRetries
+  retries: number = RATE_LIMIT_CONFIG.maxRetries,
+  options: SimklRequestOptions = {}
 ): Promise<T> {
+  const bucketKey = options.bucket ?? SIMKL_APP_BUCKET;
+  const minInterval = options.minInterval ?? RATE_LIMIT_CONFIG.minInterval;
+  const state = simklBucket(bucketKey);
   let attempt = 0;
   while (attempt < retries) {
     attempt++;
     const isLastAttempt = attempt === retries;
+
+    const pausedUntil = await simklPausedUntil(bucketKey);
+    if (pausedUntil) {
+      logger.debug(`[Simkl] Daily allowance spent until ${new Date(pausedUntil).toISOString()}, not calling - ${context}`);
+      throw simklQuotaExhausted(pausedUntil);
+    }
+
     const now = Date.now();
-
-    if (rateLimitState.isRateLimited && rateLimitState.rateLimitResetTime > now) {
-      const waitTime = rateLimitState.rateLimitResetTime - now;
-      logger.debug(`Global rate limit cooldown active, waiting ${waitTime}ms - ${context}`);
+    if (state.cooldownUntil > now) {
+      const waitTime = state.cooldownUntil - now;
+      logger.debug(`Rate limit cooldown active, waiting ${waitTime}ms - ${context}`);
       await sleep(waitTime);
     }
-    rateLimitState.isRateLimited = false;
 
-    const timeSinceLastRequest = now - rateLimitState.lastRequestTime;
-    if (timeSinceLastRequest < RATE_LIMIT_CONFIG.minInterval) {
-      const waitTime = RATE_LIMIT_CONFIG.minInterval - timeSinceLastRequest;
-      await sleep(waitTime);
+    const timeSinceLastRequest = Date.now() - state.lastRequestTime;
+    if (timeSinceLastRequest < minInterval) {
+      await sleep(minInterval - timeSinceLastRequest);
     }
-    rateLimitState.lastRequestTime = Date.now();
+    state.lastRequestTime = Date.now();
     const startTime = Date.now();
 
     try {
-      const response = await requestFn();
+      const response: any = await requestFn();
       const responseTime = Date.now() - startTime;
       requestTracker.trackProviderCall('simkl', responseTime, true);
-      rateLimitState.recentRateLimitHits = 0;
+      state.recentRateLimitHits = 0;
+      await noteSimklQuota(bucketKey, response?.headers);
       return response;
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
       requestTracker.trackProviderCall('simkl', responseTime, false);
       const status = error.response?.status;
+      await noteSimklQuota(bucketKey, error.response?.headers);
 
       if (isPermanentError(error)) {
         logger.error(`[Simkl] Permanent error (${status}): ${context} - ${error.message || String(error)}`);
         throw error;
       }
 
+      const code = status === 429 ? simklErrorCode(error) : null;
+      if (code === 'user_limit_exceeded' || code === 'app_limit_exceeded') {
+        await pauseSimklBucket(code === 'app_limit_exceeded' ? SIMKL_APP_BUCKET : bucketKey, error, context);
+        throw error;
+      }
+
       if (isRateLimitError(error)) {
-        rateLimitState.lastRateLimitTime = Date.now();
-        rateLimitState.recentRateLimitHits++;
-        
+        state.recentRateLimitHits++;
+
         if (isLastAttempt) {
           logger.error(`[Simkl] Rate limit exceeded after ${retries} attempts: ${context}`);
           throw error;
         }
 
-        const fallbackDelay = RATE_LIMIT_CONFIG.rateLimitDelay * Math.pow(2, rateLimitState.recentRateLimitHits - 1);
-        const totalDelay = Math.min(getRetryAfterMs(error, fallbackDelay), RATE_LIMIT_CONFIG.maxDelay);
-        
-        logger.warn(`[Simkl] Rate limit hit (${status}). Retrying in ${Math.round(totalDelay / 1000)}s (attempt ${attempt}/${retries}) - ${context}`);
-        
-        rateLimitState.isRateLimited = true;
-        rateLimitState.rateLimitResetTime = Date.now() + totalDelay;
+        const totalDelay = code === 'rate_limit'
+          ? 1000 + Math.random() * 500
+          : Math.min(
+            getRetryAfterMs(error, RATE_LIMIT_CONFIG.rateLimitDelay * Math.pow(2, state.recentRateLimitHits - 1)),
+            RATE_LIMIT_CONFIG.maxDelay
+          );
+
+        logger.warn(`[Simkl] Rate limit hit (${status}${code ? ` ${code}` : ''}). Retrying in ${Math.round(totalDelay / 1000)}s (attempt ${attempt}/${retries}) - ${context}`);
+
+        state.cooldownUntil = Date.now() + totalDelay;
         await sleep(totalDelay);
         continue;
       }
@@ -173,7 +335,7 @@ async function makeRateLimitedRequest<T>(
         RATE_LIMIT_CONFIG.baseDelay * Math.pow(RATE_LIMIT_CONFIG.backoffMultiplier, attempt - 1),
         RATE_LIMIT_CONFIG.maxDelay
       );
-      
+
       logger.warn(`[Simkl] Request failed (${status}), retrying in ${delay}ms (attempt ${attempt}/${retries}): ${context} - ${error.message || String(error)}`);
       await sleep(delay);
     }
@@ -261,16 +423,24 @@ async function makeAuthenticatedSimklRequest(
     'simkl-api-key': simklClientIdFor(accessToken)
   };
   url = withAppParams(url);
+  const bucket = simklBucketFor(accessToken);
+  const minInterval = bucket === SIMKL_APP_BUCKET
+    ? undefined
+    : method === 'POST' ? SIMKL_V2_POST_INTERVAL_MS : SIMKL_V2_GET_INTERVAL_MS;
 
   if (method === 'POST') {
     return await makeRateLimitedRequest(
       () => httpPost(url, body || {}, { headers, dispatcher: simklDispatcher }),
-      context
+      context,
+      undefined,
+      { bucket, minInterval }
     );
   } else {
     return await makeRateLimitedRequest(
       () => httpGet(url, { headers, dispatcher: simklDispatcher }),
-      context
+      context,
+      undefined,
+      { bucket, minInterval }
     );
   }
 }
@@ -429,7 +599,7 @@ function hasActivityChanged(oldActivity: any, newActivity: any, status: string):
   return { changed: false, reconcile: false };
 }
 
-async function fetchSimklLastActivities(accessToken: string): Promise<any> {
+async function fetchSimklLastActivities(accessToken: string, config?: any): Promise<any> {
   const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
   const cacheKey = `simkl-api-last-activities:${tokenHash}`;
   
@@ -439,8 +609,7 @@ async function fetchSimklLastActivities(accessToken: string): Promise<any> {
     cacheKey,
     async () => {
       const url = `${SIMKL_BASE_URL}/sync/activities`;
-      // GET, not POST: Simkl caps apps at 10 GET/sec but only 1 POST/sec per
-      // client_id, shared across every user on the instance.
+      // GET, not POST: Simkl allows 10 GET/sec but only 1 POST/sec.
       const response: any = await makeAuthenticatedSimklRequest(
         url,
         accessToken,
@@ -448,7 +617,7 @@ async function fetchSimklLastActivities(accessToken: string): Promise<any> {
       );
       return response.data;
     },
-    getSimklActivitiesTtl(),
+    simklActivitiesTtlFor(accessToken, config),
     { upstream: true }
   );
 }
@@ -456,10 +625,11 @@ async function fetchSimklLastActivities(accessToken: string): Promise<any> {
 async function getSimklActivityFingerprint(
   accessToken: string,
   type: 'movies' | 'shows' | 'anime',
-  status: string
+  status: string,
+  config?: any
 ): Promise<string> {
   try {
-    const activities = await fetchSimklLastActivities(accessToken);
+    const activities = await fetchSimklLastActivities(accessToken, config);
     if (!activities) return '';
     const cat = type === 'shows' ? activities.tv_shows : activities[type];
     const specific = cat?.[status] ?? cat?.all ?? activities.all ?? '';
@@ -536,7 +706,8 @@ async function fetchSimklWatchlistItems(
   accessToken: string,
   type: 'movies' | 'shows' | 'anime',
   status: 'watching' | 'plantowatch' | 'hold' | 'completed' | 'dropped',
-  cacheTTL: number = SIMKL_WATCHLIST_TTL // Default long TTL, we manage invalidation manually
+  cacheTTL: number = SIMKL_WATCHLIST_TTL, // Default long TTL, we manage invalidation manually
+  config?: any
 ): Promise<{items: any[]}> {
   try {
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
@@ -549,7 +720,7 @@ async function fetchSimklWatchlistItems(
     // 1. Get latest activities from Simkl (Cached via fetchSimklLastActivities for 6 hours)
     let currentActivities;
     try {
-      currentActivities = await fetchSimklLastActivities(accessToken);
+      currentActivities = await fetchSimklLastActivities(accessToken, config);
     } catch (e) {
       logger.error(`Failed to fetch Simkl activities: ${e.message}. Using cache if available.`);
     }
@@ -903,11 +1074,16 @@ async function checkinSeries(
 
       logger.debug(`[Simkl Checkin] ${attemptLabel} - ids: ${formatIdSummary(ids)}, S${seasonNumber}E${episodeNumber}`);
 
+      const bucket = simklBucketFor(accessToken);
       const response = await httpPost(url, payload, { 
         headers, 
         dispatcher: simklDispatcher,
         timeout: 10000 
+      }).catch(async (error: any) => {
+        await noteSimklQuota(bucket, error?.response?.headers);
+        throw error;
       });
+      await noteSimklQuota(bucket, response.headers);
   
       if (response.status >= 200 && response.status < 300) {
         logger.info(`[Simkl ${action}] Reported episode (${attemptLabel})`, { ids, seasonNumber, episodeNumber });
@@ -1094,7 +1270,7 @@ async function getSimklWatchedIds(config: any): Promise<SimklWatchedIds | null> 
     const types = ['movies', 'shows', 'anime'] as const;
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
     const fingerprints = await Promise.all(
-      types.map(type => getSimklActivityFingerprint(accessToken, type, 'completed'))
+      types.map(type => getSimklActivityFingerprint(accessToken, type, 'completed', config))
     );
     const fingerprint = crypto.createHash('sha256')
       .update(fingerprints.join('|'))
@@ -1108,7 +1284,7 @@ async function getSimklWatchedIds(config: any): Promise<SimklWatchedIds | null> 
       const anilistIds: number[] = [];
 
       for (const type of types) {
-        const { items } = await fetchSimklWatchlistItems(accessToken, type, 'completed');
+        const { items } = await fetchSimklWatchlistItems(accessToken, type, 'completed', undefined, config);
         for (const item of items) {
           const ids = (item?.movie || item?.show)?.ids;
           if (!ids) continue;
@@ -1792,7 +1968,7 @@ async function fetchSimklUpNextItems(
   let unmappedAnime = 0;
 
   for (const bucket of buckets) {
-    const { items } = await fetchSimklWatchlistItems(accessToken, bucket, 'watching');
+    const { items } = await fetchSimklWatchlistItems(accessToken, bucket, 'watching', undefined, config);
     considered += items.length;
 
     for (const item of items) {
@@ -1932,7 +2108,9 @@ export {
   fetchSimklGenreItems,
   fetchSimklCalendarItems,
   checkinMovie,
-  checkinSeries
+  checkinSeries,
+  getSimklQuota,
+  nextSimklReset
 };
 
 async function fetchSimklCalendar(

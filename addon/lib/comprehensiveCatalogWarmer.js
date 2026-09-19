@@ -814,7 +814,7 @@ class ComprehensiveCatalogWarmer {
                   pairs = [[parts[2], parts[3]]];
                 }
                 const fps = await Promise.all(
-                  pairs.map(([t, st]) => getSimklActivityFingerprint(token.access_token, t, st))
+                  pairs.map(([t, st]) => getSimklActivityFingerprint(token.access_token, t, st, config))
                 );
                 const fp = fps.filter(Boolean).join('+');
                 if (fp) extraArgs._simklAct = fp;
