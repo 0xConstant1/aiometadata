@@ -1783,7 +1783,7 @@ async function cacheWrapMetaComponents(userUUID: string, metaId: string, method:
    });
 }
 
-async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = META_TTL(), type = null, useShowPoster = false, overwrite = true, authoritative = true }: { config: any; metaId: string; result: any; ttl?: number; type?: string | null; useShowPoster?: boolean; overwrite?: boolean; authoritative?: boolean }): Promise<any> {
+async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = META_TTL(), type = null, useShowPoster = false, authoritative = true }: { config: any; metaId: string; result: any; ttl?: number; type?: string | null; useShowPoster?: boolean; authoritative?: boolean }): Promise<any> {
   const layout = buildMetaHashLayout({ config, metaId, type, useShowPoster });
 
   const meta = result?.meta || result;
@@ -1886,12 +1886,7 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
   }
 
   const hashKey = withEpoch(layout.key);
-  if (overwrite) {
-    await writeMetaHashReplace({ key: hashKey, entries, ttl: airWindowTtl, hdelFields });
-  } else {
-    const { basicTtl } = await readMetaHash(hashKey, ['basic']);
-    await writeMetaHashFill({ key: hashKey, entries, ttl: airWindowTtl, basicTtl });
-  }
+  await writeMetaHashReplace({ key: hashKey, entries, ttl: airWindowTtl, hdelFields });
 
   try {
     const coldStore = require('./metaColdStore');
@@ -1903,40 +1898,6 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
   }
 
   return { meta: await projectMetaForUser(meta, config) };
-}
-
-async function writeMetaComponentsBatchWithConfig({ config, metas, ttl = META_TTL(), type = null, useShowPoster = false, overwrite = true }: { config: any; metas: any[]; ttl?: number; type?: string | null; useShowPoster?: boolean; overwrite?: boolean }): Promise<{ written: number; skipped: number }> {
-  if (!Array.isArray(metas) || metas.length === 0) {
-    return { written: 0, skipped: 0 };
-  }
-
-  let written = 0;
-  let skipped = 0;
-
-  for (const meta of metas) {
-    if (!meta || !meta.id || !meta.name || !meta.type) {
-      skipped++;
-      continue;
-    }
-
-    const result = await writeMetaComponentsWithConfig({
-      config,
-      metaId: meta.id,
-      result: { meta },
-      ttl,
-      type: meta.type || type,
-      useShowPoster,
-      overwrite,
-    });
-
-    if (result?.meta) {
-      written++;
-    } else {
-      skipped++;
-    }
-  }
-
-  return { written, skipped };
 }
 
 async function readMetaAlias({ config, metaId, type = null, useShowPoster = false }: { config: any; metaId: string; type?: string | null; useShowPoster?: boolean }): Promise<string | null> {
@@ -2583,7 +2544,6 @@ export {
   buildMetaAliasCacheKey,
   projectMetaForCatalogCache,
   projectCatalogPayloadForCache,
-  writeMetaComponentsBatchWithConfig,
   cacheWrapMetaSmart,
   getCacheHealth,
   clearCacheHealth,
@@ -2618,7 +2578,6 @@ module.exports = {
   buildMetaAliasCacheKey,
   projectMetaForCatalogCache,
   projectCatalogPayloadForCache,
-  writeMetaComponentsBatchWithConfig,
   cacheWrapMetaSmart,
   getCacheHealth,
   clearCacheHealth,
