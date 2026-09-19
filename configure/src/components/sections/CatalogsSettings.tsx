@@ -39,7 +39,7 @@ import { Switch } from "@/components/ui/switch";
 import { streamingServices, regions } from "@/data/streamings";
 import { consumeCollectionBuilderRequest } from '@/lib/settingsRoute';
 import { allCatalogDefinitions } from '@/data/catalogs';
-import { resolveCatalogTTL, minCacheTTLFor, hasEditableCacheTTL } from '@/lib/catalogTTL';
+import { resolveCatalogTTL, minCacheTTLFor, hasEditableCacheTTL, formatTTL } from '@/lib/catalogTTL';
 import { GenreSelection } from '@/data/genres';
 import { SelectionProvider, useSelection } from '@/contexts/SelectionContext';
 import { BulkActionBar } from '@/components/BulkActionBar';
@@ -1022,7 +1022,9 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
               min={minCacheTTL}
               help={minCacheTTL === 3600
                 ? 'Minimum 1 hour to avoid excessive API calls'
-                : 'Minimum 5 minutes to avoid excessive API calls'}
+                : minCacheTTL === 300
+                  ? 'Minimum 5 minutes to avoid excessive API calls'
+                  : `Minimum ${formatTTL(minCacheTTL)} to avoid excessive API calls`}
             />
           )}
           

@@ -1024,6 +1024,60 @@ async function fetchSimklWatchingItems(
   }
 }
 
+export type SimklListsError = 'premium_only' | 'needs_v2';
+
+// Custom Lists need a V2 token on a PRO or VIP account; a free one gets HTTP 200 carrying `premium_only`.
+function simklListsError(status: number | undefined, data: any): SimklListsError | null {
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { data = null; }
+  }
+  if (data?.error === 'premium_only') return 'premium_only';
+  if (status === 403 && data?.error === 'oauth2_token_required') return 'needs_v2';
+  return null;
+}
+
+async function fetchSimklUserLists(accessToken: string, userId: string | number): Promise<{ lists: any[]; error?: SimklListsError }> {
+  if (!isSimklV2Token(accessToken)) return { lists: [], error: 'needs_v2' };
+  const lists: any[] = [];
+  for (let page = 1; page <= 20; page++) {
+    let response: any;
+    try {
+      response = await makeAuthenticatedSimklRequest(`${SIMKL_BASE_URL}/lists/user/${encodeURIComponent(String(userId))}?limit=500&page=${page}`, accessToken, 'Simkl user lists');
+    } catch (error: any) {
+      const failure = simklListsError(error?.response?.status, error?.response?.data);
+      if (failure) return { lists, error: failure };
+      throw error;
+    }
+    const failure = simklListsError(response?.status, response?.data);
+    if (failure) return { lists, error: failure };
+    lists.push(...(Array.isArray(response?.data?.lists) ? response.data.lists : []));
+    if (page >= (Number(response?.data?.pagination?.total_pages) || 1)) break;
+  }
+  return { lists };
+}
+
+async function fetchSimklListPage(accessToken: string, listId: string, page: number, limit: number): Promise<{ list: any; items: any[]; totalPages: number; error?: SimklListsError }> {
+  if (!isSimklV2Token(accessToken)) return { list: null, items: [], totalPages: 0, error: 'needs_v2' };
+  // Simkl refuses page * limit beyond 10000.
+  if (page * limit > 10000) return { list: null, items: [], totalPages: 0 };
+  let response: any;
+  try {
+    response = await makeAuthenticatedSimklRequest(`${SIMKL_BASE_URL}/lists/${encodeURIComponent(listId)}?limit=${limit}&page=${page}`, accessToken, `Simkl list ${listId}`);
+  } catch (error: any) {
+    const failure = simklListsError(error?.response?.status, error?.response?.data);
+    if (failure) return { list: null, items: [], totalPages: 0, error: failure };
+    throw error;
+  }
+  const failure = simklListsError(response?.status, response?.data);
+  if (failure) return { list: null, items: [], totalPages: 0, error: failure };
+  const data = response?.data ?? {};
+  return {
+    list: data,
+    items: Array.isArray(data.items) ? data.items : [],
+    totalPages: Number(data.pagination?.total_pages) || 0,
+  };
+}
+
 export interface SimklWatchedIds {
   movieImdbIds: Set<string>;
   showImdbIds: Set<string>;
@@ -1869,6 +1923,8 @@ export {
   getSimklRatings,
   getSimklToken,
   getSimklWatchedIds,
+  fetchSimklUserLists,
+  fetchSimklListPage,
   getSimklActivityFingerprint,
   fetchSimklTrendingItems,
   fetchSimklRecipeItems,

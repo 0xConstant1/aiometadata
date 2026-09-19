@@ -264,6 +264,10 @@ to every visitor, so which one you reach for depends on who uses the instance.
 - **Description**: Time-to-live (in seconds) for caching SimKL activity checks. Reduces API spam when paginating. Also caps how long Up Next keeps showing an episode you just watched, and how long a completed item can still appear when Hide Simkl Watched is on. Simkl asks callers not to check more often than every 15 minutes.
 - **Example**: `SIMKL_ACTIVITIES_TTL=3600` (1 hour)
 
+#### `SIMKL_LIST_MIN_TTL`
+- **Default**: `300` (5 minutes)
+- **Description**: The shortest cache lifetime (in seconds) a Simkl custom list catalog can have. A lower TTL set on a catalog, or a lower instance default, is raised to this. Custom list reads count against the user's daily Simkl allowance.
+
 #### `SIMKL_TRENDING_PAGE_SIZE_OPTIONS`
 - **Default**: `50,100`
 - **Description**: Comma-separated list of page size options (1-500) shown in the UI for SimKL trending catalogs. Use this to limit choices on public instances and prevent API overload.

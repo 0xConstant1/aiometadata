@@ -1596,6 +1596,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 60,
   },
   {
+    key: 'SIMKL_LIST_MIN_TTL',
+    envVar: 'SIMKL_LIST_MIN_TTL',
+    label: 'Simkl Custom List Minimum TTL (sec)',
+    description: 'The shortest cache lifetime a Simkl custom list catalog can have. A lower TTL set on a catalog, or a lower instance default, is raised to this.',
+    category: 'Cache',
+    type: 'number',
+    default: 300,
+    min: 60,
+  },
+  {
     key: 'SIMKL_ACTIVITIES_TTL',
     envVar: 'SIMKL_ACTIVITIES_TTL',
     label: 'Simkl Activities TTL (sec)',

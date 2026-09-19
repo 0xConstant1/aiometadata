@@ -649,6 +649,7 @@ const respond = function (req, res, data, opts?) {
       trakt: getSetting('TRAKT_CLIENT_ID'),
       simkl: getSetting('SIMKL_CLIENT_ID') || getSetting('SIMKL_V2_CLIENT_ID'),
       simklAuthMode: resolveSimklAuthMode(),
+      simklListMinTTL: parseInt(getSetting('SIMKL_LIST_MIN_TTL'), 10) || 300,
       customDescriptionBlurb: getSetting('CUSTOM_DESCRIPTION_BLURB'),
       addonVersion: ADDON_VERSION,
       hasBuiltInTvdb: !!getSetting('BUILT_IN_TVDB_API_KEY'),
@@ -3167,6 +3168,35 @@ addon.post("/api/simkl/users/stats", async (req, res) => {
   }
 });
 
+addon.post("/api/simkl/lists", async (req, res) => {
+  try {
+    const { tokenId } = req.body || {};
+    if (!tokenId) {
+      return res.status(400).json({ error: "tokenId is required" });
+    }
+    const { getSimklToken, fetchSimklUserLists } = require('./utils/simklUtils');
+    const token = await getSimklToken(tokenId);
+    if (!token?.access_token) {
+      return res.status(404).json({ error: "Token not found" });
+    }
+    const result = await fetchSimklUserLists(token.access_token, token.user_id);
+    res.json({
+      error: result.error,
+      lists: result.lists.map(list => ({
+        id: String(list.id),
+        name: list.name,
+        description: typeof list.description === 'string' ? list.description : (list.description?.full || list.description?.short || ''),
+        mediaType: list.media_type,
+        privacy: list.privacy,
+        itemCount: list.counts?.items ?? 0,
+      })),
+    });
+  } catch (error) {
+    consola.error("[Simkl] Error fetching custom lists:", error.message);
+    res.status(500).json({ error: "Failed to fetch Simkl custom lists" });
+  }
+});
+
 // Proxy: Get user's lists
 addon.get("/api/trakt/users/:username/lists", async (req, res) => {
   try {
@@ -4852,7 +4882,7 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
     catalogPageSize = parseInt(process.env.MAL_PAGE_SIZE || '25');
   } else if (cleanId === 'anilist.trending' || cleanId.startsWith('anilist.discover')) {
     catalogPageSize = 50;
-  } else if (cleanId.startsWith('simkl.watchlist.') || cleanId.startsWith('simkl.upnext') || cleanId.startsWith('simkl.dvd.') || cleanId.startsWith('simkl.trending.') || cleanId.startsWith('simkl.recipe.') || cleanId.startsWith('stremthru.') || cleanId.startsWith('mdblist.') || cleanId.startsWith('custom.') || cleanId.startsWith('trakt.') || cleanId.startsWith('anilist.') || cleanId.startsWith('letterboxd.') || cleanId.startsWith('movielens.') || (cleanId.startsWith('tvdb.') && !cleanId.startsWith('tvdb.collection.'))) {
+  } else if (cleanId.startsWith('simkl.watchlist.') || cleanId.startsWith('simkl.list.') || cleanId.startsWith('simkl.upnext') || cleanId.startsWith('simkl.dvd.') || cleanId.startsWith('simkl.trending.') || cleanId.startsWith('simkl.recipe.') || cleanId.startsWith('stremthru.') || cleanId.startsWith('mdblist.') || cleanId.startsWith('custom.') || cleanId.startsWith('trakt.') || cleanId.startsWith('anilist.') || cleanId.startsWith('letterboxd.') || cleanId.startsWith('movielens.') || (cleanId.startsWith('tvdb.') && !cleanId.startsWith('tvdb.collection.'))) {
     catalogPageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE || '20');
   } else {
     catalogPageSize = 20;

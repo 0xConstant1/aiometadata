@@ -22,8 +22,15 @@ export function formatTTL(seconds: number): string {
  * editor both floor against this, so a bulk edit can never push one catalog below
  * a limit its own dialog enforces.
  */
+let simklListMinTTL = 300;
+
+export function setSimklListMinTTL(seconds: number): void {
+  if (Number.isFinite(seconds) && seconds > 0) simklListMinTTL = seconds;
+}
+
 export function minCacheTTLFor(catalogId: string, metadata?: { listType?: string }): number {
   if (catalogId === 'mdblist.upnext' || catalogId.startsWith('mdblist.watchlist')) return 0;
+  if (catalogId.startsWith('simkl.list.')) return simklListMinTTL;
   if (catalogId.startsWith('simkl.trending.')) return 3600;
   if (catalogId.startsWith('letterboxd.')) return 7200;
   if (catalogId === 'publicmetadb.upnext') return 900;

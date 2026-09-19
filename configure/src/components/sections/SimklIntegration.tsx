@@ -9,11 +9,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from '@/components/ui/switch';
-import { ExternalLink, CheckCircle2, XCircle, Loader2, ChevronDown, Plus, Link2, BarChart3, Bookmark, TrendingUp, Sparkles, PlayCircle, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ExternalLink, CheckCircle2, XCircle, Loader2, ChevronDown, Plus, Link2, BarChart3, Bookmark, TrendingUp, Sparkles, PlayCircle, Trash2, Download } from 'lucide-react';
 import { toast } from "sonner";
 import { apiCache } from '@/utils/apiCache';
 import { DeviceAuthCard } from '@/components/DeviceAuthCard';
 import { useDeviceAuth } from '@/hooks/useDeviceAuth';
+
+interface SimklCustomList {
+  id: string;
+  name: string;
+  description: string;
+  mediaType: 'movies' | 'tv' | 'anime';
+  privacy: string;
+  itemCount: number;
+}
 
 interface SimklIntegrationProps {
   isOpen: boolean;
@@ -89,6 +99,102 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
       }
     }
   }, [isOpen, config.apiKeys?.simklTokenId]);
+
+  const [customLists, setCustomLists] = useState<SimklCustomList[]>([]);
+  const [selectedCustomLists, setSelectedCustomLists] = useState<Set<string>>(new Set());
+  const [isLoadingCustomLists, setIsLoadingCustomLists] = useState(false);
+
+  const fetchCustomLists = async () => {
+    const tokenId = config.apiKeys?.simklTokenId;
+    if (!tokenId) {
+      toast.error("Connect your Simkl account first.");
+      return;
+    }
+    setIsLoadingCustomLists(true);
+    try {
+      const response = await fetch("/api/simkl/lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId }),
+      });
+      if (!response.ok) throw new Error(`Failed to fetch lists (Status: ${response.status})`);
+      const data = await response.json();
+      if (data?.error === 'needs_v2') {
+        toast.error("Reconnect Simkl to load custom lists", {
+          description: "Custom lists need the newer Simkl connection. Disconnect Simkl above and connect it again."
+        });
+        setCustomLists([]);
+        return;
+      }
+      if (data?.error === 'premium_only') {
+        toast.error("Custom lists need Simkl PRO or VIP", {
+          description: "Simkl only shares custom lists with PRO and VIP accounts."
+        });
+        setCustomLists([]);
+        return;
+      }
+      const lists: SimklCustomList[] = Array.isArray(data?.lists) ? data.lists : [];
+      setCustomLists(lists);
+      setSelectedCustomLists(new Set());
+      if (lists.length === 0) {
+        toast.info("No custom lists found", { description: "Make one at simkl.com/lists." });
+      } else {
+        toast.success("Custom lists loaded", { description: `Found ${lists.length} list(s)` });
+      }
+    } catch (error) {
+      toast.error("Failed to load custom lists", {
+        description: error instanceof Error ? error.message : "Unknown error occurred"
+      });
+      setCustomLists([]);
+    } finally {
+      setIsLoadingCustomLists(false);
+    }
+  };
+
+  const handleCustomListSelection = (listId: string, checked: boolean) => {
+    const next = new Set(selectedCustomLists);
+    if (checked) next.add(listId);
+    else next.delete(listId);
+    setSelectedCustomLists(next);
+  };
+
+  const importSelectedCustomLists = () => {
+    if (selectedCustomLists.size === 0) {
+      toast.error("Please select at least one list to import.");
+      return;
+    }
+    const toAdd = customLists.filter(list => selectedCustomLists.has(list.id) && !config.catalogs.some(c => c.id === `simkl.list.${list.id}`));
+    setConfig(prev => {
+      const catalogs = [...prev.catalogs];
+      for (const list of toAdd) {
+        const id = `simkl.list.${list.id}`;
+        if (catalogs.some(c => c.id === id)) continue;
+        const catalogType = list.mediaType === 'movies' ? 'movie' : list.mediaType === 'anime' ? 'anime' : 'series';
+        const displayType = getDisplayTypeOverride(catalogType, prev.displayTypeOverrides);
+        catalogs.push({
+          id,
+          type: catalogType,
+          name: list.name,
+          enabled: true,
+          showInHome: true,
+          source: 'simkl' as any,
+          metadata: {
+            listId: list.id,
+            listName: list.name,
+            listDescription: list.description,
+            mediatype: list.mediaType,
+            itemCount: list.itemCount,
+            privacy: list.privacy,
+            isPublic: list.privacy === 'public',
+          },
+          ...(displayType && { displayType })
+        });
+      }
+      return { ...prev, catalogs };
+    });
+    setSelectedCustomLists(new Set());
+    toast.success(toAdd.length ? `Imported ${toAdd.length} list(s)` : "Those lists are already in your catalogs");
+  };
 
   // Fetch Simkl user stats when connected
   useEffect(() => {
@@ -816,6 +922,96 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
                       <p className="text-xs text-muted-foreground">
                         These catalogs show your Simkl watchlist items by status. Page size must match your SimKL settings.
                       </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-violet-500/10 via-card/80 to-card/80 border-violet-400/20">
+                    <CardHeader className="flex-row items-start gap-3 sm:gap-4 space-y-0 p-4 sm:p-6">
+                      <div className="shrink-0 h-10 w-10 rounded-lg bg-violet-500/15 text-violet-300 flex items-center justify-center ring-1 ring-violet-400/20">
+                        <Download className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <CardTitle>Import My Custom Lists</CardTitle>
+                        <CardDescription>Import the custom lists you made on Simkl</CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Button
+                        onClick={fetchCustomLists}
+                        disabled={isLoadingCustomLists || !isConnected}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        {isLoadingCustomLists ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          "Load My Custom Lists"
+                        )}
+                      </Button>
+
+                      {customLists.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-3 p-3 border rounded-lg bg-muted/30">
+                            <Switch
+                              id="select-all-simkl-lists"
+                              checked={selectedCustomLists.size === customLists.length}
+                              onCheckedChange={(checked) => {
+                                setSelectedCustomLists(checked ? new Set(customLists.map(l => l.id)) : new Set());
+                              }}
+                            />
+                            <Label htmlFor="select-all-simkl-lists" className="font-medium cursor-pointer">
+                              Select all my custom lists
+                            </Label>
+                            <Badge variant="outline" className="ml-auto">
+                              {selectedCustomLists.size}/{customLists.length}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-3 max-h-80 overflow-y-auto border rounded-lg p-3 bg-muted/20">
+                            {customLists.map((list) => (
+                              <div key={list.id} className="flex items-start space-x-3 p-3 border rounded-lg">
+                                <Switch
+                                  id={`simkl-list-${list.id}`}
+                                  checked={selectedCustomLists.has(list.id)}
+                                  onCheckedChange={(checked) => handleCustomListSelection(list.id, checked)}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <Label htmlFor={`simkl-list-${list.id}`} className="font-medium cursor-pointer break-words">
+                                    {list.name}
+                                  </Label>
+                                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="text-xs capitalize">
+                                      {list.mediaType === 'tv' ? 'shows' : list.mediaType}
+                                    </Badge>
+                                    <Badge variant="secondary" className="text-xs capitalize">
+                                      {list.privacy}
+                                    </Badge>
+                                    {list.itemCount > 0 && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        {list.itemCount} items
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {list.description && (
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                      {list.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {selectedCustomLists.size > 0 && (
+                            <Button onClick={importSelectedCustomLists} className="w-full">
+                              Import {selectedCustomLists.size} Selected List{selectedCustomLists.size !== 1 ? 's' : ''}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
 

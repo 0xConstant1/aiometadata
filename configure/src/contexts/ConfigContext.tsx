@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import { setSimklListMinTTL } from '@/lib/catalogTTL';
 import { AppConfig, CatalogConfig, SearchConfig } from "./config";
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { allCatalogDefinitions, allSearchProviders } from "@/data/catalogs";
@@ -418,6 +419,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         collectionImportCatalogCap: env.collectionImportCatalogCap || 400,
       };
       setCatalogTTL(env.catalogTTL || 86400);
+      setSimklListMinTTL(env.simklListMinTTL);
       setMaxCatalogs(limits.maxCatalogs);
       setCollectionImportCatalogCap(limits.collectionImportCatalogCap);
       // Returned as well as stored, so a caller acting on it now is not reading
@@ -446,6 +448,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         setTraktSearchEnabled(envApiKeys.traktSearchEnabled ?? true);
         setSimklSearchEnabled(envApiKeys.simklSearchEnabled ?? true);
         setCatalogTTL(envApiKeys.catalogTTL || 86400);
+        setSimklListMinTTL(envApiKeys.simklListMinTTL);
         setMaxCatalogs(envApiKeys.maxCatalogs ?? null);
         setCollectionImportCatalogCap(envApiKeys.collectionImportCatalogCap || 400);
 

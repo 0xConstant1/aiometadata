@@ -807,6 +807,7 @@ function getCatalogContentScope(idOnly: string, catalogType: string, config: any
     return 'anime';
   }
 
+  if (idOnly.startsWith('simkl.list.')) return catalogType === 'anime' ? 'anime' : (catalogType || 'mixed');
   if (idOnly === 'simkl.calendar') return 'mixed';
   if (idOnly === 'simkl.upnext.anime') return 'anime';
   // Mixed, not series: the row can carry anime too, so the anime providers have to
@@ -1408,7 +1409,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     };
   }
 
-  if (idOnly.startsWith('simkl.watchlist.') || idOnly.startsWith('simkl.upnext')) {
+  if (idOnly.startsWith('simkl.watchlist.') || idOnly.startsWith('simkl.upnext') || idOnly.startsWith('simkl.list.')) {
     catalogConfig.apiKeys = {
       simklTokenId: config.apiKeys?.simklTokenId || ''
     };
@@ -1471,6 +1472,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     { label: 'MAL user list', matches: idOnly.startsWith('mal.userlist.') || idOnly === 'mal.suggestions' },
     { label: 'Simkl trending', matches: idOnly.startsWith('simkl.trending.') || idOnly.startsWith('simkl.recipe.'), min: 3600, floorDefault: true },
     { label: 'Simkl watchlist', matches: idOnly.startsWith('simkl.watchlist.') || idOnly.startsWith('simkl.upnext') },
+    { label: 'Simkl custom list', matches: idOnly.startsWith('simkl.list.'), min: parsePositiveIntEnv(require('./settingsService').getSetting('SIMKL_LIST_MIN_TTL'), 300, 60), floorDefault: true },
     { label: 'Letterboxd', matches: idOnly.startsWith('letterboxd.') },
     { label: 'custom manifest', matches: idOnly.startsWith('custom.') },
     { label: 'AniList', matches: idOnly.startsWith('anilist.') },

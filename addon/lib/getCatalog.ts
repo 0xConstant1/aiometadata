@@ -4,7 +4,7 @@ import { getLanguages } from "./getLanguages.js";
 import { fetchMDBListItems, parseMDBListItems, fetchMDBListBatchMediaInfo, fetchMDBListUpNext, parseMDBListUpNextItems, usesMdblistExternalItemsEndpoint, supportsMdblistScoreFilters } from "../utils/mdbList.js";
 import { fetchStremThruCatalog, parseStremThruItems } from "../utils/stremthru.js";
 import { fetchTraktWatchlistItems, fetchTraktFavoritesItems, fetchTraktRecommendationsItems, fetchTraktListItems, fetchTraktListItemsById, parseTraktItems, fetchTraktMostFavoritedItems, fetchTraktCalendarShows, fetchTraktSearchItems, getTraktAccessToken, fetchTraktUpNextEpisodes, fetchTraktUnwatchedEpisodes, fetchTraktTrendingItems, fetchTraktPopularItems, fetchTraktAnticipatedItems } from "../utils/traktUtils.js";
-import { fetchSimklTrendingItems, fetchSimklRecipeItems, fetchSimklWatchlistItems, fetchSimklUpNextItems, parseSimklItems, parseSimklUpNextItems, getSimklToken, fetchSimklCalendarItems, fetchSimklGenreItems, fetchSimklDvdReleases } from "../utils/simklUtils.js";
+import { fetchSimklTrendingItems, fetchSimklRecipeItems, fetchSimklWatchlistItems, fetchSimklUpNextItems, parseSimklItems, parseSimklUpNextItems, getSimklToken, fetchSimklCalendarItems, fetchSimklGenreItems, fetchSimklDvdReleases, fetchSimklListPage } from "../utils/simklUtils.js";
 import { fetchLetterboxdList, parseLetterboxdItems, getLetterboxdGenreIdByName } from "../utils/letterboxdUtils.js";
 import { getFlixPatrolMetas } from "../utils/flixpatrolUtils.js";
 import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType } from "../utils/publicmetadbUtils.js";
@@ -3000,6 +3000,7 @@ async function getSimklCatalog(
     }
 
     let response: any;
+    let listMediaType: string | undefined;
 
     if (catalogId.startsWith('simkl.discover.')) {
       const discoverMetadata = catalogConfig?.metadata?.discover || {};
@@ -3219,6 +3220,34 @@ async function getSimklCatalog(
         logger.warn(`[Simkl] Invalid watchlist catalog ID format: ${catalogId}`);
         return [];
       }
+    } else if (catalogId.startsWith('simkl.list.')) {
+      const listId = catalogId.slice('simkl.list.'.length);
+      const tokenId = (config.apiKeys as any)?.simklTokenId;
+      const token = tokenId ? await getSimklToken(tokenId) : null;
+      if (!token?.access_token) {
+        logger.warn(`[Simkl] List ${listId} needs a connected Simkl account`);
+        return [];
+      }
+      const result = await fetchSimklListPage(token.access_token, listId, page, pageSize);
+      if (result.error === 'needs_v2') {
+        logger.warn(`[Simkl] List ${listId} needs a V2 connection; reconnect Simkl to read custom lists`);
+        return [];
+      }
+      if (result.error === 'premium_only') {
+        logger.warn(`[Simkl] List ${listId} needs a Simkl PRO or VIP account`);
+        return [];
+      }
+      listMediaType = result.list?.media_type || catalogConfig?.metadata?.mediatype;
+      const items = result.items
+        .filter((it: any) => {
+          const ids = it.ids || {};
+          return !!(ids.imdb || ids.tmdb || ids.tvdb || ids.mal || ids.anilist || ids.kitsu || ids.anidb || ids.simkl || ids.simkl_id);
+        })
+        .map((it: any) => ({
+          ...it,
+          type: it.type === 'movie' || it.anime_type === 'movie' ? 'movie' : 'series',
+        }));
+      response = { items, hasMore: page < result.totalPages };
     } else {
       logger.warn(`[Simkl] Unknown catalog ID: ${catalogId}`);
       return [];
@@ -3235,7 +3264,8 @@ async function getSimklCatalog(
       || catalogId === 'simkl.calendar'
       || catalogId === 'simkl.calendar.anime'
       || catalogId.startsWith('simkl.discover.anime.')
-      || (catalogId.startsWith('simkl.recipe.') && catalogId.endsWith('.anime'));
+      || (catalogId.startsWith('simkl.recipe.') && catalogId.endsWith('.anime'))
+      || listMediaType === 'anime';
     const parseStart = Date.now();
     let metas = await parseSimklItems(response.items, type as 'movie' | 'series', config, userUUID, includeVideos, isAnimeCatalog);
     const parseTime = Date.now() - parseStart;
