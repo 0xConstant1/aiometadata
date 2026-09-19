@@ -764,12 +764,7 @@ export async function watchedSnapshot(userUUID: string, config: any): Promise<Wa
 const unmarksFollowed = new LRUCache<string, string>({ max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) });
 const unmarksInFlight = new Map<string, Promise<void>>();
 
-/**
- * The table wins on what it holds, so a title unmarked on the tracker would stay
- * watched here. A title the tracker listed at its previous digest and no longer
- * lists was unmarked there, and its rows are cleared unless this server played
- * it since that list was read.
- */
+// A title that left the tracker's list since the last read was unmarked there.
 async function followTrackerUnmarks(userUUID: string, config: any, snapshot: WatchedSnapshot): Promise<void> {
   const service = sourceFor(config);
   const credential = service ? credentialFor(config, service) : undefined;
@@ -837,7 +832,6 @@ async function clearUnmarked(userUUID: string, profile: string, config: any, bef
     const parsed = parseStremioId(id);
     const isEpisode = Boolean(parsed && parsed.episode !== null && parsed.episode !== undefined);
     const spellings = [id, ...(isEpisode ? await videoIdAliases(id) : await movieSpellings(id, config))];
-    // Still listed under another spelling: the id resolved differently this time.
     if (spellings.some((spelling) => current.has(spelling))) continue;
 
     const rows = [...(await database.getPlaystates(userUUID, spellings, profile)).values()].filter((row: any) => row.played);
