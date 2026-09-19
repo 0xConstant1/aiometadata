@@ -267,3 +267,169 @@ export class SimklClient {
     }
   }
 }
+// A V2 token only works with the client id it was issued to.
+export const SIMKL_V2_TOKEN_PREFIX = 'simkl_at_';
+export const SIMKL_V2_ISSUER = 'https://simkl.com';
+const SIMKL_V2_SCOPE = 'media:read media:write';
+
+export interface SimklV2Tokens {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  scope: string;
+}
+
+export interface SimklDeviceCode {
+  device_code: string;
+  user_code: string;
+  verification_url: string;
+  expires_in: number;
+  interval: number;
+}
+
+export type SimklDevicePoll =
+  | { status: 'authorized'; tokens: SimklV2Tokens }
+  | { status: 'pending' }
+  | { status: 'slow_down' }
+  | { status: 'expired' };
+
+export function isSimklV2Token(accessToken: unknown): boolean {
+  return typeof accessToken === 'string' && accessToken.startsWith(SIMKL_V2_TOKEN_PREFIX);
+}
+
+export function simklV2Credentials(): { clientId: string; clientSecret: string } {
+  const { getSetting } = require('./settingsService');
+  return {
+    clientId: String(getSetting('SIMKL_V2_CLIENT_ID') || '').trim(),
+    clientSecret: String(getSetting('SIMKL_V2_CLIENT_SECRET') || '').trim(),
+  };
+}
+
+export function simklClientIdFor(accessToken?: string | null): string {
+  if (isSimklV2Token(accessToken)) return simklV2Credentials().clientId;
+  return String(process.env.SIMKL_CLIENT_ID || '').trim() || simklV2Credentials().clientId;
+}
+
+async function postForm(path: string, form: Record<string, string>, clientSecret = ''): Promise<{ status: number; data: any }> {
+  const body = new URLSearchParams(form);
+  if (clientSecret) body.set('client_secret', clientSecret);
+  const buildInfo = require('./buildInfo');
+  const response = await fetch(`${SIMKL_API_BASE}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': `AIOMetadata/${buildInfo?.version || '1.0'}`,
+    },
+    body,
+    signal: AbortSignal.timeout(15000),
+  });
+  const text = await response.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { error: 'invalid_response', error_description: text.slice(0, 200) };
+  }
+  return { status: response.status, data };
+}
+
+function readTokens(data: any): SimklV2Tokens {
+  if (!data?.access_token || !data?.refresh_token) {
+    throw new Error(`Simkl returned no token (${data?.error || 'empty response'})`);
+  }
+  return {
+    access_token: String(data.access_token),
+    refresh_token: String(data.refresh_token),
+    expires_in: Number(data.expires_in) || 604800,
+    scope: String(data.scope || ''),
+  };
+}
+
+function oauthError(action: string, status: number, data: any): Error {
+  const error: any = new Error(`Simkl ${action} failed (HTTP ${status}${data?.error ? `, ${data.error}` : ''})`);
+  error.status = status;
+  error.code = data?.error;
+  return error;
+}
+
+export async function requestSimklDeviceCode(clientId: string): Promise<SimklDeviceCode> {
+  const { status, data } = await postForm('/oauth2/device', { client_id: clientId, scope: SIMKL_V2_SCOPE });
+  if (status < 200 || status >= 300 || !data?.device_code || !data?.user_code) {
+    logger.error(`Simkl device code request failed (HTTP ${status}): ${data?.error || 'no code'}`);
+    throw oauthError('device code request', status, data);
+  }
+  return {
+    device_code: String(data.device_code),
+    user_code: String(data.user_code),
+    verification_url: String(data.verification_uri_complete || data.verification_uri || 'https://simkl.com/pin'),
+    expires_in: Number(data.expires_in) || 900,
+    interval: Number(data.interval) || 5,
+  };
+}
+
+export async function pollSimklDeviceCode(clientId: string, deviceCode: string): Promise<SimklDevicePoll> {
+  let result: { status: number; data: any };
+  try {
+    result = await postForm('/oauth2/token', {
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      client_id: clientId,
+      device_code: deviceCode,
+    });
+  } catch (error: any) {
+    logger.debug(`Simkl device poll failed, treating as pending: ${error?.message}`);
+    return { status: 'pending' };
+  }
+  const { status, data } = result;
+  if (status >= 200 && status < 300) return { status: 'authorized', tokens: readTokens(data) };
+  if (status === 401) throw oauthError('device poll', status, data);
+  if (data?.error === 'slow_down' || status === 429) return { status: 'slow_down' };
+  if (data?.error === 'expired_token') return { status: 'expired' };
+  return { status: 'pending' };
+}
+
+export function simklV2AuthorizationUrl(clientId: string, redirectUri: string, state: string, codeVerifier: string): string {
+  const crypto = require('crypto');
+  const challenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: SIMKL_V2_SCOPE,
+    state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+  });
+  return `${SIMKL_V2_ISSUER}/oauth2/authorize?${params.toString()}`;
+}
+
+export async function exchangeSimklV2Code(clientId: string, clientSecret: string, code: string, redirectUri: string, codeVerifier: string): Promise<SimklV2Tokens> {
+  const { status, data } = await postForm('/oauth2/token', {
+    grant_type: 'authorization_code',
+    client_id: clientId,
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  }, clientSecret);
+  if (status < 200 || status >= 300) throw oauthError('code exchange', status, data);
+  return readTokens(data);
+}
+
+export async function refreshSimklV2Token(clientId: string, clientSecret: string, refreshToken: string): Promise<SimklV2Tokens> {
+  const { status, data } = await postForm('/oauth2/token', {
+    grant_type: 'refresh_token',
+    client_id: clientId,
+    refresh_token: refreshToken,
+  }, clientSecret);
+  if (status < 200 || status >= 300) throw oauthError('token refresh', status, data);
+  return readTokens(data);
+}
+
+// Simkl answers 200 whether or not anything was revoked.
+export async function revokeSimklV2Token(clientId: string, clientSecret: string, token: string): Promise<void> {
+  await postForm('/oauth2/revoke', { client_id: clientId, token }, clientSecret);
+}
+
+export function simklV2ScopeWrites(scope: string): boolean {
+  return String(scope || '').split(/\s+/).includes('media:write');
+}

@@ -11,6 +11,7 @@ export type DeviceAuthProvider = 'simkl';
 export interface DeviceAuthSession {
   provider: DeviceAuthProvider;
   userCode: string;
+  deviceCode?: string;
   expiresAt: number;
   /** Shortest gap we let the browser poll the provider at. */
   pollIntervalMs: number;

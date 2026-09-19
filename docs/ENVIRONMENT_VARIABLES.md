@@ -162,7 +162,7 @@ to every visitor, so which one you reach for depends on who uses the instance.
 > authorization URL the browser opens. Their secrets are never published. The one
 > thing to know is that both APIs accept a client id alone for public endpoints,
 > so a copied id lets someone else's traffic count against your app's rate limit.
-> `TRAKT_CLIENT_SECRET` and `SIMKL_CLIENT_SECRET` are what must stay private.
+> `TRAKT_CLIENT_SECRET`, `SIMKL_CLIENT_SECRET` and `SIMKL_V2_CLIENT_SECRET` are what must stay private.
 
 #### `TMDB_API_KEY`
 - **Required**: Yes
@@ -222,9 +222,26 @@ to every visitor, so which one you reach for depends on who uses the instance.
 - **Description**: SimKL API client secret for enabling SimKL account integration
 - **Get it**: https://simkl.com/oauth/applications
 
+#### `SIMKL_V2_CLIENT_ID`
+- **Required**: No, but Simkl retires the V1 sign-in (`SIMKL_CLIENT_ID`) around April 2027
+- **Description**: Client ID of a Simkl AUTH V2 app, registered at https://simkl.com/settings/developer/. A V1 client ID cannot be upgraded, so this is a second registration. Once it is set, every new Simkl connection, by code or through the browser, is made on the V2 app, and V2 tokens are refreshed before their seven days run out. Accounts connected on the V1 app keep working until the user disconnects and reconnects Simkl, and `SIMKL_CLIENT_ID` stays in use for them and for anonymous lookups such as search and trending.
+- **Get it**: https://simkl.com/settings/developer/. Register it as **Server apps & services** to offer both sign-ins, with `${HOST_NAME}/api/auth/simkl/callback` (or `SIMKL_REDIRECT_URI`) as its redirect URI. A registration without a secret can only offer the code sign-in.
+
+#### `SIMKL_V2_CLIENT_SECRET`
+- **Required**: For the browser sign-in on V2, and sent on every token refresh when set
+- **Description**: The secret of a **Server apps & services** V2 registration. Without it only the code sign-in is offered.
+
+#### `SIMKL_TOKEN_REFRESH_AHEAD`
+- **Default**: `86400` (one day)
+- **Description**: How many seconds before a Simkl V2 access token expires it is refreshed.
+
+#### `SIMKL_TOKEN_REFRESH_RETRY`
+- **Default**: `300`
+- **Description**: How many seconds a Simkl token whose refresh failed is left before the refresh is tried again. A refresh the user revoked on Simkl keeps failing until they reconnect.
+
 #### `SIMKL_AUTH_MODE`
 - **Required**: No
-- **Default**: `pin` when `SIMKL_CLIENT_SECRET` is unset, otherwise `oauth`
+- **Default**: `pin` when `SIMKL_CLIENT_SECRET` is unset, otherwise `oauth`. With `SIMKL_V2_CLIENT_ID` set, `SIMKL_V2_CLIENT_SECRET` decides instead.
 - **Values**: `oauth`, `pin`, `both`
 - **Description**: Which SimKL connection flow(s) the configure page offers.
   - `oauth` - the browser-redirect flow. Needs `SIMKL_CLIENT_SECRET` plus a publicly reachable `HOST_NAME`/`SIMKL_REDIRECT_URI` registered with SimKL.
@@ -1225,6 +1242,8 @@ TRAKT_CLIENT_ID=your_key_here  # Optional
 TRAKT_CLIENT_SECRET=your_key_here  # Optional
 SIMKL_CLIENT_ID=your_key_here  # Optional
 SIMKL_CLIENT_SECRET=your_key_here  # Optional
+SIMKL_V2_CLIENT_ID=your_key_here  # Optional
+SIMKL_V2_CLIENT_SECRET=your_key_here  # Optional
 
 # Cache Warmup Configuration
 CACHE_WARMUP_UUIDS=your-user-uuid-here,another-user-uuid  # Multiple UUIDs (up to 3)

@@ -13,6 +13,8 @@ const MAL_STATE_HMAC_DOMAIN = 'aiometadata:mal-oauth-state:v1';
 const ANILIST_STATE_HMAC_DOMAIN = 'aiometadata:anilist-oauth-state:v1';
 const SIMKL_STATE_HMAC_DOMAIN = 'aiometadata:simkl-oauth-state:v1';
 const MAL_PKCE_VERIFIER_DOMAIN = 'aiometadata:mal-pkce-verifier:v1';
+const SIMKL_V2_STATE_HMAC_DOMAIN = 'aiometadata:simkl-oauth2-state:v1';
+const SIMKL_V2_PKCE_VERIFIER_DOMAIN = 'aiometadata:simkl-pkce-verifier:v1';
 
 function validateSigningInputs(
   provider: string,
@@ -109,9 +111,13 @@ function verifySignedOAuthState(
 }
 
 function deriveMalCodeVerifier(state: string, secret: string): string {
+  return deriveCodeVerifier(state, secret, MAL_PKCE_VERIFIER_DOMAIN);
+}
+
+function deriveCodeVerifier(state: string, secret: string, domain: string): string {
   return crypto
     .createHmac('sha256', secret)
-    .update(MAL_PKCE_VERIFIER_DOMAIN, 'utf8')
+    .update(domain, 'utf8')
     .update('\0', 'utf8')
     .update(state, 'ascii')
     .digest('base64url');
@@ -211,3 +217,23 @@ export function verifyMalOAuthState(
     : null;
 }
 
+
+export function createSimklV2OAuthTransaction(
+  secret: string,
+  ttlMs: number,
+  now: number = Date.now()
+): { state: string; codeVerifier: string } {
+  const state = createSignedOAuthState('Simkl', secret, ttlMs, SIMKL_V2_STATE_HMAC_DOMAIN, now);
+  return { state, codeVerifier: deriveCodeVerifier(state, secret, SIMKL_V2_PKCE_VERIFIER_DOMAIN) };
+}
+
+export function verifySimklV2OAuthState(
+  state: unknown,
+  secret: string,
+  now: number = Date.now()
+): string | null {
+  const verifiedState = verifySignedOAuthState(state, secret, SIMKL_V2_STATE_HMAC_DOMAIN, now);
+  return verifiedState && typeof state === 'string'
+    ? deriveCodeVerifier(state, secret, SIMKL_V2_PKCE_VERIFIER_DOMAIN)
+    : null;
+}

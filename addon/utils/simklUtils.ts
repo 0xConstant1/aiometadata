@@ -15,7 +15,8 @@ const idMapper = require('../lib/id-mapper');
 const animeListMapper = require('../lib/anime-list-mapper');
 
 const SIMKL_BASE_URL = 'https://api.simkl.com';
-const SIMKL_CLIENT_ID = process.env.SIMKL_CLIENT_ID || '';
+const { isSimklV2Token, simklClientIdFor } = require('../lib/simkl');
+const { getSetting } = require('../lib/settingsService');
 const SIMKL_TRENDING_TTL = 12 * 60 * 60; // 12 hours
 const SIMKL_WATCHLIST_TTL = 24 * 60 * 60; // Cache in Redis for 24h, relies on activity check to invalidate
 const SIMKL_ACTIVITIES_TTL_DEFAULT = 30 * 60; // Simkl asks callers to throttle sync checks to once per 15-30 min
@@ -29,12 +30,18 @@ const SIMKL_TRENDING_DATA_URL = 'https://data.simkl.in/discover/trending';
 const SIMKL_DISCOVER_DATA_URL = 'https://data.simkl.in/discover';
 const SIMKL_APP_NAME = 'aiometadata';
 
+function withAppParams(url: string): string {
+  if (/[?&]app-name=/.test(url)) return url;
+  const params = new URLSearchParams({ 'app-name': SIMKL_APP_NAME, 'app-version': process.env.npm_package_version || '1.0' });
+  return `${url}${url.includes('?') ? '&' : '?'}${params.toString()}`;
+}
+
 function simklDataParams(): string {
   const params = new URLSearchParams({
     'app-name': SIMKL_APP_NAME,
     'app-version': process.env.npm_package_version || '1.0'
   });
-  if (SIMKL_CLIENT_ID) params.set('client_id', SIMKL_CLIENT_ID);
+  if (simklClientIdFor()) params.set('client_id', simklClientIdFor());
   return params.toString();
 }
 
@@ -180,11 +187,65 @@ async function getSimklToken(tokenId: any): Promise<any | null> {
     if (!token || token.provider !== 'simkl') {
       return null;
     }
+    if (needsRefresh(token)) return (await refreshSimklToken(tokenId)) ?? token;
     return token;
   } catch (error: any) {
     logger.error(`Error getting Simkl access token: ${error.message}`);
     return null;
   }
+}
+
+function needsRefresh(token: any): boolean {
+  if (!isSimklV2Token(token?.access_token) || !token?.refresh_token) return false;
+  const aheadMs = (parseInt(getSetting('SIMKL_TOKEN_REFRESH_AHEAD'), 10) || 24 * 60 * 60) * 1000;
+  return Number(token.expires_at) - Date.now() < aheadMs;
+}
+
+const refreshing = new Map<string, Promise<any | null>>();
+const refreshFailedUntil = new Map<string, number>();
+
+// A refresh kills the previous access token, so only one runs per grant across replicas.
+function refreshSimklToken(tokenId: string): Promise<any | null> {
+  const running = refreshing.get(tokenId);
+  if (running) return running;
+  const work = (async () => {
+    if ((refreshFailedUntil.get(tokenId) ?? 0) > Date.now()) return null;
+    const lockKey = `simkl-token-refresh:${tokenId}`;
+    const locked = redis ? await redis.set(lockKey, '1', 'PX', 30000, 'NX').catch(() => 'OK') : 'OK';
+    try {
+      if (locked !== 'OK') {
+        for (let waited = 0; waited < 10000; waited += 500) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const fresh = await database.getOAuthToken(tokenId);
+          if (fresh && !needsRefresh(fresh)) return fresh;
+        }
+        return null;
+      }
+      const current = await database.getOAuthToken(tokenId);
+      if (!current || !needsRefresh(current)) return current;
+
+      const { simklV2Credentials, refreshSimklV2Token } = require('../lib/simkl');
+      const { clientId, clientSecret } = simklV2Credentials();
+      if (!clientId) {
+        logger.warn('A Simkl token needs refreshing but SIMKL_V2_CLIENT_ID is not set');
+        return null;
+      }
+      const tokens = await refreshSimklV2Token(clientId, clientSecret, current.refresh_token);
+      const expiresAt = Date.now() + tokens.expires_in * 1000;
+      await database.updateOAuthToken(tokenId, tokens.access_token, tokens.refresh_token, expiresAt);
+      logger.debug(`Simkl token ${tokenId} refreshed until ${new Date(expiresAt).toISOString()}`);
+      return { ...current, access_token: tokens.access_token, refresh_token: tokens.refresh_token, expires_at: expiresAt };
+    } catch (error: any) {
+      const retryMs = (parseInt(getSetting('SIMKL_TOKEN_REFRESH_RETRY'), 10) || 300) * 1000;
+      refreshFailedUntil.set(tokenId, Date.now() + retryMs);
+      logger.warn(`Simkl token ${tokenId} could not be refreshed: ${error?.message || error}${error?.code === 'invalid_grant' ? '; the user has to reconnect Simkl' : ''}`);
+      return null;
+    } finally {
+      if (locked === 'OK' && redis) await redis.del(lockKey).catch(() => undefined);
+    }
+  })().finally(() => refreshing.delete(tokenId));
+  refreshing.set(tokenId, work);
+  return work;
 }
 
 async function makeAuthenticatedSimklRequest(
@@ -197,8 +258,9 @@ async function makeAuthenticatedSimklRequest(
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
-    'simkl-api-key': SIMKL_CLIENT_ID
+    'simkl-api-key': simklClientIdFor(accessToken)
   };
+  url = withAppParams(url);
 
   if (method === 'POST') {
     return await makeRateLimitedRequest(
@@ -237,7 +299,7 @@ async function getSimklRatings(
 async function makeRateLimitedSimklRequest(url: string, context: string = 'Simkl Proxy'): Promise<any> {
   const headers = {
     'Content-Type': 'application/json',
-    'simkl-api-key': SIMKL_CLIENT_ID
+    'simkl-api-key': simklClientIdFor()
   };
   
   return await makeRateLimitedRequest(
@@ -828,11 +890,11 @@ async function checkinSeries(
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
-    'simkl-api-key': SIMKL_CLIENT_ID
+    'simkl-api-key': simklClientIdFor(accessToken)
   };
 
   const doCheckin = async (ids: Record<string, string | number>, attemptLabel: string, seasonNumber: number, episodeNumber:number) => {
-      const url = `${SIMKL_BASE_URL}/scrobble/${action}`;
+      const url = withAppParams(`${SIMKL_BASE_URL}/scrobble/${action}`);
       const payload = {
         progress,
         show: { ids: ids },
@@ -1444,7 +1506,7 @@ async function fetchSimklGenreItems(
   cacheTTL?: number
 ): Promise<{ items: any[]; totalItems?: number; hasMore: boolean; totalPages?: number }> {
   try {
-    const clientId = SIMKL_CLIENT_ID;
+    const clientId = simklClientIdFor();
     if (!clientId) {
       logger.warn('[Simkl] Missing SIMKL_CLIENT_ID, cannot fetch discover genre items');
       return { items: [], hasMore: false };

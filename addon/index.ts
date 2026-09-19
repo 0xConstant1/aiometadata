@@ -57,15 +57,18 @@ const {
   createAniListOAuthState,
   createMalOAuthTransaction,
   createSimklOAuthState,
+  createSimklV2OAuthTransaction,
   createTraktOAuthState,
   verifyAniListOAuthState,
   verifyMalOAuthState,
   verifySimklOAuthState,
+  verifySimklV2OAuthState,
   verifyTraktOAuthState,
 } = require('./lib/oauthState');
 const { renderOAuthPage } = require('./lib/oauthPage');
 const { hasAnyWatchTrackingEnabled } = require('./lib/watchTracking');
-const { SimklClient } = require('./lib/simkl');
+const simklAuth = require('./lib/simkl');
+const { SimklClient } = simklAuth;
 const {
   createSessionId,
   deleteDeviceAuthSession,
@@ -98,6 +101,7 @@ function resolveSimklAuthMode() {
   if (configured === 'pin' || configured === 'oauth' || configured === 'both') {
     return configured;
   }
+  if (simklAuth.simklV2Credentials().clientId) return simklAuth.simklV2Credentials().clientSecret ? 'oauth' : 'pin';
   return getSetting('SIMKL_CLIENT_SECRET') ? 'oauth' : 'pin';
 }
 
@@ -643,7 +647,7 @@ const respond = function (req, res, data, opts?) {
       mdblist: getSetting('MDBLIST_API_KEY'),
       gemini: getSetting('GEMINI_API_KEY'),
       trakt: getSetting('TRAKT_CLIENT_ID'),
-      simkl: getSetting('SIMKL_CLIENT_ID'),
+      simkl: getSetting('SIMKL_CLIENT_ID') || getSetting('SIMKL_V2_CLIENT_ID'),
       simklAuthMode: resolveSimklAuthMode(),
       customDescriptionBlurb: getSetting('CUSTOM_DESCRIPTION_BLURB'),
       addonVersion: ADDON_VERSION,
@@ -1075,7 +1079,10 @@ addon.post("/api/movielens/lists/:userUUID", async (req, res) => {
 
 // Saves a new Simkl access token and returns the token ID the user pastes into
 // their config. Used by both the OAuth callback and the PIN flow.
-async function persistSimklToken(user, accessToken) {
+async function persistSimklToken(user, accessToken, v2Tokens = null) {
+  const refreshToken = v2Tokens?.refresh_token || '';
+  const expiresAt = v2Tokens ? Date.now() + v2Tokens.expires_in * 1000 : 0;
+  const scope = v2Tokens?.scope || '';
   // Check if this Simkl user already has a token in the database
   const existingTokens = await database.getOAuthTokensByProvider('simkl');
   const existingToken = existingTokens.find(t => t.user_id.toLowerCase() === user.username.toLowerCase());
@@ -1088,14 +1095,17 @@ async function persistSimklToken(user, accessToken) {
     tokenId = existingToken.id;
     consola.info(`[Simkl OAuth] Updating existing token - tokenId: ${tokenId}, user: ${user.username}`);
 
-    // Simkl tokens don't expire, so we don't have expires_at
-    saved = await database.updateOAuthToken(tokenId, accessToken, '', 0);
+    saved = await database.saveOAuthToken(tokenId, 'simkl', existingToken.user_id, accessToken, refreshToken, expiresAt, scope);
+    // A new V2 grant does not end the one it replaces.
+    if (saved && existingToken.refresh_token && existingToken.refresh_token !== refreshToken) {
+      revokeSimklGrant(existingToken.refresh_token);
+    }
   } else {
     // Create new token
     tokenId = crypto.randomUUID();
     consola.info(`[Simkl OAuth] Creating new token - tokenId: ${tokenId}, user: ${user.username}`);
 
-    saved = await database.saveOAuthToken(tokenId, 'simkl', user.username, accessToken, '', 0, '');
+    saved = await database.saveOAuthToken(tokenId, 'simkl', user.username, accessToken, refreshToken, expiresAt, scope);
   }
 
   if (!saved) {
@@ -1121,9 +1131,29 @@ async function persistSimklToken(user, accessToken) {
   return tokenId;
 }
 
+function revokeSimklGrant(token) {
+  const { clientId, clientSecret } = simklAuth.simklV2Credentials();
+  if (!clientId || !token) return;
+  simklAuth.revokeSimklV2Token(clientId, clientSecret, token)
+    .catch((error) => consola.debug(`[Simkl] Could not revoke a replaced grant: ${error?.message}`));
+}
+
+function simklRedirectUri() {
+  return normalizeRedirectUri(process.env.SIMKL_REDIRECT_URI || `${process.env.HOST_NAME}/api/auth/simkl/callback`);
+}
+
 // --- Simkl OAuth Routes ---
 addon.get("/api/auth/simkl/authorize", async (req, res) => {
   try {
+    const v2 = simklAuth.simklV2Credentials();
+    if (v2.clientId) {
+      if (!v2.clientSecret) {
+        return res.status(500).json({ error: "Simkl sign-in through the browser needs SIMKL_V2_CLIENT_SECRET, from a Server apps & services registration." });
+      }
+      const { state, codeVerifier } = createSimklV2OAuthTransaction(v2.clientSecret, SIMKL_OAUTH_STATE_TTL_MS);
+      return res.redirect(simklAuth.simklV2AuthorizationUrl(v2.clientId, simklRedirectUri(), state, codeVerifier));
+    }
+
     const clientId = process.env.SIMKL_CLIENT_ID;
     const clientSecret = process.env.SIMKL_CLIENT_SECRET;
     const redirectUri = normalizeRedirectUri(process.env.SIMKL_REDIRECT_URI || `${process.env.HOST_NAME}/api/auth/simkl/callback`);
@@ -1150,6 +1180,11 @@ addon.get("/api/auth/simkl/callback", async (req, res) => {
     const stateParam = Array.isArray(req.query.state) ? req.query.state[0] : req.query.state;
     const code = typeof codeParam === 'string' ? codeParam : '';
     const state = typeof stateParam === 'string' ? stateParam : '';
+
+    const v2 = simklAuth.simklV2Credentials();
+    if (v2.clientId && v2.clientSecret) {
+      return await finishSimklV2Callback(req, res, v2, code, state);
+    }
     
     if (!code) {
       return res.status(400).send(renderOAuthPage({
@@ -1223,6 +1258,42 @@ addon.get("/api/auth/simkl/callback", async (req, res) => {
     }));
   }
 });
+
+async function finishSimklV2Callback(req, res, v2, code, state) {
+  const retryHref = '/api/auth/simkl/authorize';
+  const fail = (status, title, message) => res.status(status).send(renderOAuthPage({ provider: 'simkl', status: 'error', title, message, retryHref }));
+
+  // iss guards against a code from another provider.
+  const iss = typeof req.query.iss === 'string' ? req.query.iss : '';
+  const codeVerifier = verifySimklV2OAuthState(state, v2.clientSecret);
+  if (!codeVerifier || iss !== simklAuth.SIMKL_V2_ISSUER) {
+    return fail(400, 'Connection expired', 'The secure authorization state is missing, invalid, or expired. Please start again.');
+  }
+  if (typeof req.query.error === 'string') {
+    return fail(400, 'Sign-in cancelled', 'Simkl did not authorize the connection. You can start again whenever you like.');
+  }
+  if (!code) {
+    return fail(400, 'Authorization incomplete', 'Simkl did not return an authorization code. Please start the connection again.');
+  }
+
+  const tokens = await simklAuth.exchangeSimklV2Code(v2.clientId, v2.clientSecret, code, simklRedirectUri(), codeVerifier);
+  if (!simklAuth.simklV2ScopeWrites(tokens.scope)) {
+    consola.warn(`[Simkl OAuth] Granted scope "${tokens.scope}" cannot write; scrobbles and watchlist changes will fail`);
+  }
+  const user = await new SimklClient(v2.clientId).getMe(tokens.access_token);
+  const tokenId = await persistSimklToken(user, tokens.access_token, tokens);
+  if (!tokenId) {
+    return fail(500, 'Token could not be saved', 'Simkl authorized the connection, but this server could not store the token. Please try again.');
+  }
+  res.send(renderOAuthPage({
+    provider: 'simkl',
+    status: 'success',
+    title: 'Simkl connected',
+    message: 'Authorization is complete. Copy the token ID and paste it into the Simkl integration settings.',
+    username: user.username,
+    tokenId,
+  }));
+}
 
 addon.post("/api/auth/trakt/disconnect", async (req, res) => {
   try {
@@ -1298,6 +1369,27 @@ addon.post("/api/auth/simkl/pin", deviceAuthPollRateLimitMiddleware, async (req,
       return res.status(404).json({ error: "Simkl PIN authentication is not enabled on this instance." });
     }
 
+    const v2ClientId = simklAuth.simklV2Credentials().clientId;
+    if (v2ClientId) {
+      const device = await simklAuth.requestSimklDeviceCode(v2ClientId);
+      const sessionId = createSessionId();
+      await saveDeviceAuthSession(sessionId, {
+        provider: 'simkl',
+        userCode: device.user_code,
+        deviceCode: device.device_code,
+        expiresAt: Date.now() + device.expires_in * 1000,
+        pollIntervalMs: device.interval * 1000,
+        lastPolledAt: 0,
+      });
+      return res.json({
+        sessionId,
+        userCode: device.user_code,
+        verificationUrl: device.verification_url,
+        interval: device.interval,
+        expiresIn: device.expires_in,
+      });
+    }
+
     const clientId = getSetting('SIMKL_CLIENT_ID');
     if (!clientId) {
       return res.status(500).json({ error: "Simkl is not configured. Please set the SIMKL_CLIENT_ID environment variable." });
@@ -1335,7 +1427,8 @@ addon.get("/api/auth/simkl/pin/status", deviceAuthPollRateLimitMiddleware, async
       return res.status(404).json({ error: "Simkl PIN authentication is not enabled on this instance." });
     }
 
-    const clientId = getSetting('SIMKL_CLIENT_ID');
+    const v2ClientId = simklAuth.simklV2Credentials().clientId;
+    const clientId = v2ClientId || getSetting('SIMKL_CLIENT_ID');
     if (!clientId) {
       return res.status(500).json({ error: "Simkl is not configured. Please set the SIMKL_CLIENT_ID environment variable." });
     }
@@ -1356,8 +1449,12 @@ addon.get("/api/auth/simkl/pin/status", deviceAuthPollRateLimitMiddleware, async
       return res.json({ status: 'pending' });
     }
 
-    const simklClient = new SimklClient(clientId);
-    const poll = await simklClient.pollPin(session.userCode);
+    // A session started before V2 was switched on still finishes on V1.
+    const onV2 = Boolean(session.deviceCode && v2ClientId);
+    const simklClient = new SimklClient(onV2 ? v2ClientId : getSetting('SIMKL_CLIENT_ID'));
+    const poll = onV2
+      ? await simklAuth.pollSimklDeviceCode(v2ClientId, session.deviceCode)
+      : await simklClient.pollPin(session.userCode);
 
     if (poll.status === 'pending') {
       return res.json({ status: 'pending' });
@@ -1373,8 +1470,9 @@ addon.get("/api/auth/simkl/pin/status", deviceAuthPollRateLimitMiddleware, async
       return res.json({ status: 'expired' });
     }
 
-    const user = await simklClient.getMe(poll.access_token);
-    const tokenId = await persistSimklToken(user, poll.access_token);
+    const accessToken = poll.tokens ? poll.tokens.access_token : poll.access_token;
+    const user = await simklClient.getMe(accessToken);
+    const tokenId = await persistSimklToken(user, accessToken, poll.tokens || null);
 
     if (!tokenId) {
       // Session left in place: storing the token is the only thing that failed,
@@ -1412,6 +1510,8 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     
     // Delete OAuth token from database if it exists
     if (config.apiKeys?.simklTokenId) {
+      const held = await database.getOAuthToken(config.apiKeys.simklTokenId).catch(() => null);
+      if (held?.refresh_token) revokeSimklGrant(held.refresh_token);
       await database.deleteOAuthToken(config.apiKeys.simklTokenId);
       delete config.apiKeys.simklTokenId;
     }
@@ -2484,7 +2584,7 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
     const { buildCatalogCreationPrompt, parseCatalogAIResponse, normalizeCatalog, validateCatalogParams, resolveEntities, buildCatalogConfigs } = require('./utils/ai-catalog-service');
     const hasTmdb = !!(config.apiKeys?.tmdb || process.env.TMDB_API_KEY || process.env.TMDB_API || process.env.BUILT_IN_TMDB_API_KEY);
     const hasTvdb = !!(config.apiKeys?.tvdb || process.env.TVDB_API_KEY || process.env.BUILT_IN_TVDB_API_KEY);
-    const hasSimkl = !!process.env.SIMKL_CLIENT_ID;
+    const hasSimkl = !!(process.env.SIMKL_CLIENT_ID || getSetting('SIMKL_V2_CLIENT_ID'));
     if (generationMode === 'tmdb' && !hasTmdb) {
       return res.status(400).json({ error: 'TMDB catalog generation requires a TMDB API key.' });
     }
