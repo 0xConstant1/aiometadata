@@ -1,6 +1,7 @@
 import express from 'express';
 import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
+import { LRUCache } from 'lru-cache';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import {
@@ -1573,7 +1574,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(404).end();
       return;
     }
-    url = tmdbSized(url, kind, qInt(req, 'MaxWidth', 0));
+    const maxWidth = qInt(req, 'MaxWidth', 0);
+    url = tmdbSized(url, kind, maxWidth);
     const descriptor = await decodeJellyfinId(String(req.params.itemId));
     const collectionArt = descriptor?.k === 'collection' || descriptor?.k === 'boxset';
 
@@ -1588,8 +1590,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.redirect(302, cached);
       return;
     }
-    if (kind === 'primary' && !collectionArt) {
-      await streamShaped(res, url);
+    // An episode still is 16:9; shaping it to 2:3 blurs and enlarges it for nothing.
+    if (kind === 'primary' && !collectionArt && descriptor?.k !== 'episode') {
+      await streamShaped(res, url, maxWidth);
+      return;
+    }
+    if (redirectsImages()) {
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.redirect(302, url);
       return;
     }
     await streamImage(res, url);
@@ -1635,8 +1643,45 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       });
     });
 
+  type ShapedOutput = { body: Buffer; contentType: string };
+
+  const redirectsImages = (): boolean =>
+    /^(1|true|yes|on)$/i.test(String(require('../settingsService').getSetting('JELLYFIN_IMAGE_REDIRECT') || ''));
+
+  // Shaping decodes, so the same image is decoded once rather than per request.
+  const shapedImages = new LRUCache<string, ShapedOutput>({
+    maxSize: envInt('JELLYFIN_IMAGE_CACHE_MB', 64, 1) * 1024 * 1024,
+    sizeCalculation: (value) => value.body.length,
+    ttl: envInt('JELLYFIN_IMAGE_CACHE_TTL', 6 * 60 * 60, 60) * 1000,
+  });
+
+  /** Sending more than the client asked for is bytes and a decode it throws away. */
+  const narrowed = async (image: ShapedOutput, maxWidth: number): Promise<ShapedOutput> => {
+    if (!(maxWidth > 0)) return image;
+    try {
+      const sharp = require('sharp');
+      const source = sharp(image.body);
+      const meta = await source.metadata();
+      if (!meta.width || meta.width <= maxWidth) return image;
+      return { body: await source.resize({ width: maxWidth }).jpeg({ quality: 88 }).toBuffer(), contentType: 'image/jpeg' };
+    } catch {
+      return image;
+    }
+  };
+
   // Without a cache the bytes pass through here anyway, so a poster is shaped on the way out.
-  const streamShaped = async (res: any, url: string): Promise<void> => {
+  const streamShaped = async (res: any, url: string, maxWidth: number): Promise<void> => {
+    const send = (image: ShapedOutput): void => {
+      res.set('Content-Type', image.contentType);
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.end(image.body);
+    };
+    const key = `${url}|${maxWidth}`;
+    const hit = shapedImages.get(key);
+    if (hit) {
+      send(hit);
+      return;
+    }
     try {
       const { openImageStream } = require('../posterCache/upstream');
       const { shapePoster } = require('../posterCache/shape');
@@ -1647,10 +1692,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
       const chunks: Buffer[] = [];
       for await (const chunk of upstream.response.data) chunks.push(Buffer.from(chunk));
-      const shaped = await shapePoster(Buffer.concat(chunks), upstream.contentType);
-      res.set('Content-Type', shaped.contentType);
-      res.set('Cache-Control', 'public, max-age=86400');
-      res.end(shaped.body);
+      const shaped = await narrowed(await shapePoster(Buffer.concat(chunks), upstream.contentType), maxWidth);
+      shapedImages.set(key, shaped);
+      send(shaped);
     } catch (error: any) {
       logger.debug(`Image stream failed for ${url}: ${error?.message || error}`);
       res.status(404).end();
