@@ -38,10 +38,23 @@ export function getColdStoreMaxBytes(): number {
   return parseSize(process.env.META_COLD_STORE_MAX_BYTES) ?? parseSize('2gb')!;
 }
 
-export function getColdTtlSeconds(tier: 'frozen' | 'stable'): number {
-  return tier === 'frozen'
-    ? parseDuration(process.env.COLD_TTL_FROZEN) ?? parseDuration('180d')!
-    : parseDuration(process.env.COLD_TTL_STABLE) ?? parseDuration('60d')!;
+export type ColdTier = 'frozen' | 'stable' | 'partial';
+
+/**
+ * Strict mode demotes incomplete titles to the `partial` tier. Default-on, using the
+ * same "true unless explicitly falsy" idiom as the compression flag so that the common
+ * case needs no env entry.
+ */
+export function isColdStoreStrict(): boolean {
+  return !/^(0|false|no|off)$/i.test((process.env.META_COLD_STORE_STRICT || '').trim());
+}
+
+export function getColdTtlSeconds(tier: ColdTier): number {
+  if (tier === 'frozen') return parseDuration(process.env.COLD_TTL_FROZEN) ?? parseDuration('180d')!;
+  // Deliberately longer than META_TTL (7d): a row expiring alongside its Redis
+  // counterpart would only ever pay off under early LFU eviction.
+  if (tier === 'partial') return parseDuration(process.env.COLD_TTL_PARTIAL) ?? parseDuration('14d')!;
+  return parseDuration(process.env.COLD_TTL_STABLE) ?? parseDuration('60d')!;
 }
 
 export function getSettleSeconds(kind: 'movie' | 'series'): number {
@@ -66,6 +79,7 @@ export function getColdStoreStatsTtlSeconds(): number {
 
 module.exports = {
   parseSize, parseDuration, isTruthy, isColdStoreEnabled, isColdStoreCompressionEnabled,
+  isColdStoreStrict,
   getColdStorePath, getColdStoreMaxBytes, getColdTtlSeconds, getSettleSeconds,
   getFrozenAgeSeconds, getInactiveDays, getColdStoreStatsTtlSeconds,
 };
