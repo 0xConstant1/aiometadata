@@ -903,6 +903,13 @@ export async function getTvWatchProviders(params: any, config: UserConfig) {
   return null;
 }
 
+/**
+ * NOTE: `addon/utils/tmdbLocalization.ts` carries a deliberate copy of this exact-match
+ * rule (iso_639_1 + iso_3166_1). It cannot import this module because that would pull the
+ * Redis-backed cache stack into a pure classifier. If the matching here is ever relaxed
+ * (e.g. to let es-MX match an es-ES entry), update `findExactTranslation` there too —
+ * otherwise correctly-localized titles get demoted to the cold store's short TTL forever.
+ */
 export function getTranslations(translations: any, language: string) {
   if (translations?.translations) {
     const iso639 = language.split('-')[0];

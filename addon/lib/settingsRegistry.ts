@@ -2880,6 +2880,13 @@ export const CONDITIONAL_RULES: ConditionalRule[] = [
     },
     reason: 'The meta cold store is disabled',
   },
+  {
+    when: { key: 'META_COLD_STORE_STRICT', eq: 'false' },
+    disable: {
+      keys: ['COLD_TTL_PARTIAL'],
+    },
+    reason: 'Completeness gating is off, so nothing is stored in the partial tier',
+  },
 ];
 
 const registryMap = new Map<string, SettingDefinition>();

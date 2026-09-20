@@ -100,14 +100,23 @@ async function to3LetterCodeResolved(
   if (langCode === 'pt-PT') return { code3: 'por', resolved: true };
 
   const langCode2 = langCode.split('-')[0];
+  const isEnglishRequest = langCode2.toLowerCase() === 'en';
   const data = await loadLanguageData(config);
   const details = data.languageMap.get(langCode2);
-  if (details?.code3) return { code3: details.code3, resolved: true };
 
-  // Unmapped: either the lookup degraded to its English-only fallback map, or the
-  // language is genuinely unknown. Both mean we cannot honour the request — except
-  // when English is what was asked for, where 'eng' is the correct answer.
-  return { code3: 'eng', resolved: langCode2.toLowerCase() === 'en' };
+  // 'eng' is never evidence of success unless English was asked for. It arrives three
+  // ways and only one of them is real: a genuine English request; the English-only map
+  // `loadLanguageData` falls back to when its TMDB fetch fails; and the `|| 'eng'`
+  // inside that map's own builder, which stamps it on any 2-letter code the ISO package
+  // cannot convert (cn, yue, fil, iw, in, sh, mo, ji). The last is the subtle one — it
+  // sits on the *healthy* path, so a missing entry is not the only way to be wrong.
+  if (details?.code3 && (details.code3 !== 'eng' || isEnglishRequest)) {
+    return { code3: details.code3, resolved: true };
+  }
+
+  // Unmapped or sentinel: we cannot honour the request. Callers that persist data must
+  // treat this as "do not store", because the payload will be English regardless.
+  return { code3: 'eng', resolved: isEnglishRequest };
 }
 
 async function to3LetterCode(langCode: string, config: UserConfig): Promise<string> {
