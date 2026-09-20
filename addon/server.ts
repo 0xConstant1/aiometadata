@@ -41,6 +41,13 @@ function bootLine(glyph: string, name: string, detail: string): void {
 const ok = (name: string, detail = 'ready') => bootLine('[32m✔[39m', name, detail);
 const warn = (name: string, detail: string) => bootLine('[33m⚠[39m', name, detail);
 
+/** What the Redis boot line says about the server settings this addon just set. */
+function describeTuning(tuning: { changed: string[]; skipped: string | null }): string {
+  if (tuning.skipped === 'not permitted') return 'ready, server settings left to the operator';
+  if (tuning.changed.length === 0) return 'ready';
+  return `ready, tuned ${tuning.changed.length} server setting${tuning.changed.length === 1 ? '' : 's'}`;
+}
+
 /** Reads a task's own counters; never lets a broken getter fail the boot. */
 function describe(task: InitTask): string {
   if (!task.summary) return 'ready';
@@ -237,8 +244,14 @@ async function startServer(): Promise<void> {
     }
   });
   shutdownSequence.register('redis', () => redis.quit().then(() => undefined));
+  // Before anything is cached, so an unusable Redis stops the boot outright.
+  await require('./lib/metaHashStore').assertMetaHashSupport();
+  // Re-applied every boot: CONFIG SET does not survive a restart. Reported on
+  // the boot line because these are the server's own settings, not ours, and
+  // changing them quietly is not something an operator should have to discover.
+  const tuning = await require('./lib/redisAutotune').applyRedisTuning();
   readiness.markReady('redis');
-  ok('redis');
+  ok('redis', describeTuning(tuning));
 
   require('./lib/authSession').backfillSessionIndex().catch(() => undefined);
 
@@ -249,6 +262,9 @@ async function startServer(): Promise<void> {
   // Mappers, ratings and indexes
   performEpochCleanup().catch((error: any) => {
     consola.error('Background epoch cleanup failed:', error.message);
+  });
+  require('./lib/metaHashMigration').sweepLegacyMetaComponentKeys().catch((error: any) => {
+    consola.error('Background legacy meta key sweep failed:', error.message);
   });
 
   await mapWithConcurrency(initializationTasks, BOOTSTRAP_CONCURRENCY, async (task) => {
@@ -296,9 +312,15 @@ async function startServer(): Promise<void> {
   process.stdout.write('\n');
 }
 
-startServer().catch((error: Error) => {
+startServer().catch((error: any) => {
   endQuietWindow();
-  consola.error('--- FATAL STARTUP ERROR ---');
-  consola.error(error);
+  if (error?.code === 'STARTUP_REQUIREMENT') {
+    // A configuration problem; the stack says nothing the operator can act on.
+    consola.error('Cannot start.');
+    consola.error(error.message);
+  } else {
+    consola.error('--- FATAL STARTUP ERROR ---');
+    consola.error(error);
+  }
   void shutdownAndExit(1, 'startup failure');
 });

@@ -2270,8 +2270,8 @@ class DashboardAPI {
 
   /**
    * Delete the Redis entries belonging to exactly one title.
-   * Component keys are `v<version>:<component>:<hash>:<metaId>`, so the metaId
-   * is the trailing segment and the pattern is anchored to the end.
+   * Meta keys are `e<epoch>:meta-h:<hash>:<metaId>` (one hash per title), so the
+   * metaId is the trailing segment and the pattern is anchored to the end.
    */
   async clearCacheForMetaId(metaId, { dryRun = false, samples = null } = {}) {
     if (!this.cache) throw new Error('Cache not available');

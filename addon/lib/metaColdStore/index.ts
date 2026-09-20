@@ -11,10 +11,12 @@ export function init(): void { store.init(); }
 export function classify(meta: any) { return classifyMetaStability(meta); }
 
 /**
- * Redis keys carry an invalidation prefix (`e12:meta-basic:<hash>:<id>`, or
- * `v2.8.0:…` before the epoch existed). The cold store stores the bare key and
- * tracks payload shape in its own `epoch` column, so it survives a hot-tier
- * prefix change. Callers keep passing their prefixed keys either way.
+ * Rows are keyed by a component's per-component key (`meta-basic:<hash>:<id>`),
+ * which the hot tier no longer uses now that a title lives in one hash; it is
+ * the stable name the cold store knows a component by. Keys may still arrive
+ * with an invalidation prefix (`e12:…`, or `v2.8.0:…` before the epoch
+ * existed), which is stripped: the cold store tracks payload shape in its own
+ * `epoch` column, so it survives a hot-tier prefix change.
  */
 const { stripCachePrefix }: any = require('../cacheEpoch');
 
