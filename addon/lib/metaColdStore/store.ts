@@ -15,7 +15,7 @@ import {
 
 const logger = consola.withTag('ColdStore');
 
-export type PutRow = { k: string; metaId: string; component: string; tier: 'frozen' | 'stable'; componentData: any };
+export type PutRow = { k: string; metaId: string; component: string; tier: 'frozen' | 'stable' | 'partial'; componentData: any };
 
 let db: BetterSqlite3.Database | null = null;
 const writeQueue: PutRow[] = [];
