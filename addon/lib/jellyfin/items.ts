@@ -41,6 +41,52 @@ function imageTtl(): number {
   return envInt('JELLYFIN_IMAGE_CACHE_TTL', 7 * 24 * 60 * 60, 60);
 }
 
+// A listing remembers art item by item, so the writes are held back and sent
+// as one command per scope rather than five per item.
+const pendingImages = new Map<string, Map<string, string>>();
+let imageFlushTimer: NodeJS.Timeout | null = null;
+
+function scheduleImageFlush(): void {
+  if (imageFlushTimer) return;
+  imageFlushTimer = setTimeout(() => {
+    imageFlushTimer = null;
+    void flushRememberedImages();
+  }, envInt('JELLYFIN_IMAGE_FLUSH_DELAY_MS', 250, 0));
+  imageFlushTimer.unref?.();
+}
+
+export async function flushRememberedImages(): Promise<void> {
+  if (imageFlushTimer) {
+    clearTimeout(imageFlushTimer);
+    imageFlushTimer = null;
+  }
+  if (pendingImages.size === 0) return;
+
+  const batches = [...pendingImages.entries()];
+  pendingImages.clear();
+  if (!redis) return;
+
+  const ttl = imageTtl();
+  await Promise.all(
+    batches.map(async ([scope, fields]) => {
+      const flat: string[] = [];
+      for (const [field, value] of fields) flat.push(field, value);
+      try {
+        // One hash per scope rather than a key per item: a key each grew to six
+        // figures on a busy instance and slowed every scan of the keyspace.
+        await redis
+          .multi()
+          .hsetex(imageHash(scope), 'EX', ttl, 'FIELDS', fields.size, ...flat)
+          .expire(imageHash(scope), ttl, 'NX')
+          .expire(imageHash(scope), ttl, 'GT')
+          .exec();
+      } catch {
+        // Art is a cache; a lost write is read from the meta again.
+      }
+    })
+  );
+}
+
 export function rememberImages(scope: string, itemId: string, images: ItemImages): void {
   if (!images.primary && !images.backdrop && !images.logo && !images.thumb) return;
 
@@ -49,17 +95,15 @@ export function rememberImages(scope: string, itemId: string, images: ItemImages
   if (held && held.primary === images.primary && held.backdrop === images.backdrop && held.logo === images.logo && held.thumb === images.thumb) return;
   imageCache.set(key, images);
 
-  if (redis) {
-    const ttl = imageTtl();
-    // One hash per scope rather than a key per item: a key each grew to six
-    // figures on a busy instance and slowed every scan of the keyspace.
-    redis.multi()
-      .hsetex(imageHash(scope), 'EX', ttl, 'FIELDS', 1, imageField(itemId), JSON.stringify(images))
-      .expire(imageHash(scope), ttl, 'NX')
-      .expire(imageHash(scope), ttl, 'GT')
-      .exec()
-      .catch(() => undefined);
+  if (!redis) return;
+
+  let fields = pendingImages.get(scope);
+  if (!fields) {
+    fields = new Map<string, string>();
+    pendingImages.set(scope, fields);
   }
+  fields.set(imageField(itemId), JSON.stringify(images));
+  scheduleImageFlush();
 }
 
 export async function recallImages(scope: string, itemId: string): Promise<ItemImages | undefined> {
