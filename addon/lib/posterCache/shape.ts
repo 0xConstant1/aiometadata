@@ -15,6 +15,21 @@ export function shapesPosters(): boolean {
   return !isExplicitlyDisabled(require('../settingsService').getSetting('POSTER_CACHE_SHAPE_POSTERS'));
 }
 
+// MyAnimeList and Kitsu publish some posters in landscape; every other source
+// publishes 2:3 already, and reading theirs to find that out costs a fetch and
+// a decode for nothing.
+const OFF_RATIO_HOSTS = ['cdn.myanimelist.net', 'media.kitsu.app', 'media.kitsu.io'];
+
+export function shapesPosterFrom(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return OFF_RATIO_HOSTS.some((source) => host === source || host.endsWith(`.${source}`));
+}
+
 export interface ShapedImage {
   body: Buffer;
   contentType: string;

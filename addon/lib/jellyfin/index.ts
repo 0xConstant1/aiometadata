@@ -1,7 +1,6 @@
 import express from 'express';
 import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
-import { LRUCache } from 'lru-cache';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import {
@@ -37,6 +36,7 @@ import { personByName, personCredits, similarTitles } from './people';
 import { allBoxSets, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
 import { setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyWatchedState, isWatched, ownNextUpRows, upcomingFollowed, watchedSnapshot, type NextUpRow } from './watched';
+import { cachedArtwork } from './artwork';
 import { registerStubs } from './stubs';
 import { recordPlayed, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData } from './playstate';
 
@@ -1600,14 +1600,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.redirect(302, cached);
       return;
     }
-    // An episode still is 16:9; shaping it to 2:3 blurs and enlarges it for nothing.
-    if (kind === 'primary' && !collectionArt && descriptor?.k !== 'episode') {
-      await streamShaped(res, url, maxWidth);
-      return;
-    }
-    if (redirectsImages()) {
+    // An episode still is 16:9; shaping it to 2:3 blurs and enlarges it for
+    // nothing. Only the sources that publish landscape posters are reshaped.
+    const poster = kind === 'primary' && !collectionArt && descriptor?.k !== 'episode';
+    const reshapes = poster && shapesPoster(url);
+
+    if (!reshapes && redirectsImages()) {
       res.set('Cache-Control', 'public, max-age=86400');
       res.redirect(302, url);
+      return;
+    }
+    // A poster is held in memory either way: a shelf shows the same one on many
+    // items, and reshaping is not what makes fetching it again expensive.
+    if (poster) {
+      await streamPoster(res, url, maxWidth, reshapes);
       return;
     }
     await streamImage(res, url);
@@ -1627,6 +1633,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const width = widths.find((w) => w >= wanted);
     return width ? url.replace(TMDB_ORIGINAL, `https://image.tmdb.org/t/p/w${width}/`) : url;
   };
+
+  const shapesPoster = (url: string): boolean => require('../posterCache/shape').shapesPosterFrom(url);
 
   const builtinPosterCachePath = (url: string): string | null => {
     const posterCache = require('../posterCache/config');
@@ -1658,13 +1666,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const redirectsImages = (): boolean =>
     /^(1|true|yes|on)$/i.test(String(require('../settingsService').getSetting('JELLYFIN_IMAGE_REDIRECT') || ''));
 
-  // Shaping decodes, so the same image is decoded once rather than per request.
-  const shapedImages = new LRUCache<string, ShapedOutput>({
-    maxSize: envInt('JELLYFIN_IMAGE_CACHE_MB', 64, 1) * 1024 * 1024,
-    sizeCalculation: (value) => value.body.length,
-    ttl: envInt('JELLYFIN_IMAGE_CACHE_TTL', 6 * 60 * 60, 60) * 1000,
-  });
-
   /** Sending more than the client asked for is bytes and a decode it throws away. */
   const narrowed = async (image: ShapedOutput, maxWidth: number): Promise<ShapedOutput> => {
     if (!(maxWidth > 0)) return image;
@@ -1680,31 +1681,21 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   };
 
   // Without a cache the bytes pass through here anyway, so a poster is shaped on the way out.
-  const streamShaped = async (res: any, url: string, maxWidth: number): Promise<void> => {
-    const send = (image: ShapedOutput): void => {
+  const streamPoster = async (res: any, url: string, maxWidth: number, reshape: boolean): Promise<void> => {
+    try {
+      const image = await cachedArtwork(`${url}|${maxWidth}|${reshape ? 'shaped' : 'source'}`, async () => {
+        const { openImageStream } = require('../posterCache/upstream');
+        const { shapePoster } = require('../posterCache/shape');
+        const upstream = await openImageStream(url);
+        if (upstream.notModified) throw new Error('not modified');
+        const chunks: Buffer[] = [];
+        for await (const chunk of upstream.response.data) chunks.push(Buffer.from(chunk));
+        const source: ShapedOutput = { body: Buffer.concat(chunks), contentType: upstream.contentType };
+        return narrowed(reshape ? await shapePoster(source.body, source.contentType) : source, maxWidth);
+      });
       res.set('Content-Type', image.contentType);
       res.set('Cache-Control', 'public, max-age=86400');
       res.end(image.body);
-    };
-    const key = `${url}|${maxWidth}`;
-    const hit = shapedImages.get(key);
-    if (hit) {
-      send(hit);
-      return;
-    }
-    try {
-      const { openImageStream } = require('../posterCache/upstream');
-      const { shapePoster } = require('../posterCache/shape');
-      const upstream = await openImageStream(url);
-      if (upstream.notModified) {
-        res.status(404).end();
-        return;
-      }
-      const chunks: Buffer[] = [];
-      for await (const chunk of upstream.response.data) chunks.push(Buffer.from(chunk));
-      const shaped = await narrowed(await shapePoster(Buffer.concat(chunks), upstream.contentType), maxWidth);
-      shapedImages.set(key, shaped);
-      send(shaped);
     } catch (error: any) {
       logger.debug(`Image stream failed for ${url}: ${error?.message || error}`);
       res.status(404).end();
