@@ -24,7 +24,7 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
-import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, recallImages, rememberImages, sortNameFor } from './items';
+import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -663,6 +663,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const tags = profileTags(config);
 
       const typesKey = includeItemTypes ? String(includeItemTypes) : '';
+      // One read for the whole pool, so the skip guards below work on a process
+      // that has just started rather than after it has walked every catalog once.
+      await warmCatalogLengths(userUUID, pool, extras, tags, typesKey);
       for (const catalog of pool) {
         if (collected.length >= limit) break;
 

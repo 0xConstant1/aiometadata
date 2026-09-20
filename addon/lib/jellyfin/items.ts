@@ -179,6 +179,44 @@ export function knownCatalogLength(userUUID: string, catalog: CatalogRef, extras
   return catalogLengths.get(lengthKeyFor(userUUID, catalog, extras, tags, keepKey));
 }
 
+const walkConcurrency = (): number => envInt('JELLYFIN_CATALOG_WALK_CONCURRENCY', 4, 1);
+const lengthTtl = (): number => envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60);
+const catalogLengthRedisKey = (key: string): string => `jf:len:catalog:${key}`;
+const pageLengthRedisKey = (key: string): string => `jf:len:page:${key}`;
+
+function rememberLength(kind: 'catalog' | 'page', key: string, value: number): void {
+  (kind === 'catalog' ? catalogLengths : pageLengths).set(key, value);
+  if (!redis) return;
+  const at = kind === 'catalog' ? catalogLengthRedisKey(key) : pageLengthRedisKey(key);
+  redis.set(at, String(value), 'EX', lengthTtl()).catch(() => undefined);
+}
+
+/**
+ * Both caches live in this process, so a restart loses them and every listing
+ * walks each catalog from the start again. Reading them back in one round trip
+ * keeps the skip guards working immediately.
+ */
+export async function warmCatalogLengths(userUUID: string, catalogs: CatalogRef[], extras: Record<string, string> = {}, tags: string[] = [], keepKey = ''): Promise<void> {
+  if (!redis || catalogs.length === 0) return;
+  const wanted: Array<{ kind: 'catalog' | 'page'; key: string; at: string }> = [];
+  for (const catalog of catalogs) {
+    const lengthKey = lengthKeyFor(userUUID, catalog, extras, tags, keepKey);
+    const pageKey = lengthKeyFor(userUUID, catalog, extras, tags);
+    if (!catalogLengths.has(lengthKey)) wanted.push({ kind: 'catalog', key: lengthKey, at: catalogLengthRedisKey(lengthKey) });
+    if (!pageLengths.has(pageKey)) wanted.push({ kind: 'page', key: pageKey, at: pageLengthRedisKey(pageKey) });
+  }
+  if (wanted.length === 0) return;
+  try {
+    const stored: Array<string | null> = await redis.mget(...wanted.map((w) => w.at));
+    wanted.forEach((w, i) => {
+      const value = Number(stored[i]);
+      if (Number.isFinite(value) && value >= 0) (w.kind === 'catalog' ? catalogLengths : pageLengths).set(w.key, value);
+    });
+  } catch {
+    // The caches simply stay cold.
+  }
+}
+
 /**
  * `skip` is an absolute offset, but the catalog route rounds it up to a whole
  * page for a stable cache key, so an offset landing mid-page silently loses the
@@ -206,7 +244,7 @@ export async function fetchWindow(
     const probe = await fetchCatalogPage(userUUID, catalog.type, catalog.id, extras, tags);
     if (probe && probe.length > 0) {
       pageLength = probe.length;
-      pageLengths.set(pageKey, pageLength);
+      rememberLength('page', pageKey, pageLength);
     }
   }
 
@@ -222,52 +260,71 @@ export async function fetchWindow(
   const budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength || 0);
 
   const knownLength = keep ? undefined : catalogLengths.get(lengthKey);
-  while (collected.length < offset + limit && pages < budget) {
+  // No catalog pages in fewer than this, so a shorter page is the last one.
+  const minPage = envInt('JELLYFIN_CATALOG_MIN_PAGE', 10, 1);
+  let stop = false;
+
+  while (!stop && collected.length < offset + limit && pages < budget) {
     if (knownLength !== undefined && skip >= knownLength) {
       exhausted = true;
       break;
     }
-    const page = await fetchCatalogPage(userUUID, catalog.type, catalog.id, {
+
+    // Pages are independent once the stride is known, so the first is read
+    // alone to learn it and the rest of the walk goes a few at a time.
+    const wanted = offset + limit - collected.length;
+    const ahead = pageLength
+      ? Math.max(1, Math.min(walkConcurrency(), Math.ceil(wanted / pageLength), budget - pages))
+      : 1;
+    const skips: number[] = [];
+    for (let i = 0; i < ahead; i++) skips.push(skip + i * (pageLength || 0));
+
+    const first = pages === 0;
+    const fetched = await Promise.all(skips.map((at) => fetchCatalogPage(userUUID, catalog.type, catalog.id, {
       ...extras,
-      ...(skip > 0 ? { skip: String(skip) } : {}),
-    }, tags);
-    pages++;
+      ...(at > 0 ? { skip: String(at) } : {}),
+    }, tags)));
+    pages += skips.length;
 
-    if (!page) {
-      failed = true;
-      break;
-    }
-    if (page.length === 0) {
-      exhausted = true;
-      break;
-    }
+    for (let i = 0; i < fetched.length; i++) {
+      const page = fetched[i];
+      if (!page) {
+        failed = true;
+        stop = true;
+        break;
+      }
+      if (page.length === 0) {
+        exhausted = true;
+        stop = true;
+        break;
+      }
 
-    // No catalog pages in fewer than this, so a shorter page is the last one.
-    const minPage = envInt('JELLYFIN_CATALOG_MIN_PAGE', 10, 1);
-    if (pages === 1 && !pageLength && page.length >= minPage) {
-      pageLength = page.length;
-      pageLengths.set(pageKey, pageLength);
-    }
+      if (first && i === 0 && !pageLength && page.length >= minPage) {
+        pageLength = page.length;
+        rememberLength('page', pageKey, pageLength);
+      }
 
-    for (const meta of page) {
-      const key = meta?.id ? String(meta.id) : null;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      // Filtered here rather than after the window is cut, so a start index
-      // counts the items a client actually receives. A movie list holding a
-      // series would otherwise return a short page, which reads as the end.
-      if (keep && !keep(meta)) continue;
-      collected.push(meta);
-    }
+      for (const meta of page) {
+        const key = meta?.id ? String(meta.id) : null;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        // Filtered here rather than after the window is cut, so a start index
+        // counts the items a client actually receives. A movie list holding a
+        // series would otherwise return a short page, which reads as the end.
+        if (keep && !keep(meta)) continue;
+        collected.push(meta);
+      }
 
-    skip += page.length;
-    if (page.length < (pageLength || minPage)) {
-      exhausted = true;
-      break;
+      skip = skips[i] + page.length;
+      if (page.length < (pageLength || minPage)) {
+        exhausted = true;
+        stop = true;
+        break;
+      }
     }
   }
 
-  if (exhausted && !failed) catalogLengths.set(lengthKey, alignedSkip + collected.length);
+  if (exhausted && !failed) rememberLength('catalog', lengthKey, alignedSkip + collected.length);
 
   // Duplicates are dropped above, so trimming by count would cut into the window
   // itself; the offset only ever covers items that came before startIndex.
