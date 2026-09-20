@@ -5,7 +5,7 @@ import { decodeJellyfinId, stremioIdFor } from './ids';
 import { liveSessions, type LiveSession } from './playstate';
 import { syncStatus } from './playstateSync';
 import { seenConfigurations } from './context';
-import { refreshSeriesIndex, seriesIndex } from './episodeIndex';
+import { seriesIndex } from './episodeIndex';
 import { fetchMeta } from './items';
 import { defaultUserName, listProfiles } from './profiles';
 import { mapWithConcurrency } from '../../utils/concurrency';
@@ -61,6 +61,19 @@ interface Named {
   episodeTitle: string | null;
 }
 
+/** A dashboard read is not worth a provider call; past this it shows the id. */
+async function withDeadline<T>(work: Promise<T>): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), envInt('JELLYFIN_DASHBOARD_DESCRIBE_MS', 1500, 100)); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 // The meta's own images: an episode's still and its show's poster, a film's backdrop and poster.
 async function describe(userUUID: string, videoId: string): Promise<Named> {
   const key = `${userUUID}:${videoId}`;
@@ -71,9 +84,7 @@ async function describe(userUUID: string, videoId: string): Promise<Named> {
   let out: Named = { keys: [videoId], title: videoId, episode: null, imageUrl: null, posterUrl: null, seriesId: null, season: null, number: null, episodeTitle: null };
   try {
     if (parsed && parsed.episode !== null && parsed.episode !== undefined) {
-      let index = await seriesIndex(userUUID, parsed.base);
-      // An index built before it kept the show's art is rebuilt once.
-      if (index && !('poster' in index)) index = (await refreshSeriesIndex(userUUID, parsed.base)) ?? index;
+      const index = await seriesIndex(userUUID, parsed.base, { held: true });
       const video = index?.videos.find((v) => v.id === videoId)
         ?? index?.videos.find((v) => v.episode === parsed.episode && (parsed.season === null ? v.season === null : v.season === parsed.season));
       const number = parsed.season === null || parsed.season === undefined ? `E${parsed.episode}` : `S${parsed.season}E${parsed.episode}`;
@@ -92,7 +103,7 @@ async function describe(userUUID: string, videoId: string): Promise<Named> {
         episodeTitle: video?.title ?? null,
       };
     } else if (parsed) {
-      const meta = await fetchMeta(userUUID, 'movie', parsed.base);
+      const meta = await withDeadline(fetchMeta(userUUID, 'movie', parsed.base));
       const keys = [videoId];
       for (const id of [meta?.id, meta?._imdbId, meta?.imdb_id, meta?._tmdbId && `tmdb:${meta._tmdbId}`]) if (id) keys.push(String(id));
       out = {
@@ -110,7 +121,7 @@ async function describe(userUUID: string, videoId: string): Promise<Named> {
   } catch {
     // The id stands in for the name.
   }
-  titles.set(key, out);
+  if (out.title !== videoId) titles.set(key, out);
   return out;
 }
 
@@ -222,11 +233,16 @@ export async function dashboardSearch(query: string): Promise<{ query: string; r
   if (/^[0-9a-f-]{2,36}$/i.test(q)) {
     for (const uuid of await database.findUserUUIDsByPrefix(q.toLowerCase(), limit)) candidates.add(uuid);
   }
-  for (const uuid of (await seenConfigurations()) ?? []) {
-    if (candidates.size >= limit) break;
-    if (candidates.has(uuid)) continue;
-    const config = await database.getUserConfig(uuid).catch(() => null);
-    if (config && listProfiles(config, uuid).some((p) => p.name.toLowerCase().includes(q.toLowerCase()))) candidates.add(uuid);
+  // Matching names means reading every active configuration, so it only runs
+  // when the id prefix found nothing, and it runs bounded.
+  if (candidates.size === 0) {
+    const needle = q.toLowerCase();
+    const seen = ((await seenConfigurations()) ?? []).slice(0, envInt('JELLYFIN_DASHBOARD_NAME_SCAN_MAX', 200, 1));
+    const matched = await mapWithConcurrency(seen, envInt('JELLYFIN_DASHBOARD_SEARCH_CONCURRENCY', 8, 1), async (uuid: string) => {
+      const config = await database.getUserConfig(uuid).catch(() => null);
+      return config && listProfiles(config, uuid).some((p) => p.name.toLowerCase().includes(needle)) ? uuid : null;
+    });
+    for (const uuid of matched) if (uuid && candidates.size < limit) candidates.add(uuid);
   }
 
   const results = (await mapWithConcurrency([...candidates].slice(0, limit), 4, async (uuid: string): Promise<SearchRow | null> => {
