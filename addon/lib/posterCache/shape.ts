@@ -12,7 +12,7 @@ const FILL_ABOVE = 0.85;
 const MAX_PIXELS = 10000 * 10000;
 
 export function shapesPosters(): boolean {
-  return !isExplicitlyDisabled(process.env.POSTER_CACHE_SHAPE_POSTERS);
+  return !isExplicitlyDisabled(require('../settingsService').getSetting('POSTER_CACHE_SHAPE_POSTERS'));
 }
 
 export interface ShapedImage {

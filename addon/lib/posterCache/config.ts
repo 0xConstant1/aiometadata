@@ -50,8 +50,14 @@ export function isExplicitlyDisabled(value: string | undefined): boolean {
   return /^(0|false|no|off)$/i.test((value || '').trim());
 }
 
+/** Registry first, so a dashboard value is honoured; the fallback covers names it does not know. */
+function env(name: string): string | undefined {
+  const fromRegistry = require('../settingsService').getSetting(name);
+  return fromRegistry !== '' && fromRegistry !== undefined ? fromRegistry : process.env[name];
+}
+
 export function isBuiltinPosterCacheEnabled(): boolean {
-  return isTruthy(process.env.ENABLE_BUILTIN_POSTER_CACHE);
+  return isTruthy(env('ENABLE_BUILTIN_POSTER_CACHE'));
 }
 
 export function isClassEnabled(imageClass: ImageClass): boolean {
@@ -96,10 +102,10 @@ function normalizeBase(value: string | undefined): string {
 export const POSTER_CACHE_ROUTE = '/poster-cache';
 
 export function getPosterProxyPrefix(): string {
-  const explicit = (process.env.POSTER_PROXY_PREFIX_URL || '').trim().replace(/\/+$/, '');
+  const explicit = (env('POSTER_PROXY_PREFIX_URL') || '').trim().replace(/\/+$/, '');
   if (explicit) return explicit;
   if (!isBuiltinPosterCacheEnabled()) return '';
-  const host = normalizeBase(process.env.HOST_NAME);
+  const host = normalizeBase(env('HOST_NAME'));
   return host ? `${host}${POSTER_CACHE_ROUTE}` : '';
 }
 
@@ -111,10 +117,10 @@ export function getCollectionImagePrefix(): string {
 }
 
 export function getPosterWarmupBase(): string {
-  const explicit = (process.env.POSTER_WARMUP_URL || '').trim().replace(/\/+$/, '');
+  const explicit = (env('POSTER_WARMUP_URL') || '').trim().replace(/\/+$/, '');
   if (explicit) return explicit;
   if (isBuiltinPosterCacheEnabled()) {
-    const port = parseInt(process.env.PORT || '3232', 10);
+    const port = parseInt(env('PORT') || '3232', 10);
     return `http://127.0.0.1:${port}${POSTER_CACHE_ROUTE}`;
   }
   return getPosterProxyPrefix();
@@ -127,14 +133,14 @@ export function getPosterWarmupBase(): string {
  * the local store.
  */
 export function getProxyArtWarmBase(): string {
-  const explicit = (process.env.IMAGE_WARM_PROXY_BASE || '').trim().replace(/\/+$/, '');
+  const explicit = (env('IMAGE_WARM_PROXY_BASE') || '').trim().replace(/\/+$/, '');
   if (explicit) return explicit;
-  const port = parseInt(process.env.PORT || '3232', 10);
+  const port = parseInt(env('PORT') || '3232', 10);
   return `http://127.0.0.1:${port}${POSTER_CACHE_ROUTE}/proxy`;
 }
 
 export function getSelfOrigin(): string {
-  const host = normalizeBase(process.env.HOST_NAME);
+  const host = normalizeBase(env('HOST_NAME'));
   if (!host) return '';
   try {
     return new URL(host).origin;
@@ -144,7 +150,7 @@ export function getSelfOrigin(): string {
 }
 
 export function getCacheDir(): string {
-  const configured = (process.env.POSTER_CACHE_DIR || '').trim();
+  const configured = (env('POSTER_CACHE_DIR') || '').trim();
   if (configured) return configured;
   return path.join(process.cwd(), 'addon', 'data', 'poster-cache');
 }
@@ -182,7 +188,7 @@ export function formatSize(bytes: number): string {
 export const DEFAULT_MAX_SIZE = '10g';
 
 export function getMaxSizeRaw(): string {
-  return (process.env.POSTER_CACHE_MAX_SIZE || '').trim() || DEFAULT_MAX_SIZE;
+  return (env('POSTER_CACHE_MAX_SIZE') || '').trim() || DEFAULT_MAX_SIZE;
 }
 
 export function getMaxBytes(): number {
@@ -192,7 +198,7 @@ export function getMaxBytes(): number {
 export const DEFAULT_MEMORY_SIZE = '128m';
 
 export function getMemorySizeRaw(): string {
-  const raw = (process.env.POSTER_CACHE_MEMORY_SIZE ?? '').trim();
+  const raw = (env('POSTER_CACHE_MEMORY_SIZE') ?? '').trim();
   return raw !== '' ? raw : DEFAULT_MEMORY_SIZE;
 }
 
@@ -295,7 +301,7 @@ function ttlDaysFrom(raw: string | undefined, fallback: number): number {
 }
 
 export function getEntryTtlDays(): number {
-  return ttlDaysFrom(process.env.POSTER_CACHE_TTL_DAYS, DEFAULT_TTL_DAYS);
+  return ttlDaysFrom(env('POSTER_CACHE_TTL_DAYS'), DEFAULT_TTL_DAYS);
 }
 
 export function getEntryTtlMs(): number {
@@ -304,7 +310,7 @@ export function getEntryTtlMs(): number {
 }
 
 export function isInferTtlEnabled(): boolean {
-  return isTruthy(process.env.POSTER_CACHE_INFER_TTL);
+  return isTruthy(env('POSTER_CACHE_INFER_TTL'));
 }
 
 export const DO_NOT_STORE = Symbol('do-not-store');
@@ -454,7 +460,7 @@ let policyRaw: string | null = null;
 let policyRules: ProviderPolicy[] = [];
 
 function activeRules(): ProviderPolicy[] {
-  const raw = process.env.POSTER_CACHE_PROVIDER_POLICIES ?? '';
+  const raw = env('POSTER_CACHE_PROVIDER_POLICIES') ?? '';
   if (raw === policyRaw) return policyRules;
 
   policyRaw = raw;
@@ -501,7 +507,7 @@ function ruleFor(host: string, rules: ProviderPolicy[]): ProviderPolicy | null {
 }
 
 export function arePresetsEnabled(): boolean {
-  return !isExplicitlyDisabled(process.env.POSTER_CACHE_PROVIDER_PRESETS);
+  return !isExplicitlyDisabled(env('POSTER_CACHE_PROVIDER_PRESETS'));
 }
 
 const PRESET_RULES: ProviderPolicy[] = KNOWN_ART_PROVIDERS
@@ -524,7 +530,7 @@ function resolvedFrom(rule: ProviderPolicy): ResolvedPolicy {
  * would be a cycle.
  */
 export function followsUpstreamCacheControl(): boolean {
-  return isTruthy(process.env.POSTER_PROXY_FOLLOW_UPSTREAM);
+  return isTruthy(env('POSTER_PROXY_FOLLOW_UPSTREAM'));
 }
 
 export function resolvePolicyFor(key: string): ResolvedPolicy {
@@ -647,7 +653,7 @@ export function browserMaxAgeFor(expiresAt: number): number {
 export const DEFAULT_PROXY_MAX_AGE_DAYS = 1;
 
 export function getProxyMaxAgeDays(): number {
-  const raw = (process.env.POSTER_PROXY_MAX_AGE_DAYS ?? '').trim();
+  const raw = (env('POSTER_PROXY_MAX_AGE_DAYS') ?? '').trim();
   if (raw === '') return DEFAULT_PROXY_MAX_AGE_DAYS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_PROXY_MAX_AGE_DAYS;
@@ -661,17 +667,17 @@ export function getProxyMaxAgeSeconds(): number {
 }
 
 export function getInactiveDays(): number {
-  const parsed = parseInt(process.env.POSTER_CACHE_INACTIVE_DAYS || '', 10);
+  const parsed = parseInt(env('POSTER_CACHE_INACTIVE_DAYS') || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
 }
 
 export function getMaxObjectBytes(): number {
-  const parsed = parseSize(process.env.POSTER_CACHE_MAX_OBJECT_BYTES);
+  const parsed = parseSize(env('POSTER_CACHE_MAX_OBJECT_BYTES'));
   return parsed && parsed > 0 ? parsed : 20 * 1024 * 1024;
 }
 
 export function getUpstreamTimeoutMs(): number {
-  const parsed = parseInt(process.env.POSTER_PROXY_TIMEOUT_MS || '', 10);
+  const parsed = parseInt(env('POSTER_PROXY_TIMEOUT_MS') || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10000;
 }
 
@@ -683,16 +689,16 @@ export const LEGACY_NGINX_CACHE_DIRS = [
 const IMPORT_DISABLED = /^(0|false|no|off|none|disabled)$/i;
 
 export function getNginxImportDir(): string {
-  const raw = (process.env.POSTER_CACHE_IMPORT_NGINX_DIR || '').trim();
+  const raw = (env('POSTER_CACHE_IMPORT_NGINX_DIR') || '').trim();
   return IMPORT_DISABLED.test(raw) ? '' : raw;
 }
 
 export function isNginxImportDisabled(): boolean {
-  return IMPORT_DISABLED.test((process.env.POSTER_CACHE_IMPORT_NGINX_DIR || '').trim());
+  return IMPORT_DISABLED.test((env('POSTER_CACHE_IMPORT_NGINX_DIR') || '').trim());
 }
 
 export function getFetchConcurrency(): number {
-  const parsed = parseInt(process.env.POSTER_CACHE_FETCH_CONCURRENCY || '', 10);
+  const parsed = parseInt(env('POSTER_CACHE_FETCH_CONCURRENCY') || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 128;
 }
 
@@ -718,40 +724,40 @@ export function getWarmTargetLagMs(): number {
 }
 
 export function isWarmQueueEnabled(): boolean {
-  return !isExplicitlyDisabled(process.env.IMAGE_WARM_QUEUE);
+  return !isExplicitlyDisabled(env('IMAGE_WARM_QUEUE'));
 }
 
 export function getStreamThresholdBytes(): number {
-  const parsed = parseSize(process.env.POSTER_CACHE_STREAM_THRESHOLD);
+  const parsed = parseSize(env('POSTER_CACHE_STREAM_THRESHOLD'));
   return parsed && parsed > 0 ? parsed : 256 * 1024;
 }
 
 /** How long a validated host's pinned addresses and pooled agents are reused. */
 export function getConnectionCacheTtlMs(): number {
-  const parsed = parseInt(process.env.POSTER_CACHE_AGENT_TTL_MS || '', 10);
+  const parsed = parseInt(env('POSTER_CACHE_AGENT_TTL_MS') || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 60_000;
 }
 
 /** Upper bound on distinct hosts pooled at once — the key is attacker-influenced. */
 export function getConnectionCacheMax(): number {
-  const parsed = parseInt(process.env.POSTER_CACHE_AGENT_MAX || '', 10);
+  const parsed = parseInt(env('POSTER_CACHE_AGENT_MAX') || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 512;
 }
 
 export function getTlsSessionCacheMax(): number {
-  const parsed = parseInt(process.env.POSTER_CACHE_TLS_SESSIONS || '', 10);
+  const parsed = parseInt(env('POSTER_CACHE_TLS_SESSIONS') || '', 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 10;
 }
 
 export function shouldLogRequests(): boolean {
-  return isTruthy(process.env.POSTER_CACHE_LOG_REQUESTS);
+  return isTruthy(env('POSTER_CACHE_LOG_REQUESTS'));
 }
 
 export function isPrivateArtAllowed(): boolean {
-  return !isExplicitlyDisabled(process.env.POSTER_PROXY_ALLOW_PRIVATE);
+  return !isExplicitlyDisabled(env('POSTER_PROXY_ALLOW_PRIVATE'));
 }
 
 export function getAllowedPrivateHosts(): Set<string> {
-  const raw = process.env.POSTER_CACHE_ALLOWED_HOSTS || '';
+  const raw = env('POSTER_CACHE_ALLOWED_HOSTS') || '';
   return new Set(raw.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean));
 }

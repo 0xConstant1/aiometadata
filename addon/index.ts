@@ -7615,7 +7615,7 @@ addon.get("/api/dashboard/poster-cache/stats", requireDashboardAdmin, async (req
       enabled_types: posterCacheConfig.getEnabledClasses(),
       known_providers: posterCacheConfig.KNOWN_ART_PROVIDERS,
       domain_purge: posterCacheStore.domainPurgeStatus(),
-      provider_policies: posterCacheConfig.parseProviderPolicies(process.env.POSTER_CACHE_PROVIDER_POLICIES) || [],
+      provider_policies: posterCacheConfig.parseProviderPolicies(getSetting('POSTER_CACHE_PROVIDER_POLICIES')) || [],
       infer_ttl: posterCacheConfig.isInferTtlEnabled(),
       presets_enabled: posterCacheConfig.arePresetsEnabled(),
       follow_upstream: posterCacheConfig.followsUpstreamCacheControl(),
@@ -7628,7 +7628,7 @@ addon.get("/api/dashboard/poster-cache/stats", requireDashboardAdmin, async (req
   const policyPayload = {
     builtin: false,
     known_providers: posterCacheConfig.KNOWN_ART_PROVIDERS,
-    provider_policies: posterCacheConfig.parseProviderPolicies(process.env.POSTER_CACHE_PROVIDER_POLICIES) || [],
+    provider_policies: posterCacheConfig.parseProviderPolicies(getSetting('POSTER_CACHE_PROVIDER_POLICIES')) || [],
     presets_enabled: posterCacheConfig.arePresetsEnabled(),
     follow_upstream: posterCacheConfig.followsUpstreamCacheControl(),
     proxy_max_age_days: posterCacheConfig.getProxyMaxAgeDays(),
