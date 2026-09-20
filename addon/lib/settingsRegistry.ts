@@ -1616,6 +1616,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 60,
   },
   {
+    key: 'SIMKL_LIST_BLOCK_SIZE',
+    envVar: 'SIMKL_LIST_BLOCK_SIZE',
+    label: 'Simkl Custom List Block Size',
+    description: "How many custom-list entries one Simkl request fetches. Catalog pages are cut from the block, so a block of 500 serves 25 pages of 20 for a single request against the user's own daily Simkl allowance. Capped at 500, the endpoint maximum. Set it to the catalog page size to go back to one request per page.",
+    category: 'Providers',
+    type: 'number',
+    default: 500,
+    min: 1,
+  },
+  {
     key: 'SIMKL_ACTIVITIES_TTL',
     envVar: 'SIMKL_ACTIVITIES_TTL',
     label: 'Simkl Activities TTL (sec)',

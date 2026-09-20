@@ -1232,25 +1232,85 @@ async function fetchSimklUserLists(accessToken: string, userId: string | number)
   return { lists };
 }
 
-async function fetchSimklListPage(accessToken: string, listId: string, page: number, limit: number): Promise<{ list: any; items: any[]; totalPages: number; error?: SimklListsError }> {
-  if (!isSimklV2Token(accessToken)) return { list: null, items: [], totalPages: 0, error: 'needs_v2' };
-  // Simkl refuses page * limit beyond 10000.
-  if (page * limit > 10000) return { list: null, items: [], totalPages: 0 };
-  let response: any;
+/** Simkl clamps `limit` above this silently, so the cap has to be ours. */
+const SIMKL_LIST_MAX_LIMIT = 500;
+const SIMKL_LIST_PAGE_REACH = 10000;
+
+/** Reads are billed per request to the user's own daily allowance. `page` times `limit` may not exceed 10000 either way. */
+function simklListBlockSize(pageSize: number): number {
+  const configured = parseInt(getSetting('SIMKL_LIST_BLOCK_SIZE'), 10);
+  const size = Number.isFinite(configured) && configured > 0 ? configured : SIMKL_LIST_MAX_LIMIT;
+  return Math.max(pageSize, Math.min(size, SIMKL_LIST_MAX_LIMIT));
+}
+
+function simklListBlockTtl(): number {
+  const floor = parseInt(getSetting('SIMKL_LIST_MIN_TTL'), 10) || 300;
+  const catalog = parseInt(process.env.CATALOG_TTL || '', 10) || 24 * 60 * 60;
+  return Math.max(floor, catalog);
+}
+
+class SimklListFailure extends Error {
+  constructor(public reason: SimklListsError) { super(reason); }
+}
+
+async function fetchSimklListBlock(accessToken: string, listId: string, blockPage: number, blockSize: number): Promise<{ list: any; items: any[]; totalPages: number }> {
+  const cacheKey = `simkl-list-block:${simklTokenHash(accessToken)}:${listId}:${blockPage}:${blockSize}`;
+
+  return cacheWrapGlobal(cacheKey, async () => {
+    // No sort: sending one turns the direction default to desc.
+    const url = `${SIMKL_BASE_URL}/lists/${encodeURIComponent(listId)}?limit=${blockSize}&page=${blockPage}`;
+    let response: any;
+    try {
+      response = await makeAuthenticatedSimklRequest(url, accessToken, `Simkl list ${listId} block ${blockPage}`);
+    } catch (error: any) {
+      const failure = simklListsError(error?.response?.status, error?.response?.data);
+      if (failure) throw new SimklListFailure(failure);
+      throw error;
+    }
+    const failure = simklListsError(response?.status, response?.data);
+    if (failure) throw new SimklListFailure(failure);
+
+    const remaining = response?.headers?.['x-ratelimit-remaining'];
+    if (remaining !== undefined) logger.debug(`[Simkl] List ${listId} block ${blockPage} of ${blockSize}: ${remaining} requests left today`);
+
+    const data = response?.data ?? {};
+    return {
+      list: data,
+      items: Array.isArray(data.items) ? data.items : [],
+      totalPages: Number(data.pagination?.total_pages) || 0,
+    };
+  }, simklListBlockTtl(), { maxRetries: 0 });
+}
+
+async function fetchSimklListPage(accessToken: string, listId: string, page: number, limit: number): Promise<{ list: any; items: any[]; totalPages: number; hasMore: boolean; error?: SimklListsError }> {
+  if (!isSimklV2Token(accessToken)) return { list: null, items: [], totalPages: 0, hasMore: false, error: 'needs_v2' };
+
+  const blockSize = simklListBlockSize(limit);
+  const start = (page - 1) * limit;
+  const blockPage = Math.floor(start / blockSize) + 1;
+  if (blockPage * blockSize > SIMKL_LIST_PAGE_REACH) return { list: null, items: [], totalPages: 0, hasMore: false };
+
+  let block: { list: any; items: any[]; totalPages: number };
   try {
-    response = await makeAuthenticatedSimklRequest(`${SIMKL_BASE_URL}/lists/${encodeURIComponent(listId)}?limit=${limit}&page=${page}`, accessToken, `Simkl list ${listId}`);
+    block = await fetchSimklListBlock(accessToken, listId, blockPage, blockSize);
   } catch (error: any) {
-    const failure = simklListsError(error?.response?.status, error?.response?.data);
-    if (failure) return { list: null, items: [], totalPages: 0, error: failure };
+    if (error instanceof SimklListFailure) return { list: null, items: [], totalPages: 0, hasMore: false, error: error.reason };
     throw error;
   }
-  const failure = simklListsError(response?.status, response?.data);
-  if (failure) return { list: null, items: [], totalPages: 0, error: failure };
-  const data = response?.data ?? {};
+
+  const within = start - (blockPage - 1) * blockSize;
+  const items = block.items.slice(within, within + limit);
+  const hasMore = within + limit < block.items.length ? true : blockPage < block.totalPages;
+
+  // total_pages counts blocks, so it converts only once a block is the last.
+  const lastBlock = block.items.length < blockSize || blockPage >= block.totalPages;
+  const totalItems = lastBlock ? (blockPage - 1) * blockSize + block.items.length : undefined;
+
   return {
-    list: data,
-    items: Array.isArray(data.items) ? data.items : [],
-    totalPages: Number(data.pagination?.total_pages) || 0,
+    list: block.list,
+    items,
+    totalPages: totalItems !== undefined ? Math.ceil(totalItems / limit) : 0,
+    hasMore,
   };
 }
 

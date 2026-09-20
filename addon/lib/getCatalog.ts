@@ -3247,7 +3247,7 @@ async function getSimklCatalog(
           ...it,
           type: it.type === 'movie' || it.anime_type === 'movie' ? 'movie' : 'series',
         }));
-      response = { items, hasMore: page < result.totalPages };
+      response = { items, hasMore: result.hasMore };
     } else {
       logger.warn(`[Simkl] Unknown catalog ID: ${catalogId}`);
       return [];
