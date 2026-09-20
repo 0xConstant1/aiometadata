@@ -6,6 +6,7 @@ import { getMeta } from "../lib/getMeta.js";
 import { mapWithLimit } from "./concurrency.js";
 import { cacheWrapMetaSmart, cacheWrapMDBListGenres, cacheWrapGlobal } from "../lib/getCache.js";
 import { UserConfig } from "../types/index.js";
+import { getSetting } from "../lib/settingsService.js";
 const consola = require('consola');
 const crypto = require('crypto');
 const { socksDispatcher } = require('fetch-socks');
@@ -308,6 +309,68 @@ async function makeRateLimitedRequest<T>(
   throw new Error(`[${context}] All ${retries} attempts failed.`);
 }
 
+/** MDBList meters requests, not rows. 1000 is the endpoint ceiling; the page size restores one request per page. */
+function listBlockSize(pageSize: number): number {
+  const configured = parseInt(getSetting('MDBLIST_LIST_BLOCK_SIZE'), 10);
+  const size = Number.isFinite(configured) && configured > 0 ? configured : 500;
+  return Math.max(pageSize, Math.min(size, 1000));
+}
+
+function buildListItemsUrl(opts: { listId: string; apiKey: string; limit: number; offset: number; sort?: string; order?: string; genre?: string; unified?: boolean; filterScoreMin?: number; filterScoreMax?: number; mediaTypeFilter?: string }): string {
+  const { listId, apiKey, limit, offset } = opts;
+  const base = listId === 'watchlist'
+    ? 'https://api.mdblist.com/watchlist/items'
+    : `https://api.mdblist.com/lists/${listId}/items`;
+  let url = `${base}?limit=${limit}&offset=${offset}&apikey=${apiKey}&append_to_response=genre,poster&unified=${opts.unified !== false}`;
+
+  if (opts.sort && opts.sort.trim() !== '') url += `&sort=${opts.sort}`;
+  if (opts.order && opts.order.trim() !== '') url += `&order=${opts.order}`;
+  if (opts.genre && opts.genre.toLowerCase() !== 'none') url += `&filter_genre=${encodeURIComponent(opts.genre)}`;
+  if (typeof opts.filterScoreMin === 'number') url += `&filter_score_min=${opts.filterScoreMin}`;
+  if (typeof opts.filterScoreMax === 'number') url += `&filter_score_max=${opts.filterScoreMax}`;
+  // MDBList spells series "show".
+  if (opts.mediaTypeFilter) url += `&mediatype=${opts.mediaTypeFilter}`;
+
+  return url;
+}
+
+/**
+ * Read unified, the only form that says where each entry sits in the list.
+ * Neither `unified` nor `catalogType` is keyed, so one fetch serves both.
+ */
+/** Rebuilds what `unified=false` would have answered for the same window. */
+function splitWindowByType(window: any[], catalogType?: string): any[] {
+  if (catalogType === 'series') return window.filter((r) => r?.mediatype === 'show');
+  if (catalogType === 'movie') return window.filter((r) => r?.mediatype === 'movie');
+  return [
+    ...window.filter((r) => r?.mediatype === 'movie'),
+    ...window.filter((r) => r?.mediatype === 'show'),
+  ];
+}
+
+async function fetchListBlock(opts: { listId: string; apiKey: string; keyScope: string; blockOffset: number; blockSize: number; sort?: string; order?: string; genre?: string; filterScoreMin?: number; filterScoreMax?: number; mediaTypeFilter?: string; ttl: number; ttlSegment: string }): Promise<{ rows: any[]; totalItems?: number; hasMore: boolean }> {
+  const { listId, keyScope, blockOffset, blockSize } = opts;
+  const cacheKey = `mdblist-api:block:${keyScope}:${listId}:${blockOffset}:${blockSize}:${opts.sort || ''}:${opts.order || ''}:${opts.genre || ''}:${opts.filterScoreMin ?? ''}:${opts.filterScoreMax ?? ''}:${opts.mediaTypeFilter || ''}${opts.ttlSegment}`;
+
+  return cacheWrapGlobal(cacheKey, async () => {
+    const url = buildListItemsUrl({ ...opts, unified: true, limit: blockSize, offset: blockOffset });
+    logger.debug(`MDBList block request URL: ${sanitizeUrlForLogging(url)}`);
+
+    const response: any = await makeRateLimitedRequest(
+      () => httpGet(url, { dispatcher: mdblistDispatcher }),
+      opts.apiKey,
+      `MDBList fetchListBlock (listId: ${listId}, offset: ${blockOffset}, blockSize: ${blockSize})`
+    );
+
+    const rows: any[] = Array.isArray(response.data) ? response.data : [];
+    return {
+      rows,
+      totalItems: response.headers?.['x-total-items'] ? parseInt(response.headers['x-total-items']) : undefined,
+      hasMore: response.headers?.['x-has-more'] === 'true',
+    };
+  }, opts.ttl, { upstream: true, sourceList: true });
+}
+
 async function fetchMDBListItems(listId: string, apiKey: string, language: string, page: number, sort?: string, order?: string, genre?: string, unified?: boolean, catalogType?: string, cacheTTL?: number, filterScoreMin?: number, filterScoreMax?: number, mediaTypeFilter?: string): Promise<{items: any[], totalItems?: number, hasMore?: boolean, totalPages?: number}> {
   // Use configurable page size (supports CATALOG_LIST_ITEMS_SIZE env var)
   const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
@@ -324,49 +387,78 @@ async function fetchMDBListItems(listId: string, apiKey: string, language: strin
   try {
     return await cacheWrapGlobal(cacheKey, async () => {
       const offset = (page * pageSize) - pageSize;
-      let url: string;
-      
-      // Special handling for watchlist
-      if (listId === 'watchlist') {
-        url = `https://api.mdblist.com/watchlist/items?limit=${pageSize}&offset=${offset}&apikey=${apiKey}&append_to_response=genre,poster&unified=${unified !== false}`;
+
+      let items: any[];
+      let totalItems: number | undefined;
+      let hasMore: boolean;
+
+      // x-total-items counts the whole list, ignoring these.
+      const filtered = !!mediaTypeFilter
+        || (!!genre && genre.toLowerCase() !== 'none')
+        || typeof filterScoreMin === 'number'
+        || typeof filterScoreMax === 'number';
+
+      const blockSize = listBlockSize(pageSize);
+      if (blockSize > pageSize) {
+        const blockOffset = Math.floor(offset / blockSize) * blockSize;
+        const block = await fetchListBlock({
+          listId, apiKey, keyScope, blockOffset, blockSize,
+          sort, order, genre, filterScoreMin, filterScoreMax, mediaTypeFilter,
+          ttl, ttlSegment,
+        });
+        const within = offset - blockOffset;
+        const window = block.rows.slice(within, within + pageSize);
+        // Both forms page the same merged list; the split one only buckets its window.
+        items = unified !== false ? window : splitWindowByType(window, catalogType);
+        // Rows left in this block, else the block's word on what follows.
+        hasMore = within + pageSize < block.rows.length ? true : block.hasMore;
+        // Offsets run over the filtered sequence, so a final block counts exactly.
+        totalItems = !block.hasMore
+          ? blockOffset + block.rows.length
+          : (filtered ? undefined : block.totalItems);
       } else {
-        url = `https://api.mdblist.com/lists/${listId}/items?limit=${pageSize}&offset=${offset}&apikey=${apiKey}&append_to_response=genre,poster&unified=${unified !== false}`;
-      }
-      
-      // Add sort and order parameters if provided and not empty
-      if (sort && sort.trim() !== '') {
-        url += `&sort=${sort}`;
-      }
-      if (order && order.trim() !== '') {
-        url += `&order=${order}`;
-      }
-      if (genre && genre.toLowerCase() !== 'none') {
-        url += `&filter_genre=${encodeURIComponent(genre)}`;
-      }
-      if (typeof filterScoreMin === 'number') {
-        url += `&filter_score_min=${filterScoreMin}`;
-      }
-      if (typeof filterScoreMax === 'number') {
-        url += `&filter_score_max=${filterScoreMax}`;
-      }
-      // MDBList spells series "show", and filtering here keeps pages full and the totals honest.
-      if (mediaTypeFilter) {
-        url += `&mediatype=${mediaTypeFilter}`;
+        const url = buildListItemsUrl({
+          listId, apiKey, limit: pageSize, offset,
+          sort, order, genre, unified, filterScoreMin, filterScoreMax, mediaTypeFilter,
+        });
+        logger.debug(`MDBList request URL: ${sanitizeUrlForLogging(url)}`);
+
+        const response: any = await makeRateLimitedRequest(
+          () => httpGet(url, { dispatcher: mdblistDispatcher }),
+          apiKey,
+          `MDBList fetchMDBListItems (listId: ${listId}, page: ${page}, pageSize: ${pageSize}, sort: ${sort}, order: ${order}, genre: ${genre})`
+        );
+
+        hasMore = response.headers?.['x-has-more'] === 'true';
+        const reported = response.headers?.['x-total-items'] ? parseInt(response.headers['x-total-items']) : undefined;
+        totalItems = filtered ? undefined : reported;
+
+        const hasMoviesShowsStructure = response.data &&
+                                        typeof response.data === 'object' &&
+                                        !Array.isArray(response.data) &&
+                                        ('movies' in response.data || 'shows' in response.data);
+
+        if (hasMoviesShowsStructure) {
+          if (catalogType === 'series') {
+            items = response.data.shows || [];
+          } else if (catalogType === 'movie') {
+            items = response.data.movies || [];
+          } else {
+            items = [
+              ...(response.data?.movies || []),
+              ...(response.data?.shows || [])
+            ];
+          }
+        } else if (Array.isArray(response.data)) {
+          items = response.data;
+        } else {
+          items = [
+            ...(response.data?.movies || []),
+            ...(response.data?.shows || [])
+          ];
+        }
       }
 
-      // Log the final URL for debugging (with API key sanitized)
-      logger.debug(`MDBList request URL: ${sanitizeUrlForLogging(url)}`);
-      
-      const response: any = await makeRateLimitedRequest(
-        () => httpGet(url, { dispatcher: mdblistDispatcher }),
-        apiKey,
-        `MDBList fetchMDBListItems (listId: ${listId}, page: ${page}, pageSize: ${pageSize}, sort: ${sort}, order: ${order}, genre: ${genre})`
-      );
-      
-      // Extract pagination metadata from headers
-      let totalItems = response.headers?.['x-total-items'] ? parseInt(response.headers['x-total-items']) : undefined;
-      const hasMore = response.headers?.['x-has-more'] === 'true';
-      
       // For watchlist, we can only rely on X-Has-More header
       let totalPages: number | undefined;
       if (listId === 'watchlist') {
@@ -375,33 +467,6 @@ async function fetchMDBListItems(listId: string, apiKey: string, language: strin
       } else {
         // Calculate total pages from headers for regular lists
         totalPages = totalItems ? Math.ceil(totalItems / pageSize) : undefined;
-      }
-      
-      let items: any[];
-      
-      const hasMoviesShowsStructure = response.data && 
-                                      typeof response.data === 'object' && 
-                                      !Array.isArray(response.data) &&
-                                      ('movies' in response.data || 'shows' in response.data);
-      
-      if (hasMoviesShowsStructure) {
-        if (catalogType === 'series') {
-          items = response.data.shows || [];
-        } else if (catalogType === 'movie') {
-          items = response.data.movies || [];
-        } else {
-          items = [
-            ...(response.data?.movies || []),
-            ...(response.data?.shows || [])
-          ];
-        }
-      } else if (Array.isArray(response.data)) {
-        items = response.data;
-      } else {
-        items = [
-          ...(response.data?.movies || []),
-          ...(response.data?.shows || [])
-        ];
       }
       
       // Smart pagination validation and logging
@@ -424,9 +489,7 @@ async function fetchMDBListItems(listId: string, apiKey: string, language: strin
         
         logger.debug(`Smart pagination - listId: ${listId}, page: ${page}/${totalPages}, items: ${itemsReturned}/${expectedItems}, offset: ${offset}, totalItems: ${totalItems}, hasMore: ${hasMore}${genre && genre.toLowerCase() !== 'none' ? ` (filtered by: ${genre})` : ''}`);
         
-        // Validate response consistency (but skip when genre filter is active as totalItems is unfiltered count)
-        const isFiltered = genre && genre.toLowerCase() !== 'none';
-        if (!hasMore && itemsReturned > 0 && offset + itemsReturned < totalItems && !isFiltered) {
+        if (!hasMore && itemsReturned > 0 && offset + itemsReturned < totalItems) {
           logger.warn(`Inconsistent pagination: hasMore=false but ${offset + itemsReturned} < ${totalItems}`);
         }
         
