@@ -1347,6 +1347,9 @@ class DashboardAPI {
         cpuUsage: this.getProcessCpuUsage(),
         diskUsage: await this.getDiskUsage(),
         requestsPerMin: await this.getRequestsPerMinute(),
+        // What the kernel counts against the container's limit, which includes
+        // reclaimable page cache and so runs far above the process's own heap.
+        container: require('./containerMemory').containerMemory(),
       };
     } catch (error) {
       logger.error("Error getting resource usage:", error);

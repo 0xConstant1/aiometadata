@@ -88,12 +88,18 @@ export function DashboardSystem({ data }: DashboardSystemProps) {
     aggregatedStats: null,
   });
 
-  const [resourceUsage, setResourceUsage] = useState(() => data?.resourceUsage || {
+  const [resourceUsage, setResourceUsage] = useState<any>(() => data?.resourceUsage || {
     memoryUsage: 0,
     cpuUsage: 0,
     diskUsage: 0,
     requestsPerMin: 0,
   });
+
+  const container = resourceUsage.container;
+  const showContainer = !!container?.source;
+  const capped = !!container?.limitBytes;
+  const gb = (bytes: number | null) => bytes === null || bytes === undefined ? null : bytes / 1024 ** 3;
+  const asGb = (bytes: number | null) => { const v = gb(bytes); return v === null ? '?' : `${v.toFixed(v < 10 ? 1 : 0)} GB`; };
 
   const [providerStatus, setProviderStatus] = useState<any[]>(() => data?.providerStatus || []);
 
@@ -486,6 +492,39 @@ export function DashboardSystem({ data }: DashboardSystemProps) {
                 <div className="h-2" />
               </div>
             </div>
+
+            {showContainer && (
+              <div className="pt-3 border-t space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Container Memory</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {capped ? `peak ${asGb(container.peakBytes)} of ${asGb(container.limitBytes)}` : `peak ${asGb(container.peakBytes)}, no limit set`}
+                  </p>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>{asGb(container.currentBytes)} used</span>
+                  {capped && (
+                    <span className={`font-medium ${container.usedPct > 90 ? "text-red-500" : container.usedPct > 75 ? "text-amber-500" : "text-green-500"}`}>
+                      <AnimatedNumber value={container.usedPct ?? 0} suffix="%" />
+                    </span>
+                  )}
+                </div>
+                {capped && (
+                  <Progress
+                    value={container.usedPct ?? 0}
+                    className={`h-2 ${container.usedPct > 90 ? "[&>div]:bg-red-500" : container.usedPct > 75 ? "[&>div]:bg-amber-500" : ""}`}
+                  />
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  {container.breakdown?.anon !== null && container.breakdown?.anon !== undefined
+                    ? `${asGb(container.breakdown.anon)} in use by the process, ${asGb(container.breakdown.file)} reclaimable page cache. `
+                    : ''}
+                  {container.events?.oomKills
+                    ? `The kernel has killed ${container.events.oomKills} process here for running out of memory.`
+                    : 'No out-of-memory kills recorded.'}
+                </p>
+              </div>
+            )}
 
             {/* Provider Status */}
             {providerStatus.length > 0 && (
