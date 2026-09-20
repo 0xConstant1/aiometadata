@@ -15,6 +15,7 @@ const { getImdbRating } = require('../lib/getImdbRating');
 const consola = require('consola');
 const { cacheWrapMetaSmart, cacheWrapGlobal } = require('../lib/getCache');
 const { getReleaseAvailability } = require('./releaseAvailability');
+const { classifyTmdbLocalization } = require('./tmdbLocalization');
 const { malRatingToCertification, isUnratedCertification } = require('./ageRating');
 const wikiMappings = require('../lib/wiki-mapper.js');
 function CATALOG_TTL() { return parseInt(process.env.CATALOG_TTL || 1 * 24 * 60 * 60, 10); }
@@ -3540,6 +3541,7 @@ module.exports = {
   getTmdbTvCertificationForCountry,
   resolveArtProvider,
   addMetaProviderAttribution,
+  classifyTmdbLocalization,
   processOverviewTranslations,
   processTitleTranslations,
   genSeasonsString,
