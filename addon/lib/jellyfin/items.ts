@@ -60,11 +60,10 @@ export async function flushRememberedImages(): Promise<void> {
     clearTimeout(imageFlushTimer);
     imageFlushTimer = null;
   }
-  if (pendingImages.size === 0) return;
+  if (!redis || pendingImages.size === 0) return;
 
   const batches = [...pendingImages.entries()];
   pendingImages.clear();
-  if (!redis) return;
 
   const ttl = imageTtl();
   await Promise.all(

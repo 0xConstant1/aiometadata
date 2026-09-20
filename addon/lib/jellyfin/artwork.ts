@@ -26,15 +26,15 @@ export async function cachedArtwork(key: string, load: () => Promise<Artwork>): 
   const running = loading.get(key);
   if (running) return running;
 
-  const work = (async () => {
-    try {
-      const image = await load();
+  // load() runs a tick later, so the entry is in place before it can settle and
+  // a load that throws outright is not left behind as the answer.
+  const work = Promise.resolve()
+    .then(load)
+    .then((image) => {
       held.set(key, image);
       return image;
-    } finally {
-      loading.delete(key);
-    }
-  })();
+    })
+    .finally(() => loading.delete(key));
 
   loading.set(key, work);
   return work;

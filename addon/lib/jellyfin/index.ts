@@ -1634,7 +1634,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return width ? url.replace(TMDB_ORIGINAL, `https://image.tmdb.org/t/p/w${width}/`) : url;
   };
 
-  const shapesPoster = (url: string): boolean => require('../posterCache/shape').shapesPosterFrom(url);
+  // With shaping turned off nothing needs reshaping, so a poster is free to redirect.
+  const shapesPoster = (url: string): boolean => {
+    const shape = require('../posterCache/shape');
+    return shape.shapesPosters() && shape.shapesPosterFrom(url);
+  };
 
   const builtinPosterCachePath = (url: string): string | null => {
     const posterCache = require('../posterCache/config');
