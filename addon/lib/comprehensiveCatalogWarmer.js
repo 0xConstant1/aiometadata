@@ -5,7 +5,6 @@ const {
   cacheWrapJikanApi,
   stableStringify,
   projectCatalogPayloadForCache,
-  writeMetaComponentsBatchWithConfig,
 } = require('./getCache');
 const { sleep } = require('../utils/concurrency');
 const { getGenreList } = require('./getGenreList');
@@ -360,24 +359,11 @@ class ComprehensiveCatalogWarmer {
     }
   }
 
-  async persistFullMetasAndProjectCatalog(result, config, type, options = {}) {
-    const metas = Array.isArray(result?.metas) ? result.metas : [];
-
-    if (metas.length > 0) {
-      try {
-        const stats = await writeMetaComponentsBatchWithConfig({
-          config,
-          metas,
-          type,
-          useShowPoster: !!options.useShowPoster,
-          overwrite: false,
-        });
-        this.log('debug', `[Catalog Cache] Processed ${stats.written} meta component set(s), skipped ${stats.skipped}`);
-      } catch (error) {
-        this.log('warn', `[Catalog Cache] Failed to write meta components before catalog projection: ${error.message}`);
-      }
-    }
-
+  // Catalog metas are catalog-shaped (MAL's carry no cast, links or videos) and
+  // already projected for the warming user, so they never go into the shared
+  // meta cache. Items built through cacheWrapMetaSmart were written there, in
+  // full, when the catalog was built.
+  projectCatalogResult(result) {
     return projectCatalogPayloadForCache(result);
   }
 
@@ -853,7 +839,7 @@ class ComprehensiveCatalogWarmer {
           if (catalogId.startsWith('mal.')) {
             const configWithUUID = { ...config, userUUID: uuid };
             const fullResult = await this.warmMALCatalog(catalogId, derivedPage, configWithUUID, extraArgs);
-            return await this.persistFullMetasAndProjectCatalog(fullResult, configWithUUID, actualType);
+            return this.projectCatalogResult(fullResult);
           } else if (catalogId === 'tmdb.trending') {
             // Special handling for tmdb.trending - call getTrending directly
             if (!uuid) {
@@ -862,7 +848,7 @@ class ComprehensiveCatalogWarmer {
             const configWithUUID = { ...config, userUUID: uuid };
             const { getTrending } = require('./getTrending');
             const fullResult = await getTrending(catalog.type, config.language, derivedPage, extraArgs.genre || null, configWithUUID, uuid, true);
-            return await this.persistFullMetasAndProjectCatalog(fullResult, configWithUUID, actualType);
+            return this.projectCatalogResult(fullResult);
           } else if (catalogId === 'tvmaze.schedule') {
             const configWithUUID = { ...config, userUUID: uuid };
             const fullResult = await getTvmazeScheduleCatalog({
@@ -877,7 +863,7 @@ class ComprehensiveCatalogWarmer {
               enableErrorCaching: false,
               maxRetries: 1,
             });
-            return await this.persistFullMetasAndProjectCatalog(fullResult, configWithUUID, actualType);
+            return this.projectCatalogResult(fullResult);
           } else {
             // Everything else goes through getCatalog
             if (!uuid) {
@@ -887,9 +873,7 @@ class ComprehensiveCatalogWarmer {
             const configWithUUID = { ...config, userUUID: uuid };
             const { getCatalog } = require('./getCatalog');
             const fullResult = await getCatalog(catalog.type, config.language, derivedPage, catalogId, extraArgs.genre || null, configWithUUID, uuid, true);
-            return await this.persistFullMetasAndProjectCatalog(fullResult, configWithUUID, actualType, {
-              useShowPoster: !!extraArgs.useShowPoster,
-            });
+            return this.projectCatalogResult(fullResult);
           }
           }, {
             enableErrorCaching: false,
@@ -936,7 +920,7 @@ class ComprehensiveCatalogWarmer {
     while (pagesWarmed < maxPages) {
       try {
         const fullResult = await getCatalog(catalog.type, config.language, 1, catalogId, genreValue || null, configWithUUID, uuid, true, currentSkip);
-        const result = await this.persistFullMetasAndProjectCatalog(fullResult, configWithUUID, catalog.type);
+        const result = this.projectCatalogResult(fullResult);
 
         const rawMetaCount = result?.metas?.length || 0;
 

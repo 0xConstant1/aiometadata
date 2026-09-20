@@ -153,18 +153,24 @@ function totalBytes(): number {
   return (db.prepare(`SELECT COALESCE(SUM(LENGTH(payload)), 0) AS b FROM meta_components`).get() as { b: number }).b;
 }
 
-function evictIfNeeded(): void {
+/**
+ * Evicts whole titles. A title's rows are read and touched together, so the
+ * titles owning the least recently used rows are the least recently used
+ * titles; removing only rows would leave titles half-stored, which reads as a
+ * miss and costs a full rebuild anyway.
+ */
+export function evictIfNeeded(batchRows: number = 500): void {
   if (!db) return;
   const max = getColdStoreMaxBytes();
   let total = totalBytes();
   if (total <= max) return;
   const target = Math.floor(max * 0.9);
-  const del = db.prepare(`DELETE FROM meta_components WHERE k IN (
-    SELECT k FROM meta_components ORDER BY last_access ASC LIMIT ?
+  const del = db.prepare(`DELETE FROM meta_components WHERE meta_id IN (
+    SELECT DISTINCT meta_id FROM (SELECT meta_id FROM meta_components ORDER BY last_access ASC LIMIT ?)
   ) RETURNING LENGTH(payload) AS n`);
   let guard = 0;
   while (total > target && guard++ < 10000) {
-    const rows = del.all(500) as Array<{ n: number }>;
+    const rows = del.all(batchRows) as Array<{ n: number }>;
     if (rows.length === 0) break;
     for (const r of rows) total -= r.n;
   }
@@ -285,5 +291,5 @@ export function close(): void {
 
 module.exports = {
   init, getEncoded, put, flushNow, invalidate, invalidateKey, invalidateByToken,
-  countByToken, countByMetaId, purge, sweep, stats, close,
+  countByToken, countByMetaId, purge, sweep, stats, close, evictIfNeeded,
 };

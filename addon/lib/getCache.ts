@@ -1,4 +1,5 @@
 import { LRUCache } from 'lru-cache';
+import type { MetaHashEntry } from './metaHashStore';
 const redis: any = require('./redisClient');
 const { loadConfigFromDatabase }: any = require('./configApi');
 const consola: any = require('consola');
@@ -9,6 +10,7 @@ const {
   decodeCachePayload,
   encodeCachePayload,
 }: any = require('./cacheCodec');
+const { readMetaHash, writeMetaHashReplace, writeMetaHashFill }: any = require('./metaHashStore');
 const {
   canonicalizeLinksForCache,
   applyLinksUserScopeProjection,
@@ -1068,6 +1070,32 @@ function buildMetaComponentCacheKeys({ config, metaId, type, useShowPoster = fal
   };
 }
 
+// Components whose value depends on more than the identity profile carry their
+// own profile hash in the field name, so users who differ only in art (or in
+// video options) share one hash and add their own fields to it.
+const HASH_SCOPED_COMPONENTS = new Set(['poster', 'rawPoster', 'background', 'landscapePoster', 'logo', 'videos']);
+
+type MetaHashLayout = { key: string; fields: Record<string, { field: string; legacyKey: string }> };
+
+/**
+ * A title's components live in one Redis hash per identity profile, so eviction
+ * removes the title whole. Each component keeps the key it used to live under
+ * as `legacyKey`, which the cold store still addresses rows by. Built on the
+ * key builder so the two can never disagree about a hash.
+ */
+function buildMetaHashLayout({ config, metaId, type, useShowPoster = false }: { config: any; metaId: string; type: string | null; useShowPoster?: boolean }): MetaHashLayout {
+  const legacyKeys = buildMetaComponentCacheKeys({ config, metaId, type, useShowPoster });
+  const hashOf = (legacyKey: string) => legacyKey.split(':')[1];
+  const fields: MetaHashLayout['fields'] = {};
+  for (const [name, legacyKey] of Object.entries(legacyKeys)) {
+    fields[name] = {
+      field: HASH_SCOPED_COMPONENTS.has(name) ? `${name}:${hashOf(legacyKey)}` : name,
+      legacyKey,
+    };
+  }
+  return { key: `meta-h:${hashOf(legacyKeys.basic)}:${metaId}`, fields };
+}
+
 function getBlurProxyPrefix(): string {
   const host = process.env.HOST_NAME?.startsWith('http')
     ? process.env.HOST_NAME
@@ -1802,18 +1830,13 @@ async function cacheWrapMetaComponents(userUUID: string, metaId: string, method:
    });
 }
 
-async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = META_TTL(), type = null, useShowPoster = false, overwrite = true }: { config: any; metaId: string; result: any; ttl?: number; type?: string | null; useShowPoster?: boolean; overwrite?: boolean }): Promise<any> {
-  const componentCacheKeys = buildMetaComponentCacheKeys({
-    config,
-    metaId,
-    type,
-    useShowPoster,
-  });
+async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = META_TTL(), type = null, useShowPoster = false, authoritative = true }: { config: any; metaId: string; result: any; ttl?: number; type?: string | null; useShowPoster?: boolean; authoritative?: boolean }): Promise<any> {
+  const layout = buildMetaHashLayout({ config, metaId, type, useShowPoster });
 
-   const meta = result?.meta || result;
+  const meta = result?.meta || result;
 
   if (!meta || !meta.id || !meta.name || !meta.type) {
-          cacheLogger.warn(`No valid meta object returned for ${metaId}`);
+    cacheLogger.warn(`No valid meta object returned for ${metaId}`);
     return { meta: null };
   }
 
@@ -1826,144 +1849,105 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
     cacheLogger.warn(`Failed to capture metadata for dashboard: ${error.message}`);
   }
 
-   const componentsToCache: any[] = [];
+  const components: Array<{ name: string; data: any }> = [];
 
-   const basicMeta: any = {
-      id: metaId,
-      name: meta.name,
-      type: meta.type,
-      description: meta.description,
-      imdb_id: meta.imdb_id,
-      _imdbId: meta._imdbId,
-      _tmdbId: meta._tmdbId,
-      _tvdbId: meta._tvdbId,
-      _malId: meta._malId,
-      _kitsuId: meta._kitsuId,
-      _anilistId: meta._anilistId,
-      _anidbId: meta._anidbId,
-      slug: meta.slug,
-      genres: meta.genres,
-      director: meta.director,
-      writer: meta.writer,
-      year: meta.year,
-      releaseInfo: meta.releaseInfo,
-      released: meta.released,
-      [RELEASE_AVAILABILITY_FIELD]: meta[RELEASE_AVAILABILITY_FIELD],
-      runtime: meta.runtime,
-      country: meta.country,
-      imdbRating: meta.imdbRating,
-      behaviorHints: meta.behaviorHints,
-      posterShape: meta.posterShape || 'poster',
-      _hasPoster: !!meta.poster,
-      _hasBackground: !!meta.background,
-      _hasLandscapePoster: !!meta.landscapePoster,
-      _hasLogo: !!meta.logo,
-      _hasVideos: !!(meta.videos && Array.isArray(meta.videos) && meta.videos.length > 0),
-      _hasLinks: !!(meta.links && Array.isArray(meta.links) && meta.links.length > 0),
-      _metaProvider: meta._metaProvider,
-      _providerArt: meta._providerArt || null
-   };
-
-   queueComponentCache(componentsToCache, componentCacheKeys.basic, basicMeta);
-
-   if (meta.poster) {
+  if (meta.poster) {
     const rawPoster = meta._rawPosterUrl || rawPosterOf(meta.poster);
-
-    queueComponentCache(componentsToCache, componentCacheKeys.poster, { poster: rawPoster });
-    queueComponentCache(componentsToCache, componentCacheKeys.rawPoster, { _rawPosterUrl: meta._rawPosterUrl });
+    components.push({ name: 'poster', data: { poster: rawPoster } });
+    components.push({ name: 'rawPoster', data: { _rawPosterUrl: meta._rawPosterUrl } });
   }
+  if (meta.background) components.push({ name: 'background', data: { background: meta.background } });
+  if (meta.landscapePoster) components.push({ name: 'landscapePoster', data: { landscapePoster: meta.landscapePoster } });
+  if (meta.logo) components.push({ name: 'logo', data: { logo: meta.logo } });
+  if (meta.videos && Array.isArray(meta.videos) && meta.videos.length > 0) {
+    components.push({ name: 'videos', data: { videos: canonicalizeVideosForCache(meta.videos), _metaProvider: meta._metaProvider } });
+  }
+  if (meta.app_extras?.cast?.length) components.push({ name: 'cast', data: { cast: meta.app_extras.cast } });
+  if (meta.app_extras?.directors?.length) components.push({ name: 'director', data: { directors: meta.app_extras.directors } });
+  if (meta.app_extras?.writers?.length) components.push({ name: 'writer', data: { writers: meta.app_extras.writers } });
+  if (meta.links && Array.isArray(meta.links) && meta.links.length > 0) {
+    components.push({ name: 'links', data: { links: canonicalizeLinksForCache(stripCertificationLinks(meta.links, meta.app_extras?.certification)) } });
+  }
+  if (meta.trailers?.length) components.push({ name: 'trailers', data: { trailers: meta.trailers } });
+  const extrasForCache = projectAppExtrasForComponentCache(meta.app_extras);
+  if (extrasForCache) components.push({ name: 'extras', data: { app_extras: extrasForCache } });
 
-   if (meta.background) {
-     queueComponentCache(componentsToCache, componentCacheKeys.background, { background: meta.background });
-   }
-   if (meta.landscapePoster) {
-     queueComponentCache(componentsToCache, componentCacheKeys.landscapePoster, { landscapePoster: meta.landscapePoster });
-   }
+  const basicMeta: any = {
+    id: metaId,
+    name: meta.name,
+    type: meta.type,
+    description: meta.description,
+    imdb_id: meta.imdb_id,
+    _imdbId: meta._imdbId,
+    _tmdbId: meta._tmdbId,
+    _tvdbId: meta._tvdbId,
+    _malId: meta._malId,
+    _kitsuId: meta._kitsuId,
+    _anilistId: meta._anilistId,
+    _anidbId: meta._anidbId,
+    slug: meta.slug,
+    genres: meta.genres,
+    director: meta.director,
+    writer: meta.writer,
+    year: meta.year,
+    releaseInfo: meta.releaseInfo,
+    released: meta.released,
+    [RELEASE_AVAILABILITY_FIELD]: meta[RELEASE_AVAILABILITY_FIELD],
+    runtime: meta.runtime,
+    country: meta.country,
+    status: meta.status,
+    imdbRating: meta.imdbRating,
+    behaviorHints: meta.behaviorHints,
+    posterShape: meta.posterShape || 'poster',
+    _hasPoster: !!meta.poster,
+    _hasBackground: !!meta.background,
+    _hasLandscapePoster: !!meta.landscapePoster,
+    _hasLogo: !!meta.logo,
+    _hasVideos: !!(meta.videos && Array.isArray(meta.videos) && meta.videos.length > 0),
+    _hasLinks: !!(meta.links && Array.isArray(meta.links) && meta.links.length > 0),
+    _metaProvider: meta._metaProvider,
+    _providerArt: meta._providerArt || null,
+    // What this write stored, so a read can tell a component that was never
+    // there from one that went missing.
+    _components: components.map(({ name }) => name),
+  };
+  components.unshift({ name: 'basic', data: basicMeta });
 
-   if (meta.logo) {
-     queueComponentCache(componentsToCache, componentCacheKeys.logo, { logo: meta.logo });
-   }
+  const entries: MetaHashEntry[] = components.map(({ name, data }) => ({
+    name,
+    field: layout.fields[name].field,
+    legacyKey: layout.fields[name].legacyKey,
+    componentData: data,
+  }));
 
-   if (meta.videos && Array.isArray(meta.videos) && meta.videos.length > 0) {
-     queueComponentCache(componentsToCache, componentCacheKeys.videos, { videos: canonicalizeVideosForCache(meta.videos), _metaProvider: meta._metaProvider });
-   }
-
-   if (meta.app_extras?.cast?.length) {
-     queueComponentCache(componentsToCache, componentCacheKeys.cast, { cast: meta.app_extras.cast });
-   }
-
-   if (meta.app_extras?.directors?.length) {
-     queueComponentCache(componentsToCache, componentCacheKeys.director, { directors: meta.app_extras.directors });
-   }
-
-   if (meta.app_extras?.writers?.length) {
-     queueComponentCache(componentsToCache, componentCacheKeys.writer, { writers: meta.app_extras.writers });
-   }
-
-   if (meta.links && Array.isArray(meta.links) && meta.links.length > 0) {
-     queueComponentCache(componentsToCache, componentCacheKeys.links, { links: canonicalizeLinksForCache(stripCertificationLinks(meta.links, meta.app_extras?.certification)) });
-   }
-
-   if (meta.trailers?.length) {
-     queueComponentCache(componentsToCache, componentCacheKeys.trailers, { trailers: meta.trailers });
-   }
-
-   const extrasForCache = projectAppExtrasForComponentCache(meta.app_extras);
-   if (extrasForCache) {
-     queueComponentCache(componentsToCache, componentCacheKeys.extras, { app_extras: extrasForCache });
-   }
+  // Only the fields carrying this profile's own hash. The rest are shared with
+  // every profile on this identity and lapse on their own TTL.
+  const written = new Set(entries.map(({ field }) => field));
+  const hdelFields = authoritative
+    ? Object.entries(layout.fields)
+        .filter(([name]) => HASH_SCOPED_COMPONENTS.has(name))
+        .map(([, { field }]) => field)
+        .filter((field) => !written.has(field))
+    : [];
 
   const airWindowTtl = clampMetaTtlToAirWindow(meta, ttl);
   if (airWindowTtl !== ttl) {
     cacheLogger.debug(`[Meta] Holding ${metaId} to ${airWindowTtl}s so it lapses after the next episode airs (base ${ttl}s)`);
   }
 
-  await cacheComponentsPipeline(componentsToCache, airWindowTtl, { overwrite });
+  const hashKey = withEpoch(layout.key);
+  await writeMetaHashReplace({ key: hashKey, entries, ttl: airWindowTtl, hdelFields });
 
   try {
     const coldStore = require('./metaColdStore');
     if (coldStore.isEnabled()) {
-      coldStore.writeThrough(meta, componentsToCache);
+      coldStore.writeThrough(meta, entries.map(({ legacyKey, componentData }) => ({ cacheKey: legacyKey, componentData })));
     }
   } catch (coldErr: any) {
     cacheLogger.warn(`[ColdStore] write-through failed for ${metaId}: ${coldErr?.message}`);
   }
 
-   return { meta: await projectMetaForUser(meta, config) };
-}
-
-async function writeMetaComponentsBatchWithConfig({ config, metas, ttl = META_TTL(), type = null, useShowPoster = false, overwrite = true }: { config: any; metas: any[]; ttl?: number; type?: string | null; useShowPoster?: boolean; overwrite?: boolean }): Promise<{ written: number; skipped: number }> {
-  if (!Array.isArray(metas) || metas.length === 0) {
-    return { written: 0, skipped: 0 };
-  }
-
-  let written = 0;
-  let skipped = 0;
-
-  for (const meta of metas) {
-    if (!meta || !meta.id || !meta.name || !meta.type) {
-      skipped++;
-      continue;
-    }
-
-    const result = await writeMetaComponentsWithConfig({
-      config,
-      metaId: meta.id,
-      result: { meta },
-      ttl,
-      type: meta.type || type,
-      useShowPoster,
-      overwrite,
-    });
-
-    if (result?.meta) {
-      written++;
-    } else {
-      skipped++;
-    }
-  }
-
-  return { written, skipped };
+  return { meta: await projectMetaForUser(meta, config) };
 }
 
 async function readMetaAlias({ config, metaId, type = null, useShowPoster = false }: { config: any; metaId: string; type?: string | null; useShowPoster?: boolean }): Promise<string | null> {
@@ -2014,70 +1998,58 @@ async function reconstructMetaFromComponents(userUUID: string, metaId: string, t
   });
 }
 
+// Components a basic lists must be present. Art is refilled per profile and
+// videos follow includeVideos, so both keep their own rules below.
+const MANIFEST_COMPONENTS = ['cast', 'director', 'writer', 'links', 'trailers', 'extras'];
+
 async function reconstructMetaFromComponentsWithConfig({ config, metaId, type = null, includeVideos = true, useShowPoster = false, countColdStoreMiss = true, followAlias = true }: { config: any; metaId: string; type?: string | null; includeVideos?: boolean; useShowPoster?: boolean; countColdStoreMiss?: boolean; followAlias?: boolean }): Promise<any> {
   if (!metaId || typeof metaId !== 'string') {
     cacheLogger.warn(`Invalid metaId provided: ${metaId}`);
     return { errorReason: 'invalid metaId' };
   }
 
-   const componentCacheKeys = buildMetaComponentCacheKeys({
-    config,
-    metaId,
-    type,
-    useShowPoster,
-   });
+  const layout = buildMetaHashLayout({ config, metaId, type, useShowPoster });
+  const hashKey = withEpoch(layout.key);
+  const componentNames = Object.keys(layout.fields).filter((componentName) => includeVideos || componentName !== 'videos');
 
-  const componentEntries = Object.entries(componentCacheKeys).filter(([componentName]) => {
-    return includeVideos || componentName !== 'videos';
-  });
-  const componentNames = componentEntries.map(([componentName]) => componentName);
-  const cacheKeys = componentEntries.map(([, key]) => withEpoch(key));
+  let componentResults: any[] = componentNames.map(componentName => ({ componentName, data: null }));
+  let basicTtl = -2;
 
-  let componentResults: any[];
-
-  if (cacheKeys.length === 0) {
-    componentResults = componentNames.map(componentName => ({ componentName, data: null }));
-  } else {
-    try {
-      const cachedValues = await redis.mgetBuffer(...cacheKeys);
+  try {
+    const read = await readMetaHash(hashKey, componentNames.map((componentName) => layout.fields[componentName].field));
+    basicTtl = read.basicTtl;
     componentResults = await Promise.all(componentNames.map(async (componentName: string, index: number) => {
-      const cached = cachedValues[index];
-      if (cached) {
-        try {
-          const parsed = await decodeCachePayload(cached);
-          return { componentName, data: parsed };
-        } catch (parseError: any) {
-          cacheLogger.warn(`Error parsing component ${componentName}:`, parseError);
-          return { componentName, data: null };
-        }
-      } else {
+      const cached = read.values[index];
+      if (!cached) return { componentName, data: null };
+      try {
+        return { componentName, data: await decodeCachePayload(cached) };
+      } catch (parseError: any) {
+        cacheLogger.warn(`Error parsing component ${componentName}:`, parseError);
         return { componentName, data: null };
       }
     }));
-    } catch (error: any) {
-      cacheLogger.warn(`Error fetching components with MGET:`, error);
-      componentResults = componentNames.map(componentName => ({ componentName, data: null }));
-    }
+  } catch (error: any) {
+    cacheLogger.warn(`Error reading meta hash for ${metaId}:`, error);
   }
 
   try {
     const coldStore = require('./metaColdStore');
     if (coldStore.isEnabled()) {
-      const missing: Array<{ idx: number; key: string }> = [];
-      componentResults.forEach((result: any, idx: number) => {
-        if (result.data === null && cacheKeys[idx]) missing.push({ idx, key: cacheKeys[idx] });
-      });
+      const missing = componentResults.filter((result: any) => result.data === null);
       if (missing.length > 0) {
-        const found = await coldStore.readThrough(missing.map(m => m.key));
+        const found = await coldStore.readThrough(missing.map((result: any) => layout.fields[result.componentName].legacyKey));
         if (found.size > 0) {
-          const rewarm = redis.pipeline();
-          for (const { idx, key } of missing) {
-            const hit = found.get(key);
+          const rehydrate: MetaHashEntry[] = [];
+          for (const result of missing) {
+            const { field, legacyKey } = layout.fields[result.componentName];
+            const hit = found.get(legacyKey);
             if (!hit) continue;
-            componentResults[idx].data = hit.data;
-            rewarm.set(key, hit.buffer, 'EX', META_TTL());
+            result.data = hit.data;
+            rehydrate.push({ name: result.componentName, field, legacyKey, encoded: hit.buffer });
           }
-          rewarm.exec().catch(() => {});
+          writeMetaHashFill({ key: hashKey, entries: rehydrate, ttl: META_TTL(), basicTtl }).catch(() => {});
+          // A basic brought back is rewritten at META_TTL, so art filled below may live as long.
+          if (rehydrate.some(({ field }) => field === 'basic')) basicTtl = META_TTL();
           cacheHealth.coldStoreHits += 1;
           cacheHealth.coldStoreComponents += found.size;
         } else if (countColdStoreMiss) {
@@ -2090,8 +2062,11 @@ async function reconstructMetaFromComponentsWithConfig({ config, metaId, type = 
   }
 
   const availableComponents = componentResults.filter((result: any) => result.data !== null);
+  const basicComponent = availableComponents.find((c: any) => c.componentName === 'basic');
 
-  if (availableComponents.length === 0) {
+  // Every read needs basic, and nothing written for this profile outlives it,
+  // so without it there is nothing to reconstruct here.
+  if (!basicComponent) {
     if (followAlias) {
       const aliasedId = await readMetaAlias({ config, metaId, type, useShowPoster });
       if (aliasedId && aliasedId !== metaId) {
@@ -2107,58 +2082,55 @@ async function reconstructMetaFromComponentsWithConfig({ config, metaId, type = 
       }
     }
 
-    const metaReconstructionKey = `meta:reconstructed:${metaId}`;
-    updateCacheHealth(metaReconstructionKey, 'miss', true);
+    updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
     return { errorReason: 'no cached components' };
   }
 
-   const reconstructedMeta: any = {};
+  const reconstructedMeta: any = {};
+  const bd = basicComponent.data;
+  Object.assign(reconstructedMeta, bd);
+  delete reconstructedMeta._components;
+  reconstructedMeta.posterShape = bd.posterShape;
 
-  const basicComponent = availableComponents.find((c: any) => c.componentName === 'basic');
-  if (basicComponent) {
-    Object.assign(reconstructedMeta, basicComponent.data);
-    reconstructedMeta.posterShape = basicComponent.data.posterShape;
-
-    const bd = basicComponent.data;
-
-    const present = (name: string) => availableComponents.some((c: any) => c.componentName === name);
-    const missingArt = ART_COMPONENTS.filter(({ name, flag }) => bd[flag] && !present(name)).map(({ name }) => name);
-    if (missingArt.length > 0) {
-        availableComponents.push(...(await fillArtComponents(config, metaId, bd, missingArt, componentCacheKeys)));
-        const still = missingArt.find((name) => !present(name));
-        if (still) {
-            cacheLogger.warn(`[Reconstruct] Integrity failure for ${metaId}: Missing required ${still}.`);
-            updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
-            return { errorReason: `corrupted: missing ${still}` };
-        }
-    }
-
-    if (includeVideos && bd._hasVideos) {
-        const hasVideos = availableComponents.some((c: any) => c.componentName === 'videos');
-        if (!hasVideos) {
-            cacheLogger.warn(`[Reconstruct] Integrity failure for ${metaId}: Missing required videos.`);
-            updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
-            return { errorReason: 'corrupted: missing videos' };
-        }
-    }
-
-    if (bd._hasLinks) {
-        const hasLinks = availableComponents.some((c: any) => c.componentName === 'links');
-        if (!hasLinks) {
-            cacheLogger.warn(`[Reconstruct] Integrity failure for ${metaId}: Missing required links component.`);
-            updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
-            return { errorReason: 'corrupted: missing links' };
-        }
-    }
-
-    const videosComponentForStamp = availableComponents.find((c: any) => c.componentName === 'videos');
-    if (videosComponentForStamp && bd._metaProvider && videosComponentForStamp.data._metaProvider && bd._metaProvider !== videosComponentForStamp.data._metaProvider) {
-        cacheLogger.warn(`[Reconstruct] Provider mismatch for ${metaId}: basic=${bd._metaProvider}, videos=${videosComponentForStamp.data._metaProvider}.`);
-        updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
-        return { errorReason: 'provider mismatch between basic and videos' };
+  const present = (name: string) => availableComponents.some((c: any) => c.componentName === name);
+  const missingArt = ART_COMPONENTS.filter(({ name, flag }) => bd[flag] && !present(name)).map(({ name }) => name);
+  if (missingArt.length > 0) {
+    availableComponents.push(...(await fillArtComponents(config, metaId, bd, missingArt, layout, hashKey, basicTtl)));
+    const still = missingArt.find((name) => !present(name));
+    if (still) {
+      cacheLogger.warn(`[Reconstruct] Integrity failure for ${metaId}: Missing required ${still}.`);
+      updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
+      return { errorReason: `corrupted: missing ${still}` };
     }
   }
 
+  if (includeVideos && bd._hasVideos && !present('videos')) {
+    cacheLogger.warn(`[Reconstruct] Integrity failure for ${metaId}: Missing required videos.`);
+    updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
+    return { errorReason: 'corrupted: missing videos' };
+  }
+
+  if (bd._hasLinks && !present('links')) {
+    cacheLogger.warn(`[Reconstruct] Integrity failure for ${metaId}: Missing required links component.`);
+    updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
+    return { errorReason: 'corrupted: missing links' };
+  }
+
+  if (Array.isArray(bd._components)) {
+    const lost = MANIFEST_COMPONENTS.find((name) => bd._components.includes(name) && !present(name));
+    if (lost) {
+      cacheLogger.warn(`[Reconstruct] Integrity failure for ${metaId}: Missing required ${lost}.`);
+      updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
+      return { errorReason: `corrupted: missing ${lost}` };
+    }
+  }
+
+  const videosComponentForStamp = availableComponents.find((c: any) => c.componentName === 'videos');
+  if (videosComponentForStamp && bd._metaProvider && videosComponentForStamp.data._metaProvider && bd._metaProvider !== videosComponentForStamp.data._metaProvider) {
+    cacheLogger.warn(`[Reconstruct] Provider mismatch for ${metaId}: basic=${bd._metaProvider}, videos=${videosComponentForStamp.data._metaProvider}.`);
+    updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
+    return { errorReason: 'provider mismatch between basic and videos' };
+  }
 
    availableComponents.forEach(({ componentName, data }: any) => {
      if (componentName === 'basic') return;
@@ -2341,6 +2313,7 @@ async function cacheWrapMetaSmart(userUUID: string, metaId: string, method: () =
       ttl,
       type,
       useShowPoster,
+      authoritative: includeVideos,
     });
   }, cloneJsonCompatibleResult);
 }
@@ -2371,7 +2344,7 @@ const ART_COMPONENTS: Array<{ name: string; flag: string; field: string }> = [
 // Art is keyed by the user's art profile while the rest of the meta is shared, so
 // a new profile finds everything but the art. A basic without provider art is
 // left to the rebuild.
-async function fillArtComponents(config: any, metaId: string, basic: any, wanted: string[], componentCacheKeys: Record<string, string>): Promise<any[]> {
+async function fillArtComponents(config: any, metaId: string, basic: any, wanted: string[], layout: MetaHashLayout, hashKey: string, basicTtl: number): Promise<any[]> {
   if (!basic._providerArt) return [];
 
   const { resolveArtworkForProfile } = require('./getMeta');
@@ -2392,63 +2365,20 @@ async function fillArtComponents(config: any, metaId: string, basic: any, wanted
   }
 
   const filled: any[] = [];
-  const queued: any[] = [];
-  for (const { name, field } of ART_COMPONENTS) {
-    if (!wanted.includes(name) || !art?.[field]) continue;
-    const value = name === 'poster' ? rawPosterOf(art.poster) : art[field];
+  const entries: MetaHashEntry[] = [];
+  for (const { name, field: artField } of ART_COMPONENTS) {
+    if (!wanted.includes(name) || !art?.[artField]) continue;
+    const value = name === 'poster' ? rawPosterOf(art.poster) : art[artField];
     const data = { [name]: value };
     filled.push({ componentName: name, data });
-    queueComponentCache(queued, componentCacheKeys[name], data);
+    entries.push({ name, field: layout.fields[name].field, legacyKey: layout.fields[name].legacyKey, componentData: data });
   }
 
-  if (queued.length) {
-    await cacheComponentsPipeline(queued, META_TTL());
+  if (entries.length) {
+    await writeMetaHashFill({ key: hashKey, entries, ttl: META_TTL(), basicTtl });
     cacheLogger.info(`[Reconstruct] Filled ${filled.map((c) => c.componentName).join(', ')} for ${metaId} for this art profile`);
   }
   return filled;
-}
-
-function queueComponentCache(components: any[], cacheKey: string, componentData: any): void {
-  if (!cacheKey || !componentData) return;
-  components.push({ cacheKey, componentData });
-}
-
-async function cacheComponentsPipeline(components: any[], ttl: number, options: any = {}): Promise<void> {
-  if (!redis || !Array.isArray(components) || components.length === 0) return;
-
-  const overwrite = options.overwrite !== false;
-  const pipeline = redis.pipeline();
-  const queuedCommands: string[] = [];
-
-  for (const { cacheKey, componentData } of components) {
-    const versionedKey = withEpoch(cacheKey);
-
-    try {
-      const payload = await encodeCachePayload(componentData);
-      if (overwrite) {
-        pipeline.set(versionedKey, payload, 'EX', ttl);
-      } else {
-        pipeline.set(versionedKey, payload, 'EX', ttl, 'NX');
-      }
-      queuedCommands.push(versionedKey);
-    } catch (error: any) {
-      cacheLogger.warn(`Failed to queue component cache write for ${versionedKey}:`, error);
-    }
-  }
-
-  if (queuedCommands.length === 0) return;
-
-  try {
-    const results = await pipeline.exec();
-
-    results?.forEach(([error]: any, index: number) => {
-      if (error) {
-        cacheLogger.warn(`Failed to cache component for ${queuedCommands[index]}:`, error);
-      }
-    });
-  } catch (error: any) {
-    cacheLogger.warn(`Failed to execute component cache pipeline:`, error);
-  }
 }
 
 
@@ -2660,11 +2590,10 @@ export {
   cacheWrapMeta,
   cacheWrapMetaComponents,
   reconstructMetaFromComponents,
-  buildMetaComponentCacheKeys,
+  buildMetaHashLayout,
   buildMetaAliasCacheKey,
   projectMetaForCatalogCache,
   projectCatalogPayloadForCache,
-  writeMetaComponentsBatchWithConfig,
   cacheWrapMetaSmart,
   getCacheHealth,
   clearCacheHealth,
@@ -2695,11 +2624,10 @@ module.exports = {
   cacheWrapMeta,
   cacheWrapMetaComponents,
   reconstructMetaFromComponents,
-  buildMetaComponentCacheKeys,
+  buildMetaHashLayout,
   buildMetaAliasCacheKey,
   projectMetaForCatalogCache,
   projectCatalogPayloadForCache,
-  writeMetaComponentsBatchWithConfig,
   cacheWrapMetaSmart,
   getCacheHealth,
   clearCacheHealth,

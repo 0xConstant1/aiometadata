@@ -92,8 +92,13 @@ cp .env.example .env
 
 ### `REDIS_URL`
 - **Required**: Yes
-- **Description**: Redis connection URL for caching (required for the app to function)
+- **Description**: Redis connection URL for caching (required for the app to function). Redis 8.0 or newer is required: each title's metadata is kept in one hash whose fields expire individually, which needs `HSETEX` (Redis 8.0) and `HTTL` (Redis 7.4). Startup asks the server for those commands and refuses to boot without them.
 - **Example**: `REDIS_URL=redis://localhost:6379`
+
+### `REDIS_AUTOTUNE`
+- **Default**: `true`
+- **Description**: Set the Redis server's own settings to suit this addon on every startup, since `CONFIG SET` does not survive a restart. Changes `maxmemory-policy` to `volatile-lfu` (any `volatile-*` already in place is kept), turns on `lazyfree-lazy-eviction`, `lazyfree-lazy-expire`, `lazyfree-lazy-server-del` and `activedefrag`, and turns off `stop-writes-on-bgsave-error`. Turn this off when Redis is shared with other applications, since these are server-wide. `maxmemory` is never set and stays yours to choose; until you set one, nothing is evicted whatever the policy says. A Redis that refuses `CONFIG` is reported once on the boot line and otherwise left alone.
+- **Example**: `REDIS_AUTOTUNE=false`
 
 ### `CATALOG_REFRESH_AHEAD_ENABLED`
 - **Default**: `true`

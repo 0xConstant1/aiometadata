@@ -111,6 +111,9 @@ export async function fillFilteredPage(options: {
   let offset = options.startOffset || 0;
   let pagesRead = 0;
   let exhausted = false;
+  // A page narrower than the widest one seen is the upstream's last. Measuring
+  // against `pageSize` instead ended pagination on upstreams that page narrowly.
+  let upstreamPageSize = 0;
 
   while (metas.length < pageSize && pagesRead < maxPages) {
     const raw = await fetchPage(page);
@@ -123,6 +126,10 @@ export async function fillFilteredPage(options: {
       break;
     }
 
+    // Read before the estimate widens, so the first page is never short.
+    const lastUpstreamPage = upstreamPageSize > 0 && raw.length < upstreamPageSize;
+    if (raw.length > upstreamPageSize) upstreamPageSize = raw.length;
+
     const available = (await filter(raw)).slice(offset);
     const taken = available.slice(0, pageSize - metas.length);
     metas.push(...taken);
@@ -134,6 +141,11 @@ export async function fillFilteredPage(options: {
 
     offset = 0;
     page += 1;
+
+    if (lastUpstreamPage) {
+      exhausted = true;
+      break;
+    }
   }
 
   return { metas, nextPage: page, nextOffset: offset, pagesRead, exhausted };
