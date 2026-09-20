@@ -34,6 +34,9 @@ function imageKey(scope: string, itemId: string): string {
   return `${scope}|${normaliseJellyfinId(itemId)}`;
 }
 
+const imageHash = (scope: string): string => `jf:img:${scope}`;
+const imageField = (itemId: string): string => normaliseJellyfinId(itemId);
+
 function imageTtl(): number {
   return envInt('JELLYFIN_IMAGE_CACHE_TTL', 7 * 24 * 60 * 60, 60);
 }
@@ -47,8 +50,14 @@ export function rememberImages(scope: string, itemId: string, images: ItemImages
   imageCache.set(key, images);
 
   if (redis) {
-    redis
-      .set(`jf:img:${key}`, JSON.stringify(images), 'EX', imageTtl())
+    const ttl = imageTtl();
+    // One hash per scope rather than a key per item: a key each grew to six
+    // figures on a busy instance and slowed every scan of the keyspace.
+    redis.multi()
+      .hsetex(imageHash(scope), 'EX', ttl, 'FIELDS', 1, imageField(itemId), JSON.stringify(images))
+      .expire(imageHash(scope), ttl, 'NX')
+      .expire(imageHash(scope), ttl, 'GT')
+      .exec()
       .catch(() => undefined);
   }
 }
@@ -61,7 +70,7 @@ export async function recallImages(scope: string, itemId: string): Promise<ItemI
   if (!redis) return undefined;
 
   try {
-    const stored = await redis.get(`jf:img:${key}`);
+    const stored = await redis.hget(imageHash(scope), imageField(itemId));
     if (!stored) return undefined;
     const images = JSON.parse(stored) as ItemImages;
     imageCache.set(key, images);
