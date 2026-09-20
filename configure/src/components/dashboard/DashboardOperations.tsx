@@ -100,7 +100,7 @@ const COLD_TIER_LABELS: Record<string, string> = {
 const COLD_TIER_HINTS: Record<string, string> = {
   frozen: "Older than FROZEN_AGE — longest disk TTL",
   stable: "Recently finished — shorter disk TTL",
-  partial: "Incomplete payload (language fallback or missing artwork) — short disk TTL, re-checked within COLD_TTL_PARTIAL",
+  partial: "Served from a language fallback — short disk TTL, re-checked within COLD_TTL_PARTIAL",
 };
 
 
