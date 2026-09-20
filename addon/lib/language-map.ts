@@ -90,16 +90,28 @@ async function getLanguageListForConfig(config: UserConfig): Promise<AvailableLa
  * @param config The user configuration object.
  * @returns The 3-letter code, defaulting to 'eng'.
  */
-async function to3LetterCode(langCode: string, config: UserConfig): Promise<string> {
-  if (!langCode) return 'eng';
+async function to3LetterCodeResolved(
+  langCode: string,
+  config: UserConfig
+): Promise<{ code3: string; resolved: boolean }> {
+  if (!langCode) return { code3: 'eng', resolved: true };
 
-  if (langCode === 'pt-BR') return 'pt';
-  if (langCode === 'pt-PT') return 'por';
+  if (langCode === 'pt-BR') return { code3: 'pt', resolved: true };
+  if (langCode === 'pt-PT') return { code3: 'por', resolved: true };
 
   const langCode2 = langCode.split('-')[0];
   const data = await loadLanguageData(config);
   const details = data.languageMap.get(langCode2);
-  return details?.code3 || 'eng'; // Default to English if not found
+  if (details?.code3) return { code3: details.code3, resolved: true };
+
+  // Unmapped: either the lookup degraded to its English-only fallback map, or the
+  // language is genuinely unknown. Both mean we cannot honour the request — except
+  // when English is what was asked for, where 'eng' is the correct answer.
+  return { code3: 'eng', resolved: langCode2.toLowerCase() === 'en' };
+}
+
+async function to3LetterCode(langCode: string, config: UserConfig): Promise<string> {
+  return (await to3LetterCodeResolved(langCode, config)).code3;
 }
 
 /**
@@ -120,12 +132,14 @@ function to3LetterCountryCode(countryCode2: string | undefined): string {
 export {
   getLanguageListForConfig,
   to3LetterCode,
+  to3LetterCodeResolved,
   to3LetterCountryCode
 };
 
 // CommonJS compatibility
-module.exports = { 
-  getLanguageListForConfig, 
-  to3LetterCode, 
-  to3LetterCountryCode 
+module.exports = {
+  getLanguageListForConfig,
+  to3LetterCode,
+  to3LetterCodeResolved,
+  to3LetterCountryCode
 };
