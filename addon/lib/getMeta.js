@@ -5,8 +5,8 @@ const tvdb = require("./tvdb");
 const imdb = require("./imdb");
 const tvmaze = require("./tvmaze");
 const { getImdbRating } = require("./getImdbRating");
-const { to3LetterCode } = require('./language-map');
-const { tvdbLanguageChain, pickTranslation, pickArtwork } = require('../utils/tvdbLanguage');
+const { to3LetterCode, to3LetterCodeResolved } = require('./language-map');
+const { tvdbLanguageChain, pickTranslation, pickArtwork, classifyTvdbLocalization } = require('../utils/tvdbLanguage');
 const jikan = require('./mal');
 const TVDB_IMAGE_BASE = 'https://artworks.thetvdb.com';
 const idMapper = require('./id-mapper');
@@ -1514,6 +1514,7 @@ async function buildTmdbMovieResponse(stremioId, movieData, language, config, us
     released: movieData.release_date ? resolveReleaseTimestamp(movieData.release_date, { originCountry: movieData.production_countries?.[0]?.iso_3166_1 }) : null,
     releaseInfo: movieData.release_date ? movieData.release_date.substring(0, 4) : "",
     _stability: deriveStabilityStamp('tmdb', movieData, 'movie'),
+    _completeness: Utils.classifyTmdbLocalization(movieData, language, 'movie'),
     runtime: Utils.parseRunTime(movieData.runtime),
     country: Utils.parseCoutry(movieData.production_countries),
     imdbRating,
@@ -1951,6 +1952,7 @@ async function buildTmdbSeriesResponse(stremioId, seriesData, language, config, 
     released: seriesData.first_air_date ? resolveReleaseTimestamp(seriesData.first_air_date, { originCountry: seriesData.origin_country?.[0] }).toISOString() : null,
     status: seriesData.status,
     _stability: deriveStabilityStamp('tmdb', seriesData, 'series'),
+    _completeness: Utils.classifyTmdbLocalization(seriesData, language, 'series'),
     imdbRating,
     poster: Utils.isPosterRatingEnabled(config) ? posterProxyUrl : poster,
     _rawPosterUrl: _rawPosterUrl,
@@ -1983,12 +1985,13 @@ async function buildTvdbMovieResponse(stremioId, movieData, language, config, us
   kitsuId = kitsuId || idMapper.getMappingByTmdbId(tmdbId, 'movie')?.kitsu_id;
 
   const { year, image: tvdbPosterPath, remoteIds, characters } = movieData;
-  const langCode3 = await to3LetterCode(language, config);
+  const { code3: langCode3, resolved: langResolved } = await to3LetterCodeResolved(language, config);
+  const langChain = tvdbLanguageChain(langCode3);
   const nameTranslations = movieData.translations?.nameTranslations || [];
   const overviewTranslations = movieData.translations?.overviewTranslations || [];
-  const translatedName = pickTranslation(nameTranslations, tvdbLanguageChain(langCode3), 'name')
+  const translatedName = pickTranslation(nameTranslations, langChain, 'name')
              || movieData.name;
-  const overview = pickTranslation(overviewTranslations, tvdbLanguageChain(langCode3), 'overview')
+  const overview = pickTranslation(overviewTranslations, langChain, 'overview')
     || movieData.overview;
   
   let idProvider = config.providers?.anime_id_provider || 'kitsu';
@@ -2135,6 +2138,7 @@ async function buildTvdbMovieResponse(stremioId, movieData, language, config, us
     releaseInfo: year,
     released: movieData.first_release.date ? resolveReleaseTimestamp(movieData.first_release.date, { originCountry: movieData.originalCountry }).toISOString() : null,
     _stability: deriveStabilityStamp('tvdb', movieData, 'movie'),
+    _completeness: { ...classifyTvdbLocalization(movieData, langChain), langResolved },
     runtime: Utils.parseRunTime(movieData.runtime),
     country: movieData.originalCountry,
     imdbRating,
@@ -2249,7 +2253,7 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
     else idProvider = 'imdb';
   }
   
-  const langCode3 = await to3LetterCode(language, config);
+  const { code3: langCode3, resolved: langResolved } = await to3LetterCodeResolved(language, config);
   const nameTranslations = tvdbShow.translations?.nameTranslations || [];
   const overviewTranslations = tvdbShow.translations?.overviewTranslations || [];
   const langChain = tvdbLanguageChain(langCode3);
@@ -2584,6 +2588,7 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
     runtime: Utils.parseRunTime(tvdbShow.averageRuntime),
     status: tvdbShow.status?.name,
     _stability: deriveStabilityStamp('tvdb', tvdbShow, 'series'),
+    _completeness: { ...classifyTvdbLocalization(tvdbShow, langChain), langResolved },
     country: tvdbShow.originalCountry,
     imdbRating,
     poster: Utils.isPosterRatingEnabled(config) ? posterProxyUrl : poster,
