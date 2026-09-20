@@ -10,35 +10,38 @@ const { envInt } = require('../../utils/envNumber');
 
 const seenRecently = new LRUCache<string, true>({ max: 10000, ttl: 60 * 60 * 1000 });
 
+// One hash rather than a key each: reading these back was a keyspace scan,
+// whose cost is every key on the server and not the few hundred that match.
+const SEEN_KEY = 'jf:seen';
+
 // A configuration a client signed in to recently; background work is spent on those alone.
 function markSeen(userUUID: string): void {
   if (!redis || seenRecently.has(userUUID)) return;
   seenRecently.set(userUUID, true);
-  redis.set(`jf:seen:${userUUID}`, '1', 'EX', envInt('JELLYFIN_ACTIVE_DAYS', 7, 1) * 24 * 60 * 60).catch(() => undefined);
+  const ttl = envInt('JELLYFIN_ACTIVE_DAYS', 7, 1) * 24 * 60 * 60;
+  redis.multi()
+    .hsetex(SEEN_KEY, 'EX', ttl, 'FIELDS', 1, userUUID, '1')
+    .expire(SEEN_KEY, ttl, 'NX')
+    .expire(SEEN_KEY, ttl, 'GT')
+    .exec()
+    .catch(() => undefined);
 }
 
 /** Every configuration a client signed in to within the active window. */
 export async function seenConfigurations(): Promise<string[] | null> {
   if (!redis) return null;
-  const out: string[] = [];
   try {
-    let cursor = '0';
-    do {
-      const [next, keys]: [string, string[]] = await redis.scan(cursor, 'MATCH', 'jf:seen:*', 'COUNT', 500);
-      cursor = next;
-      for (const key of keys) out.push(key.slice('jf:seen:'.length));
-    } while (cursor !== '0');
+    return await redis.hkeys(SEEN_KEY);
   } catch {
     return [];
   }
-  return out;
 }
 
 export async function seenRecentlyBy(userUUID: string): Promise<boolean> {
   if (seenRecently.has(userUUID)) return true;
   if (!redis) return false;
   try {
-    return (await redis.exists(`jf:seen:${userUUID}`)) === 1;
+    return (await redis.hexists(SEEN_KEY, userUUID)) === 1;
   } catch {
     return false;
   }
