@@ -19,12 +19,19 @@ async function reportedVersion(): Promise<string | null> {
 /**
  * Refuses the boot rather than let every write fail into a cache that never
  * holds anything. Asked of the server, not read off its version, so a fork
- * carrying the commands still runs.
+ * carrying the commands still runs. A server that will not answer is not
+ * refused; a missing command still warns on the first write.
  */
 export async function assertMetaHashSupport(): Promise<void> {
   const missing: string[] = [];
   for (const name of REQUIRED_COMMANDS) {
-    const reply = await redis.command('INFO', name.toLowerCase());
+    let reply: any;
+    try {
+      reply = await redis.command('INFO', name.toLowerCase());
+    } catch (error: any) {
+      logger.info(`This Redis does not answer COMMAND (${error?.message}), so ${REQUIRED_COMMANDS.join(' and ')} were taken on trust`);
+      return;
+    }
     if (!Array.isArray(reply) || reply[0] == null) missing.push(name);
   }
   if (missing.length === 0) {
