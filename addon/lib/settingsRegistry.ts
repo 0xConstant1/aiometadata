@@ -2664,6 +2664,15 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: true,
   },
   {
+    key: 'META_COLD_STORE_STRICT',
+    envVar: 'META_COLD_STORE_STRICT',
+    label: 'Cold Store Strict Mode',
+    description: 'Only grant the full frozen/stable TTL to titles whose payload is in the language the user asked for. A title whose name or description was served from a language fallback is stored at the shorter partial TTL instead, so a translation added later is picked up within weeks rather than months. Titles whose language could not be resolved at all are not stored on disk. Artwork is deliberately not judged: cached rows are shared between users who differ only in artwork source, so an artwork verdict would shorten the TTL of shared data on behalf of a single artwork source.',
+    category: 'Cold Store',
+    type: 'boolean',
+    default: true,
+  },
+  {
     key: 'COLD_TTL_FROZEN',
     envVar: 'COLD_TTL_FROZEN',
     label: 'Cold TTL (frozen tier)',
@@ -2681,6 +2690,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     category: 'Cold Store',
     type: 'string',
     default: '60d',
+    validate: (v: string) => /^\s*\d+(\.\d+)?\s*(s|sec|m|min|h|hr|d|w|y)?\s*$/i.test(v),
+  },
+  {
+    key: 'COLD_TTL_PARTIAL',
+    envVar: 'COLD_TTL_PARTIAL',
+    label: 'Cold TTL (partial tier)',
+    description: 'Disk TTL for entries stored while known to be incomplete — a title or description served from a language fallback (e.g. 14d). Deliberately longer than the Redis meta TTL so the entry still absorbs evictions, but short enough that a later translation is picked up quickly. Requires strict mode.',
+    category: 'Cold Store',
+    type: 'string',
+    default: '14d',
     validate: (v: string) => /^\s*\d+(\.\d+)?\s*(s|sec|m|min|h|hr|d|w|y)?\s*$/i.test(v),
   },
   {
@@ -2853,13 +2872,20 @@ export const CONDITIONAL_RULES: ConditionalRule[] = [
     disable: {
       keys: [
         'META_COLD_STORE_PATH', 'META_COLD_STORE_MAX_BYTES',
-        'META_COLD_STORE_COMPRESSION',
-        'COLD_TTL_FROZEN', 'COLD_TTL_STABLE',
+        'META_COLD_STORE_COMPRESSION', 'META_COLD_STORE_STRICT',
+        'COLD_TTL_FROZEN', 'COLD_TTL_STABLE', 'COLD_TTL_PARTIAL',
         'SETTLE_MOVIE', 'SETTLE_SERIES', 'FROZEN_AGE',
         'COLD_STORE_INACTIVE_DAYS', 'COLD_STORE_STATS_TTL',
       ],
     },
     reason: 'The meta cold store is disabled',
+  },
+  {
+    when: { key: 'META_COLD_STORE_STRICT', eq: 'false' },
+    disable: {
+      keys: ['COLD_TTL_PARTIAL'],
+    },
+    reason: 'Completeness gating is off, so nothing is stored in the partial tier',
   },
 ];
 

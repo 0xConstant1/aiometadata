@@ -903,6 +903,7 @@ export async function getTvWatchProviders(params: any, config: UserConfig) {
   return null;
 }
 
+/** utils/tmdbLocalization.ts copies this matching rule; relax one, relax both. */
 export function getTranslations(translations: any, language: string) {
   if (translations?.translations) {
     const iso639 = language.split('-')[0];

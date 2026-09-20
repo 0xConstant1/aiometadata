@@ -1,7 +1,8 @@
 import consola from 'consola';
 const store: any = require('./store');
 const { classifyMetaStability, deriveStabilityStamp }: any = require('./stability');
-const { isColdStoreEnabled }: any = require('./config');
+const { isColdStoreEnabled, isColdStoreStrict }: any = require('./config');
+const { classifyMetaCompleteness }: any = require('./completeness');
 const { decodeCachePayload }: any = require('../cacheCodec');
 
 const logger = consola.withTag('ColdStore');
@@ -23,9 +24,24 @@ const { stripCachePrefix }: any = require('../cacheEpoch');
 export function writeThrough(
   meta: any,
   componentsToCache: Array<{ cacheKey: string; componentData: any }>,
-): { stable: boolean; tier: 'frozen' | 'stable' | null; enqueued: number } {
+): { stable: boolean; tier: 'frozen' | 'stable' | 'partial' | null; enqueued: number; skipped?: boolean } {
   const cls = classifyMetaStability(meta);
   if (!cls.stable || !cls.tier) return { stable: false, tier: null, enqueued: 0 };
+
+  const comp = isColdStoreStrict()
+    ? classifyMetaCompleteness(meta)
+    : { verdict: 'complete' as const, reasons: [] as string[] };
+
+  if (comp.verdict === 'skip') {
+    // Warn, not debug: nothing is written, so stats() cannot surface this.
+    logger.warn(`Not storing ${meta?.id}: ${comp.reasons.join(', ')}`);
+    return { stable: false, tier: null, enqueued: 0, skipped: true };
+  }
+
+  const tier: 'frozen' | 'stable' | 'partial' = comp.verdict === 'partial' ? 'partial' : cls.tier;
+  if (tier === 'partial') {
+    logger.debug(`Demoting ${meta?.id} to partial: ${comp.reasons.join(', ')}`);
+  }
 
   const rows = componentsToCache.map(({ cacheKey, componentData }) => {
     const parts = cacheKey.split(':');
@@ -33,12 +49,12 @@ export function writeThrough(
       k: cacheKey,
       metaId: parts.slice(2).join(':') || meta.id,
       component: parts[0],
-      tier: cls.tier as 'frozen' | 'stable',
+      tier,
       componentData,
     };
   });
   store.put(rows);
-  return { stable: true, tier: cls.tier, enqueued: rows.length };
+  return { stable: true, tier, enqueued: rows.length };
 }
 
 export async function readThrough(missingKeys: string[]): Promise<Map<string, { buffer: Buffer; data: any }>> {
@@ -86,7 +102,7 @@ export const flushNow = store.flushNow;
 export const close = store.close;
 
 module.exports = {
-  isEnabled, init, classify, deriveStabilityStamp, writeThrough, readThrough,
+  isEnabled, init, classify, classifyMetaCompleteness, deriveStabilityStamp, writeThrough, readThrough,
   invalidate: store.invalidate, invalidateKey: store.invalidateKey,
   invalidateByToken: store.invalidateByToken,
   countByToken: store.countByToken, countByMetaId: store.countByMetaId,

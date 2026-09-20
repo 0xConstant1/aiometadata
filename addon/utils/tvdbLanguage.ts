@@ -13,18 +13,50 @@ export function tvdbLanguageChain(primary: string | null | undefined): string[] 
   return chain;
 }
 
+/** First non-empty `field` across the chain, plus which chain entry produced it. */
+export function pickTranslationWithLang(
+  items: any[] | null | undefined,
+  chain: string[],
+  field: string
+): { value: string | undefined; language: string | null } {
+  if (!Array.isArray(items)) return { value: undefined, language: null };
+  for (const code of chain) {
+    const value = items.find(item => item?.language === code)?.[field];
+    if (typeof value === 'string' && value.trim() !== '') return { value, language: code };
+  }
+  return { value: undefined, language: null };
+}
+
 /** First non-empty `field` across the language chain. */
 export function pickTranslation(
   items: any[] | null | undefined,
   chain: string[],
   field: string
 ): string | undefined {
-  if (!Array.isArray(items)) return undefined;
-  for (const code of chain) {
-    const value = items.find(item => item?.language === code)?.[field];
-    if (typeof value === 'string' && value.trim() !== '') return value;
-  }
-  return undefined;
+  return pickTranslationWithLang(items, chain, field).value;
+}
+
+export type LocalizationStamp = {
+  titleLang: 'exact' | 'fallback';
+  overviewLang: 'exact' | 'fallback';
+};
+
+/**
+ * Whether a TVDB record's name and overview are in the user's own language. Keys off
+ * which language matched, never the value: a Spanish "Breaking Bad" is still Spanish.
+ */
+export function classifyTvdbLocalization(record: any, chain: string[]): LocalizationStamp {
+  const original = String(record?.originalLanguage || '').toLowerCase();
+  const verdict = (items: any[] | null | undefined, field: string): 'exact' | 'fallback' => {
+    const { language } = pickTranslationWithLang(items, chain, field);
+    // No match means the base field is used, which is in the record's original language.
+    if (language === null) return original === chain[0] ? 'exact' : 'fallback';
+    return language === chain[0] ? 'exact' : 'fallback';
+  };
+  return {
+    titleLang: verdict(record?.translations?.nameTranslations, 'name'),
+    overviewLang: verdict(record?.translations?.overviewTranslations, 'overview'),
+  };
 }
 
 /** First artwork of `type` across the language chain, before any untyped fallback. */
@@ -42,4 +74,4 @@ export function pickArtwork(
   return undefined;
 }
 
-module.exports = { tvdbLanguageChain, pickTranslation, pickArtwork };
+module.exports = { tvdbLanguageChain, pickTranslation, pickTranslationWithLang, pickArtwork, classifyTvdbLocalization };

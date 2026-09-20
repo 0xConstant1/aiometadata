@@ -1150,6 +1150,26 @@ un-cancelled show eventually refreshes on its own.
 - **Description**: Disk TTL for the `stable` tier — titles that are finished but more recently so. Shorter than the frozen TTL because late data corrections are more likely.
 - **Example**: `COLD_TTL_STABLE=90d`
 
+### `COLD_TTL_PARTIAL`
+- **Default**: `14d`
+- **Description**: Disk TTL for the `partial` tier — titles stored while known to be incomplete, because the title or description was served from a language fallback rather than being available in the user's own language. Short on purpose: the missing piece is exactly what a provider contributor is most likely to add next, so the entry is re-checked within two weeks instead of being frozen for months.
+
+  Deliberately longer than `META_TTL` (7d), so a partial entry outlives its Redis counterpart and still absorbs evictions. Titles are re-promoted automatically — once a later fetch finds the data complete, the entry is rewritten at its full `stable`/`frozen` TTL with no operator action.
+
+  Requires `META_COLD_STORE_STRICT`.
+- **Example**: `COLD_TTL_PARTIAL=30d`
+
+### `META_COLD_STORE_STRICT`
+- **Default**: `true`
+- **Description**: Apply completeness gating on the cold-store write path. When on, titles whose name or description came from a language fallback land in the `partial` tier (see `COLD_TTL_PARTIAL`) instead of `stable`/`frozen`, and titles whose language could not be resolved at all are not persisted to disk.
+
+  **Only language is judged, not artwork.** Most cached bytes live in rows shared between users who differ only in their artwork source, so demoting on a missing logo would shorten the TTL of that shared data on one user's behalf. Setting this to `false` reproduces the previous behaviour exactly: every stable title is stored at its full tier TTL regardless of completeness.
+
+  Incompleteness shortens the TTL rather than preventing storage. For obscure titles a missing translation is usually permanent rather than pending, so refusing to store them would remove the cold store's benefit for exactly the users who gain most from it.
+
+  Watch the `partial` share of the tier breakdown in `GET /api/admin/cold-store/stats` after enabling. If `partial` dominates, the gating is too aggressive for your provider mix.
+- **Example**: `META_COLD_STORE_STRICT=false`
+
 ### `SETTLE_MOVIE`
 - **Default**: `180d`
 - **Description**: Minimum age since release before a movie becomes disk-eligible. Guards against caching a film while its metadata is still being corrected post-release.

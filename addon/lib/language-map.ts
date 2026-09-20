@@ -90,16 +90,31 @@ async function getLanguageListForConfig(config: UserConfig): Promise<AvailableLa
  * @param config The user configuration object.
  * @returns The 3-letter code, defaulting to 'eng'.
  */
-async function to3LetterCode(langCode: string, config: UserConfig): Promise<string> {
-  if (!langCode) return 'eng';
+async function to3LetterCodeResolved(
+  langCode: string,
+  config: UserConfig
+): Promise<{ code3: string; resolved: boolean }> {
+  if (!langCode) return { code3: 'eng', resolved: true };
 
-  if (langCode === 'pt-BR') return 'pt';
-  if (langCode === 'pt-PT') return 'por';
+  if (langCode === 'pt-BR') return { code3: 'pt', resolved: true };
+  if (langCode === 'pt-PT') return { code3: 'por', resolved: true };
 
   const langCode2 = langCode.split('-')[0];
+  const isEnglishRequest = langCode2.toLowerCase() === 'en';
   const data = await loadLanguageData(config);
   const details = data.languageMap.get(langCode2);
-  return details?.code3 || 'eng'; // Default to English if not found
+
+  // 'eng' only means success if English was asked for: loadLanguageData stamps it both
+  // on its failure fallback and on codes the ISO package cannot convert (cn, yue, ...).
+  if (details?.code3 && (details.code3 !== 'eng' || isEnglishRequest)) {
+    return { code3: details.code3, resolved: true };
+  }
+
+  return { code3: 'eng', resolved: isEnglishRequest };
+}
+
+async function to3LetterCode(langCode: string, config: UserConfig): Promise<string> {
+  return (await to3LetterCodeResolved(langCode, config)).code3;
 }
 
 /**
@@ -120,12 +135,14 @@ function to3LetterCountryCode(countryCode2: string | undefined): string {
 export {
   getLanguageListForConfig,
   to3LetterCode,
+  to3LetterCodeResolved,
   to3LetterCountryCode
 };
 
 // CommonJS compatibility
-module.exports = { 
-  getLanguageListForConfig, 
-  to3LetterCode, 
-  to3LetterCountryCode 
+module.exports = {
+  getLanguageListForConfig,
+  to3LetterCode,
+  to3LetterCodeResolved,
+  to3LetterCountryCode
 };

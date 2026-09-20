@@ -94,11 +94,13 @@ const looksLikeMediaId = (token: string) => MEDIA_ID_RE.some((re) => re.test(tok
 const COLD_TIER_LABELS: Record<string, string> = {
   frozen: "Frozen",
   stable: "Stable",
+  partial: "Partial",
 };
 
 const COLD_TIER_HINTS: Record<string, string> = {
   frozen: "Older than FROZEN_AGE — longest disk TTL",
   stable: "Recently finished — shorter disk TTL",
+  partial: "Served from a language fallback — short disk TTL, re-checked within COLD_TTL_PARTIAL",
 };
 
 
