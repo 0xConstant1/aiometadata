@@ -588,7 +588,10 @@ export function buildEpisodes(
   mediaType: string,
   seriesId: string,
   serverId: string,
-  season: number | null
+  season: number | null,
+  // Placeholder sources are a third of an episode list's bytes, and a long
+  // series answers thousands at a time. Only a client that asked gets them.
+  withMediaSources = false
 ): any[] {
   const videos = Array.isArray(meta?.videos) ? meta.videos : [];
   const wanted = season === null ? videos : videos.filter((v: any) => v.season === season);
@@ -651,8 +654,7 @@ export function buildEpisodes(
       CanDownload: false,
       LockedFields: [],
       LockData: false,
-      EnableMediaSourceDisplay: true,
-      MediaSources: placeholderSources(id),
+      ...(withMediaSources ? { EnableMediaSourceDisplay: true, MediaSources: placeholderSources(id) } : {}),
     };
   });
 }
