@@ -498,6 +498,47 @@ export function metaToBaseItem(
   };
 }
 
+export interface ChildPageOptions {
+  filters: string[];
+  sortBy: string;
+  descending: boolean;
+  startIndex: number;
+  limit: number;
+}
+
+/**
+ * Watched state is owed to the page a client asked for, not to every episode of
+ * a long show. A client filtering on played is the exception: each child has to
+ * be judged before it can be left out.
+ */
+export async function pageChildren(
+  children: any[],
+  options: ChildPageOptions,
+  applyState: (items: any[]) => Promise<void>
+): Promise<{ page: any[]; total: number }> {
+  const wantsPlayed = options.filters.includes('IsPlayed');
+  const wantsUnplayed = options.filters.includes('IsUnplayed');
+
+  let kept = children;
+  if (wantsPlayed || wantsUnplayed) {
+    await applyState(kept);
+    if (wantsPlayed) kept = kept.filter((child: any) => child.UserData?.Played === true);
+    if (wantsUnplayed) kept = kept.filter((child: any) => child.UserData?.Played !== true);
+  }
+
+  if (options.sortBy.includes('IndexNumber')) {
+    kept = [...kept].sort((a: any, b: any) =>
+      ((a.ParentIndexNumber ?? 0) - (b.ParentIndexNumber ?? 0)) || ((a.IndexNumber ?? 0) - (b.IndexNumber ?? 0))
+    );
+    if (options.descending) kept.reverse();
+  }
+
+  const page = kept.slice(options.startIndex, options.startIndex + options.limit);
+  if (!wantsPlayed && !wantsUnplayed) await applyState(page);
+
+  return { page, total: kept.length };
+}
+
 /** The same decision filterByIncludeTypes makes, taken on a meta. */
 export function includeTypesFilter(
   mediaType: string,

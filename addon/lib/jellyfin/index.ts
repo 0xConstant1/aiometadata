@@ -24,7 +24,7 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
-import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
+import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, pageChildren, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -723,26 +723,24 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           (String(req.query.Recursive ?? req.query.recursive ?? '').toLowerCase() === 'true' &&
             String(includeItemTypes ?? '').split(',').map((t) => t.trim()).includes('Episode'));
 
-        let children = wantsEpisodes
+        const children = wantsEpisodes
           ? buildEpisodes(meta, descriptor.t, encodeSeriesId(descriptor), serverId, descriptor.k === 'season' ? descriptor.s : null, asksForSources(req))
           : buildSeasons(meta, descriptor.t, String(parentId), serverId);
-        await applyWatchedState(children, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
 
-        const filters = String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim());
-        if (filters.includes('IsPlayed')) children = children.filter((c: any) => c.UserData?.Played === true);
-        if (filters.includes('IsUnplayed')) children = children.filter((c: any) => c.UserData?.Played !== true);
+        const { page, total } = await pageChildren(
+          children,
+          {
+            filters: String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim()),
+            sortBy: String(req.query.SortBy ?? req.query.sortBy ?? ''),
+            descending: String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase() === 'descending',
+            startIndex,
+            limit,
+          },
+          async (items: any[]) =>
+            applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config)
+        );
 
-        const sortBy = String(req.query.SortBy ?? req.query.sortBy ?? '');
-        const descending = String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase() === 'descending';
-        if (sortBy.includes('IndexNumber')) {
-          children.sort((a: any, b: any) =>
-            ((a.ParentIndexNumber ?? 0) - (b.ParentIndexNumber ?? 0)) || ((a.IndexNumber ?? 0) - (b.IndexNumber ?? 0))
-          );
-          if (descending) children.reverse();
-        }
-
-        const page = children.slice(startIndex, startIndex + limit);
-        res.json(itemList(page, children.length, startIndex));
+        res.json(itemList(page, total, startIndex));
         return;
       }
 
