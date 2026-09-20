@@ -724,7 +724,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
             String(includeItemTypes ?? '').split(',').map((t) => t.trim()).includes('Episode'));
 
         let children = wantsEpisodes
-          ? buildEpisodes(meta, descriptor.t, encodeSeriesId(descriptor), serverId, descriptor.k === 'season' ? descriptor.s : null, asksForSources(req))
+          ? buildEpisodes(meta, descriptor.t, encodeSeriesId(descriptor), serverId, descriptor.k === 'season' ? descriptor.s : null)
           : buildSeasons(meta, descriptor.t, String(parentId), serverId);
         await applyWatchedState(children, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
 
@@ -1855,13 +1855,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       if (!parsed) continue;
 
       // An episode the index lacks may have aired since it was read.
-      let episodes = buildEpisodes(meta, row.mediaType, encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) }), serverId, null, asksForSources(req));
+      let episodes = buildEpisodes(meta, row.mediaType, encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) }), serverId, null);
       let target = await locateEpisode(episodes, row.videoId, row.mediaType, String(meta.id));
       if (!target) {
         const fresh = await refreshSeriesIndex(userUUID, row.metaId);
         if (fresh) {
           meta = fresh;
-          episodes = buildEpisodes(meta, row.mediaType, encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) }), serverId, null, asksForSources(req));
+          episodes = buildEpisodes(meta, row.mediaType, encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) }), serverId, null);
           target = await locateEpisode(episodes, row.videoId, row.mediaType, String(meta.id));
         }
       }
@@ -1923,8 +1923,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       found.descriptor.t,
       String(req.params.seriesId),
       serverIdFor(req.params.userUUID),
-      season,
-      asksForSources(req)
+      season
     );
     // A play queue starts at the episode being played, not the first.
     const startItemId = req.query.StartItemId ?? req.query.startItemId;
@@ -2060,7 +2059,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
       let seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
       const te = Date.now();
-      let episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null, asksForSources(req));
+      let episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
       lap.episodes += Date.now() - te;
       let target = await locate(episodes, String(meta.id));
       if (!target) {
@@ -2068,7 +2067,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         if (fresh) {
           meta = fresh;
           seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
-          episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null, asksForSources(req));
+          episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
           target = await locate(episodes, String(meta.id));
         }
       }
@@ -2397,7 +2396,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const { meta, seriesId } = found;
       // Numbering can differ between the series meta and the one an episode's
       // own id resolves to, so the guid is matched rather than the index.
-      const episodes = buildEpisodes(meta, descriptor.t, seriesId, serverIdFor(userUUID), null, asksForSources(req));
+      const episodes = buildEpisodes(meta, descriptor.t, seriesId, serverIdFor(userUUID), null);
       const wanted = normaliseJellyfinId(String(req.params.itemId));
       const episode =
         episodes.find((e: any) => e.Id === wanted) ??
