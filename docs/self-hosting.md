@@ -5,6 +5,7 @@ This guide provides instructions for self-hosting the TMDB Addon for Stremio.
 ## Table of Contents
 - [Self-Hosting Guide](#self-hosting-guide)
   - [Table of Contents](#table-of-contents)
+  - [Requirements](#requirements)
   - [Docker Installation (Recommended)](#docker-installation-recommended)
     - [Using Docker Compose](#using-docker-compose)
   - [Manual Installation](#manual-installation)
@@ -16,6 +17,20 @@ This guide provides instructions for self-hosting the TMDB Addon for Stremio.
   - [Verifying Installation](#verifying-installation)
   - [Troubleshooting](#troubleshooting)
     - [Common Issues](#common-issues)
+
+## Requirements
+
+**Redis 8.0 or newer.** Each title's metadata is kept in one Redis hash whose
+fields expire individually, which needs `HSETEX` (Redis 8.0) and `HTTL`
+(Redis 7.4). The server asks Redis for those commands on startup and refuses to
+boot without them, naming the version it found. The `redis:latest` image is new
+enough; pin `redis:8` if you would rather name a major.
+
+On startup the addon also sets a few of the Redis server's own options
+(eviction policy, lazy-free, defragmentation) to suit how it uses the cache.
+Set `REDIS_AUTOTUNE=false` to leave them alone, which is what to do when Redis
+is shared with other applications. See
+[`REDIS_AUTOTUNE`](ENVIRONMENT_VARIABLES.md#redis_autotune).
 
 ## Docker Installation (Recommended)
 
