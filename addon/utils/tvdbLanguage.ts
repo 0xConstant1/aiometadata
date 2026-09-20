@@ -13,11 +13,7 @@ export function tvdbLanguageChain(primary: string | null | undefined): string[] 
   return chain;
 }
 
-/**
- * First non-empty `field` across the language chain, together with the chain entry that
- * produced it. A null language means nothing matched and the caller will fall through to
- * the record's own base field, which is in its original language.
- */
+/** First non-empty `field` across the chain, plus which chain entry produced it. */
 export function pickTranslationWithLang(
   items: any[] | null | undefined,
   chain: string[],
@@ -46,20 +42,14 @@ export type LocalizationStamp = {
 };
 
 /**
- * Whether a TVDB record's name and overview are in the user's own language.
- *
- * A record can carry zero translations for a field (verified live: TVDB movie 75531 has
- * no overview translations at all), in which case the assembly uses the record's base
- * field. That is the original language, so it is exact only for a user who speaks it.
- *
- * Note the verdict keys off which language matched, never off the value: a legitimate
- * Spanish translation of "Breaking Bad" is the string "Breaking Bad", so comparing
- * against English would wrongly call it a fallback.
+ * Whether a TVDB record's name and overview are in the user's own language. Keys off
+ * which language matched, never the value: a Spanish "Breaking Bad" is still Spanish.
  */
 export function classifyTvdbLocalization(record: any, chain: string[]): LocalizationStamp {
   const original = String(record?.originalLanguage || '').toLowerCase();
   const verdict = (items: any[] | null | undefined, field: string): 'exact' | 'fallback' => {
     const { language } = pickTranslationWithLang(items, chain, field);
+    // No match means the base field is used, which is in the record's original language.
     if (language === null) return original === chain[0] ? 'exact' : 'fallback';
     return language === chain[0] ? 'exact' : 'fallback';
   };

@@ -28,18 +28,12 @@ export function writeThrough(
   const cls = classifyMetaStability(meta);
   if (!cls.stable || !cls.tier) return { stable: false, tier: null, enqueued: 0 };
 
-  // Stability says the title is finished; completeness says whether the payload is worth
-  // freezing for months. A demotion shortens the TTL; a skip refuses storage outright.
   const comp = isColdStoreStrict()
     ? classifyMetaCompleteness(meta)
     : { verdict: 'complete' as const, reasons: [] as string[] };
 
   if (comp.verdict === 'skip') {
-    // Warn rather than debug: a skip means language resolution degraded, which points at
-    // Redis or TMDB being unreachable. Nothing is written, so `stats()` cannot surface
-    // it — this line is the only signal an operator gets. `stable` stays false because
-    // no caller reads it (the sole call site in getCache.ts discards the return), but
-    // `skipped` distinguishes "declined to store" from "title is not finished".
+    // Warn, not debug: nothing is written, so stats() cannot surface this.
     logger.warn(`Not storing ${meta?.id}: ${comp.reasons.join(', ')}`);
     return { stable: false, tier: null, enqueued: 0, skipped: true };
   }
