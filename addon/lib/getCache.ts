@@ -1872,12 +1872,14 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
     componentData: data,
   }));
 
-  // Only a full fetch knows what the title lacks. A catalog-shaped fetch skips
-  // videos and, on MAL, the characters call behind cast and credit links, so its
-  // absences say nothing and must not remove what a full fetch stored.
+  // Only the fields carrying this profile's own hash. The rest are shared with
+  // every profile on this identity and lapse on their own TTL.
   const written = new Set(entries.map(({ field }) => field));
   const hdelFields = authoritative
-    ? Object.values(layout.fields).map(({ field }) => field).filter((field) => !written.has(field))
+    ? Object.entries(layout.fields)
+        .filter(([name]) => HASH_SCOPED_COMPONENTS.has(name))
+        .map(([, { field }]) => field)
+        .filter((field) => !written.has(field))
     : [];
 
   const airWindowTtl = clampMetaTtlToAirWindow(meta, ttl);
