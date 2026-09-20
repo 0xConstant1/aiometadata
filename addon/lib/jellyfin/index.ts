@@ -161,9 +161,18 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     next();
   });
 
-  router.use((req: any, _res: any, next: any) => {
+  router.use((req: any, res: any, next: any) => {
     const query = req.originalUrl.includes('?') ? `?${req.originalUrl.split('?')[1]}` : '';
-    logger.debug(`${req.method} ${req.path}${query}`);
+    const line = `${req.method} ${req.path}${query}`;
+    const started = process.hrtime.bigint();
+    res.once('finish', () => {
+      const ms = Number(process.hrtime.bigint() - started) / 1e6;
+      const slow = envInt('JELLYFIN_SLOW_REQUEST_MS', 1000, 1);
+      // A handler that takes seconds is the one holding the event loop, and the
+      // path alone never said which.
+      if (ms >= slow) logger.warn(`${Math.round(ms)}ms ${res.statusCode} ${line}`);
+      else logger.debug(`${Math.round(ms)}ms ${res.statusCode} ${line}`);
+    });
     next();
   });
 

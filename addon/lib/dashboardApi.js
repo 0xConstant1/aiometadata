@@ -1350,6 +1350,7 @@ class DashboardAPI {
         // What the kernel counts against the container's limit, which includes
         // reclaimable page cache and so runs far above the process's own heap.
         container: require('./containerMemory').containerMemory(),
+        eventLoop: require('./eventLoopLag').eventLoopLag(),
       };
     } catch (error) {
       logger.error("Error getting resource usage:", error);

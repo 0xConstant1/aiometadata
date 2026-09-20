@@ -95,6 +95,7 @@ export function DashboardSystem({ data }: DashboardSystemProps) {
     requestsPerMin: 0,
   });
 
+  const loop = resourceUsage.eventLoop;
   const container = resourceUsage.container;
   const showContainer = !!container?.source;
   const capped = !!container?.limitBytes;
@@ -492,6 +493,31 @@ export function DashboardSystem({ data }: DashboardSystemProps) {
                 <div className="h-2" />
               </div>
             </div>
+
+            {loop && (
+              <div className="pt-3 border-t space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Event Loop</p>
+                  <p className="text-[10px] text-muted-foreground">worst {loop.maxMs} ms since start</p>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>p99 delay</span>
+                  <span className={`font-medium ${loop.p99Ms > 1000 ? "text-red-500" : loop.p99Ms > 100 ? "text-amber-500" : "text-green-500"}`}>
+                    <AnimatedNumber value={loop.p99Ms} /> ms
+                  </span>
+                </div>
+                <Progress
+                  value={Math.min(100, (loop.p99Ms / 1000) * 100)}
+                  className={`h-2 ${loop.p99Ms > 1000 ? "[&>div]:bg-red-500" : loop.p99Ms > 100 ? "[&>div]:bg-amber-500" : ""}`}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  median {loop.p50Ms} ms, mean {loop.meanMs} ms.{' '}
+                  {loop.stallsOverSecond
+                    ? `${loop.stallsOverSecond} stall${loop.stallsOverSecond === 1 ? '' : 's'} over a second: long enough for the health check to miss and the server to drop out of its proxy.`
+                    : 'No stall over a second. Requests are being served promptly.'}
+                </p>
+              </div>
+            )}
 
             {showContainer && (
               <div className="pt-3 border-t space-y-1.5">

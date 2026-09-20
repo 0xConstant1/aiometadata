@@ -247,6 +247,7 @@ async function startServer(): Promise<void> {
     }
   });
   shutdownSequence.register('redis', () => redis.quit().then(() => undefined));
+  require('./lib/eventLoopLag').startEventLoopMonitor();
   // Before anything is cached, so an unusable Redis stops the boot outright.
   await require('./lib/metaHashStore').assertMetaHashSupport();
   // Re-applied every boot: CONFIG SET does not survive a restart. Reported on

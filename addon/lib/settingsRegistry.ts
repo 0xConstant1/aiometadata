@@ -866,6 +866,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 60,
   },
   {
+    key: 'JELLYFIN_SLOW_REQUEST_MS',
+    envVar: 'JELLYFIN_SLOW_REQUEST_MS',
+    label: 'Jellyfin Slow Request Threshold (ms)',
+    description: 'A Jellyfin request taking at least this long is logged as a warning with its duration, so the handler holding the event loop can be identified.',
+    category: 'Features',
+    type: 'number',
+    default: 1000,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_DASHBOARD_DESCRIBE_MS',
     envVar: 'JELLYFIN_DASHBOARD_DESCRIBE_MS',
     label: 'Jellyfin Dashboard Title Lookup Deadline (ms)',
