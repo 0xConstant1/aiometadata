@@ -856,6 +856,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 10,
   },
   {
+    key: 'JELLYFIN_LIVE_SESSION_WINDOW',
+    envVar: 'JELLYFIN_LIVE_SESSION_WINDOW',
+    label: 'Jellyfin Live Session Window (seconds)',
+    description: 'How far back the dashboard looks for live sessions. Positions are kept far longer so a resume can find them; this only bounds what the Jellyfin tab reads on every poll.',
+    category: 'Features',
+    type: 'number',
+    default: 3600,
+    min: 60,
+  },
+  {
     key: 'JELLYFIN_CUSTOM_CSS',
     envVar: 'JELLYFIN_CUSTOM_CSS',
     label: 'Jellyfin Custom CSS',

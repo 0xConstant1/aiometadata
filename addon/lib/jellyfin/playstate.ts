@@ -39,12 +39,22 @@ function sessionTtlSeconds(): number {
   return envInt('JELLYFIN_SESSION_CACHE_TTL', 12 * 60 * 60, 60);
 }
 
+const POSITIONS_KEY = 'jf:pos';
+// Positions are kept for hours so a resume can find them, but the dashboard
+// polls every ten seconds and only wants what is current. An index scored by
+// last tick keeps that read proportional to live sessions, not to the day.
+const POSITIONS_INDEX = 'jf:pos:live';
+
+function liveWindowMs(): number {
+  return envInt('JELLYFIN_LIVE_SESSION_WINDOW', 60 * 60, 60) * 1000;
+}
+
 async function getPosition(key: string): Promise<SessionPosition | undefined> {
   const local = positions.get(key);
   if (local) return local;
   if (!redis) return undefined;
   try {
-    const stored = await redis.get(`jf:pos:${key}`);
+    const stored = await redis.hget(POSITIONS_KEY, key);
     if (!stored) return undefined;
     const parsed = JSON.parse(stored) as SessionPosition;
     positions.set(key, parsed);
@@ -56,18 +66,55 @@ async function getPosition(key: string): Promise<SessionPosition | undefined> {
 
 function setPosition(key: string, value: SessionPosition): void {
   positions.set(key, value);
-  if (redis) redis.set(`jf:pos:${key}`, JSON.stringify(value), 'EX', sessionTtlSeconds()).catch(() => undefined);
+  if (!redis) return;
+  const ttl = sessionTtlSeconds();
+  redis.multi()
+    .hsetex(POSITIONS_KEY, 'EX', ttl, 'FIELDS', 1, key, JSON.stringify(value))
+    .expire(POSITIONS_KEY, ttl, 'NX')
+    .expire(POSITIONS_KEY, ttl, 'GT')
+    .zadd(POSITIONS_INDEX, value.at, key)
+    .expire(POSITIONS_INDEX, ttl, 'NX')
+    .expire(POSITIONS_INDEX, ttl, 'GT')
+    .exec()
+    .catch(() => undefined);
 }
 
 function deletePosition(key: string): void {
   positions.delete(key);
-  if (redis) redis.del(`jf:pos:${key}`).catch(() => undefined);
+  if (redis) redis.multi().hdel(POSITIONS_KEY, key).zrem(POSITIONS_INDEX, key).exec().catch(() => undefined);
 }
 
-/** Sessions this process has heard from, newest first, for the dashboard. */
-export function liveSessions(): Array<{ userUUID: string; profile: string; viewer: string | null; itemId: string; positionMs: number; at: number; paused: boolean }> {
-  const out: Array<{ userUUID: string; profile: string; viewer: string | null; itemId: string; positionMs: number; at: number; paused: boolean }> = [];
-  for (const [key, value] of positions.entries()) {
+export type LiveSession = { userUUID: string; profile: string; viewer: string | null; itemId: string; positionMs: number; at: number; paused: boolean };
+
+/**
+ * Every session the instance has heard from, newest first. Read from Redis so
+ * the answer covers other processes and survives a restart; this process's own
+ * entries win, being the fresher of the two.
+ */
+export async function liveSessions(): Promise<LiveSession[]> {
+  const cutoff = Date.now() - liveWindowMs();
+  const rows = new Map<string, SessionPosition>();
+  for (const [key, value] of positions.entries()) if (value.at >= cutoff) rows.set(key, value);
+
+  if (redis) {
+    try {
+      const cap = envInt('JELLYFIN_SESSION_CACHE_MAX', 5000, 1);
+      const keys: string[] = await redis.zrevrangebyscore(POSITIONS_INDEX, '+inf', cutoff, 'LIMIT', 0, cap);
+      redis.zremrangebyscore(POSITIONS_INDEX, '-inf', `(${cutoff}`).catch(() => undefined);
+      const wanted = keys.filter((key) => !rows.has(key));
+      if (wanted.length > 0) {
+        const stored: Array<string | null> = await redis.hmget(POSITIONS_KEY, ...wanted);
+        wanted.forEach((key, i) => {
+          const raw = stored[i];
+          if (!raw) return;
+          try { rows.set(key, JSON.parse(raw) as SessionPosition); } catch { /* unreadable row */ }
+        });
+      }
+    } catch { /* fall back to what this process holds */ }
+  }
+
+  const out: LiveSession[] = [];
+  for (const [key, value] of rows) {
     const [userUUID, profile, itemId] = key.split(':');
     if (!userUUID || !itemId) continue;
     out.push({ userUUID, profile: profile || '', viewer: value.viewer ?? null, itemId, positionMs: value.positionMs, at: value.at, paused: value.paused === true });

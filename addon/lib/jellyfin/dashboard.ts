@@ -2,7 +2,7 @@ import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { parseStremioId } from './idsCodec';
 import { decodeJellyfinId, stremioIdFor } from './ids';
-import { liveSessions } from './playstate';
+import { liveSessions, type LiveSession } from './playstate';
 import { syncStatus } from './playstateSync';
 import { seenConfigurations } from './context';
 import { refreshSeriesIndex, seriesIndex } from './episodeIndex';
@@ -165,7 +165,7 @@ async function playRows(userUUID: string, rows: any[], names: Map<string, string
   return out;
 }
 async function sessionRows(userUUID: string, names: Map<string, string>): Promise<SessionRow[]> {
-  const own = liveSessions().filter((s) => s.userUUID === userUUID);
+  const own = (await liveSessions()).filter((s) => s.userUUID === userUUID);
   return mapWithConcurrency(own, 2, async (s) => {
     const descriptor = await decodeJellyfinId(s.itemId);
     const videoId = descriptor ? stremioIdFor(descriptor) : null;
@@ -181,8 +181,9 @@ let overviewMemo: { at: number; value: any } | null = null;
 export async function dashboardOverview(): Promise<any> {
   const ttl = envInt('JELLYFIN_DASHBOARD_TOTALS_TTL', 60, 1) * 1000;
   const now = Date.now();
+  const sessions = await liveSessions();
   if (overviewMemo && now - overviewMemo.at < ttl) {
-    return { ...overviewMemo.value, playingNow: playingNow(now), sessions: liveSessions().length, sync: syncStatus() };
+    return { ...overviewMemo.value, playingNow: playingNow(sessions, now), sessions: sessions.length, sync: syncStatus() };
   }
   const [playedDay, playedWeek, seen] = await Promise.all([
     database.countPlayedSince(now - 24 * 60 * 60 * 1000),
@@ -196,12 +197,12 @@ export async function dashboardOverview(): Promise<any> {
     activeDays: envInt('JELLYFIN_ACTIVE_DAYS', 7, 1),
   };
   overviewMemo = { at: now, value };
-  return { ...value, playingNow: playingNow(now), sessions: liveSessions().length, sync: syncStatus() };
+  return { ...value, playingNow: playingNow(sessions, now), sessions: sessions.length, sync: syncStatus() };
 }
 
-function playingNow(now: number): number {
+function playingNow(sessions: LiveSession[], now: number): number {
   const window = envInt('JELLYFIN_DASHBOARD_LIVE_SECONDS', 120, 10) * 1000;
-  return liveSessions().filter((s) => !s.paused && now - s.at <= window).length;
+  return sessions.filter((s) => !s.paused && now - s.at <= window).length;
 }
 
 export interface SearchRow {
