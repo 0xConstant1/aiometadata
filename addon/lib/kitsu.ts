@@ -2,6 +2,7 @@ import axios, { AxiosResponse } from 'axios';
 import { cacheWrapGlobal } from './getCache.js';
 import { normalizeKitsuBatchResponseForCache, normalizeKitsuDetailResponseForCache } from './kitsuCacheNormalizers.js';
 import consola from 'consola';
+import { envInt } from '../utils/envNumber';
 
 const logger = consola.withTag('Kitsu');
 
@@ -14,11 +15,13 @@ let kitsuClientPromise: Promise<KitsuClient> | null = null;
 
 // kitsu v11 is ESM-first, while the backend still compiles to CommonJS.
 const loadKitsu = () =>
-  Function('return import("kitsu")')() as Promise<{ default: new () => KitsuClient }>;
+  Function('return import("kitsu")')() as Promise<{ default: new (options?: Record<string, unknown>) => KitsuClient }>;
 
 async function getKitsuClient(): Promise<KitsuClient> {
   if (!kitsuClientPromise) {
-    kitsuClientPromise = loadKitsu().then(({ default: Kitsu }) => new Kitsu());
+    // The client defaults to 30s; one timeout governs every Kitsu path instead.
+    const options: Record<string, unknown> = { timeout: kitsuTimeoutMs() };
+    kitsuClientPromise = loadKitsu().then(({ default: Kitsu }) => new Kitsu(options));
   }
 
   return kitsuClientPromise;
@@ -347,7 +350,7 @@ async function getMultipleAnimeDetails(ids: (string | number)[], appends: string
           'Accept': 'application/vnd.api+json',
           'Content-Type': 'application/vnd.api+json'
         },
-        timeout: 10000
+        timeout: kitsuTimeoutMs()
       });
       
       const pageData = response.data?.data || [];
@@ -469,10 +472,15 @@ async function _fetchEpisodesRecursively(
 
 // -------------------- Helpers --------------------
 
+function kitsuTimeoutMs(): number {
+  return envInt('KITSU_REQUEST_TIMEOUT_MS', 10000, 500);
+}
+
 async function fetchRelationshipList(url?: string, attributeKey: 'name' | 'title' = 'name'): Promise<string[]> {
   if (!url) return []
   try {
-    const res = await fetch(url)
+    // This one had no timeout at all, so a slow Kitsu held the request open.
+    const res = await fetch(url, { signal: AbortSignal.timeout(kitsuTimeoutMs()) })
     if (!res.ok) return []
     const json = await res.json()
     return ((json as any).data || [])

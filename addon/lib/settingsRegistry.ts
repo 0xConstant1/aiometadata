@@ -866,6 +866,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 60,
   },
   {
+    key: 'KITSU_REQUEST_TIMEOUT_MS',
+    envVar: 'KITSU_REQUEST_TIMEOUT_MS',
+    label: 'Kitsu Request Timeout (ms)',
+    description: 'How long a Kitsu request may run before it is abandoned. Unbounded, its slowest calls ran past two minutes and held a request open for the whole of it.',
+    category: 'Providers',
+    type: 'number',
+    default: 10000,
+    min: 500,
+  },
+  {
     key: 'JELLYFIN_IMAGE_REDIRECT',
     envVar: 'JELLYFIN_IMAGE_REDIRECT',
     label: 'Jellyfin Image Redirect',
