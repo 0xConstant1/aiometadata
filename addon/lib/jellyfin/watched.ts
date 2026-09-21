@@ -100,6 +100,30 @@ const hydrated = new LRUCache<string, WatchedSnapshot>({
   ttl: envInt('JELLYFIN_WATCHED_TTL', 3600, 1) * 1000,
 });
 
+// Held under the credential alone: watching something changes the tracker's digest.
+const lastGood = new LRUCache<string, WatchedSnapshot>({
+  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1),
+  ttl: envInt('JELLYFIN_WATCHED_STALE_TTL', 24 * 60 * 60, 60) * 1000,
+});
+const rebuilding = new Set<string>();
+
+function hold(keyHash: string, key: string, snapshot: WatchedSnapshot): void {
+  if (!snapshot.episodes.size && !snapshot.movies.size && !snapshot.series.size) return;
+  hydrated.set(key, snapshot);
+  lastGood.set(keyHash, snapshot);
+}
+
+/** The rebuild is asked for with force, or it would find this held snapshot and return it. */
+function heldWhileRebuilding(keyHash: string, rebuild: () => Promise<WatchedSnapshot>): WatchedSnapshot | undefined {
+  const stale = lastGood.get(keyHash);
+  if (!stale || rebuilding.has(keyHash)) return stale;
+  rebuilding.add(keyHash);
+  void rebuild()
+    .catch((error: any) => logger.debug(`Watched snapshot refresh failed: ${error?.message || error}`))
+    .finally(() => rebuilding.delete(keyHash));
+  return stale;
+}
+
 // A failed read is held for a while; a dead token must not pull the library per request.
 const failed = new LRUCache<string, string>({
   max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1),
@@ -432,7 +456,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
  * gated on the activities digest and the snapshot is otherwise served from
  * cache however often a client asks.
  */
-async function readWatchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
+async function readWatchedSnapshot(userUUID: string, config: any, force = false): Promise<WatchedSnapshot> {
   const { readsTrackers } = require('./profiles');
   if (!readsTrackers(config)) return EMPTY;
 
@@ -442,8 +466,8 @@ async function readWatchedSnapshot(userUUID: string, config: any): Promise<Watch
   const credential = credentialFor(config, service);
   if (!credential) return EMPTY;
 
-  if (service === 'mdblist') return mdblistSnapshot(userUUID, credential, config);
-  if (service === 'publicmetadb') return pmdbSnapshot(userUUID, credential, config);
+  if (service === 'mdblist') return mdblistSnapshot(userUUID, credential, config, force);
+  if (service === 'publicmetadb') return pmdbSnapshot(userUUID, credential, config, force);
   if (service !== 'simkl') return EMPTY;
 
   const tokenId = credential;
@@ -464,8 +488,12 @@ async function readWatchedSnapshot(userUUID: string, config: any): Promise<Watch
     const fingerprint = createHash('sha256').update(parts.join('|')).digest('hex').substring(0, 16);
 
     const key = `${tokenHash}:${fingerprint}`;
-    const memo = hydrated.get(key);
+    const memo = force ? undefined : hydrated.get(key);
     if (memo) return memo;
+    if (!force) {
+      const held = heldWhileRebuilding(tokenHash, () => readWatchedSnapshot(userUUID, config, true));
+      if (held) return held;
+    }
 
     const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
@@ -485,7 +513,7 @@ async function readWatchedSnapshot(userUUID: string, config: any): Promise<Watch
       dropped: new Set(raw?.dropped ?? []),
       fingerprint,
     };
-    if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);
+    hold(tokenHash, key, snapshot);
     logger.debug(
       `Watched snapshot for ${userUUID}: ${snapshot.episodes.size} episodes, ${snapshot.movies.size} films`
     );
@@ -637,7 +665,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
   };
 }
 
-async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Promise<WatchedSnapshot> {
+async function pmdbSnapshot(userUUID: string, apiKey: string, config: any, force = false): Promise<WatchedSnapshot> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   if (failed.has(`pmdb:${keyHash}`)) return EMPTY;
   let key: string;
@@ -648,8 +676,12 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Prom
     return EMPTY;
   }
 
-  const memo = hydrated.get(key);
+  const memo = force ? undefined : hydrated.get(key);
   if (memo) return memo;
+  if (!force) {
+    const held = heldWhileRebuilding(keyHash, () => pmdbSnapshot(userUUID, apiKey, config, true));
+    if (held) return held;
+  }
 
   try {
     const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
@@ -670,7 +702,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any): Prom
       dropped: new Set(raw?.dropped ?? []),
       fingerprint: key,
     };
-    if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);
+    hold(keyHash, key, snapshot);
     logger.debug(
       `Watched snapshot for ${userUUID} from publicmetadb: ${snapshot.episodes.size} episodes, ${snapshot.movies.size} films`
     );
@@ -710,7 +742,7 @@ async function mdblistFingerprint(apiKey: string): Promise<string> {
   return createHash('sha256').update(parts).digest('hex').substring(0, 16);
 }
 
-async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): Promise<WatchedSnapshot> {
+async function mdblistSnapshot(userUUID: string, apiKey: string, config: any, force = false): Promise<WatchedSnapshot> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   if (failed.has(`mdblist:${keyHash}`)) return EMPTY;
   let key: string;
@@ -722,8 +754,12 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): P
     return EMPTY;
   }
 
-  const memo = hydrated.get(key);
+  const memo = force ? undefined : hydrated.get(key);
   if (memo) return memo;
+  if (!force) {
+    const held = heldWhileRebuilding(keyHash, () => mdblistSnapshot(userUUID, apiKey, config, true));
+    if (held) return held;
+  }
 
   try {
     const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
@@ -744,7 +780,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any): P
       dropped: new Set(raw?.dropped ?? []),
       fingerprint: key,
     };
-    if (snapshot.episodes.size || snapshot.movies.size || snapshot.series.size) hydrated.set(key, snapshot);
+    hold(keyHash, key, snapshot);
     logger.debug(
       `Watched snapshot for ${userUUID} from mdblist: ${snapshot.episodes.size} episodes, ${snapshot.movies.size} films`
     );
@@ -866,6 +902,57 @@ async function movieSpellings(id: string, config: any): Promise<string[]> {
  * keep serving the state from before. Dropping the digest lets the next request
  * see the change instead of waiting out the throttle.
  */
+async function snapshotSeed(config: any): Promise<string | null> {
+  const service = sourceFor(config);
+  if (!service || (service !== 'simkl' && service !== 'mdblist' && service !== 'publicmetadb')) return null;
+  const credential = credentialFor(config, service);
+  if (!credential) return null;
+  if (service !== 'simkl') return credential;
+  const { getSimklToken } = require('../../utils/simklUtils');
+  const token = await getSimklToken(credential);
+  return token?.access_token ?? null;
+}
+
+export async function applyLocalWatch(
+  config: any,
+  change: { videoId: string; metaId: string; kind: 'movie' | 'episode'; played: boolean }
+): Promise<void> {
+  try {
+    const seed = await snapshotSeed(config);
+    if (!seed) return;
+    const keyHash = createHash('sha256').update(seed).digest('hex').substring(0, 16);
+
+    const patch = (snapshot: WatchedSnapshot): void => {
+      const set = change.kind === 'movie' ? snapshot.movies : snapshot.episodes;
+      const had = set.has(change.videoId);
+      if (change.played === had) return;
+      if (change.played) {
+        set.add(change.videoId);
+        snapshot.at.set(change.videoId, Date.now());
+      } else {
+        set.delete(change.videoId);
+        snapshot.at.delete(change.videoId);
+      }
+      if (change.kind !== 'episode') return;
+      const counts = snapshot.series.get(change.metaId);
+      if (!counts) return;
+      const watched = Math.max(0, Math.min(counts.total, counts.watched + (change.played ? 1 : -1)));
+      snapshot.series.set(change.metaId, { ...counts, watched, at: Date.now() });
+    };
+
+    const seen = new Set<WatchedSnapshot>();
+    const stale = lastGood.get(keyHash);
+    if (stale) { patch(stale); seen.add(stale); }
+    for (const key of [...hydrated.keys()]) {
+      if (!String(key).startsWith(`${keyHash}:`)) continue;
+      const snapshot = hydrated.get(key);
+      if (snapshot && !seen.has(snapshot)) { patch(snapshot); seen.add(snapshot); }
+    }
+  } catch (error: any) {
+    logger.debug(`Could not apply the local watch to the held snapshot: ${error?.message || error}`);
+  }
+}
+
 export async function invalidateWatched(config: any): Promise<void> {
   const service = sourceFor(config);
   if (!service || (service !== 'simkl' && service !== 'mdblist' && service !== 'publicmetadb')) return;

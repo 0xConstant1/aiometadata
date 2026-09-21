@@ -398,12 +398,18 @@ async function tellTrackers(
   // resume shelf and the watched ticks read from are dropped rather than left
   // serving what they cached before the event.
   const { invalidateResume } = require('./resume');
-  const { invalidateWatched } = require('./watched');
+  const { invalidateWatched, applyLocalWatch } = require('./watched');
   invalidateResume(userUUID);
 
   // A finished stop or a mark changes what the tracker holds, such as a show's
   // next episode; a batch of marks drops the snapshot once, after the batch.
   if ((event === 'stop' && played === true) || (refreshWatched && (event === 'played' || event === 'unplayed'))) {
+    await applyLocalWatch(config, {
+      videoId: session.videoId,
+      metaId: session.descriptor.i,
+      kind: session.descriptor.k === 'episode' ? 'episode' : 'movie',
+      played: event !== 'unplayed',
+    }).catch(() => undefined);
     await invalidateWatched(config).catch(() => undefined);
   }
 }
@@ -481,8 +487,18 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
     }, config, userUUID).catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
     return;
   }
-  const { invalidateWatched } = require('./watched');
+  const { invalidateWatched, applyLocalWatch } = require('./watched');
   mapWithConcurrency(sessions, 3, (session: ResolvedSession) => tellTrackers(userUUID, config, session, event, 0, played, false))
+    .then(async () => {
+      for (const session of sessions) {
+        await applyLocalWatch(config, {
+          videoId: session.videoId,
+          metaId: session.descriptor.i,
+          kind: session.descriptor.k === 'episode' ? 'episode' : 'movie',
+          played,
+        }).catch(() => undefined);
+      }
+    })
     .then(() => invalidateWatched(config))
     .catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
 }

@@ -1434,6 +1434,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     max: 5,
   },
   {
+    key: 'JELLYFIN_WATCHED_STALE_TTL',
+    envVar: 'JELLYFIN_WATCHED_STALE_TTL',
+    label: 'Jellyfin Watched Snapshot Grace (seconds)',
+    description: 'How long the last watched snapshot keeps answering while a fresh one is read from the tracker. Watching something changes the tracker digest, and without this every home screen waits for the whole history to be pulled again.',
+    category: 'Cache',
+    type: 'number',
+    default: 86400,
+    min: 60,
+  },
+  {
     key: 'CACHE_COMPRESSION_ENABLED',
     envVar: 'CACHE_COMPRESSION_ENABLED',
     label: 'Cache Compression',
