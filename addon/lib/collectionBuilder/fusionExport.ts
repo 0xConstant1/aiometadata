@@ -1,5 +1,6 @@
 import {
   MANIFEST_PLACEHOLDER,
+  folderSources,
   type AddonIdentity,
   type BuilderEntry,
   type ExportNote,
@@ -193,7 +194,7 @@ function toCollectionItem(
 
   const dataSources: FusionDataSource[] = [];
   let nativeSkipped = 0;
-  for (const source of folder.sources) {
+  for (const source of folderSources(folder)) {
     if (isNativeSource(source)) {
       if (nativeOrigin(source) === 'fusion' && source.native) {
         dataSources.push(source.native as FusionNativeSource);

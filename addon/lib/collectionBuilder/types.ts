@@ -35,6 +35,7 @@ export interface FolderDraft {
   heroVideoUrl?: string;
   titleLogoUrl?: string;
   sources: SourceDraft[];
+  folders?: FolderDraft[];
 }
 
 export interface CollectionDraft {
@@ -47,6 +48,8 @@ export interface CollectionDraft {
   focusGlowEnabled?: boolean;
   viewMode?: CollectionViewMode;
   showAllTab?: boolean;
+  /** Server users holding one of these see it; none means every user. */
+  tags?: string[];
   folders: FolderDraft[];
 }
 
@@ -64,6 +67,7 @@ export interface ClassicRowDraft {
   badges: { providers: boolean; ratings: boolean };
   backgroundImageURL?: string;
   numbered?: boolean;
+  tags?: string[];
 }
 
 export type BuilderEntry = CollectionDraft | ClassicRowDraft;
@@ -273,7 +277,46 @@ export function createFolderDraft(title = 'New Folder'): FolderDraft {
 /** Every catalog an entry points at, flattened. */
 export function entrySources(entry: BuilderEntry): SourceDraft[] {
   if (entry.kind === 'classicRow') return entry.source ? [entry.source] : [];
-  return entry.folders.flatMap(folder => folder.sources);
+  return entry.folders.flatMap(folderSources);
+}
+
+export function subFolders(folder: FolderDraft): FolderDraft[] {
+  return Array.isArray(folder.folders) ? folder.folders : [];
+}
+
+export function folderSources(folder: FolderDraft): SourceDraft[] {
+  return [...folder.sources, ...subFolders(folder).flatMap(folderSources)];
+}
+
+export function allFolders(folders: FolderDraft[]): FolderDraft[] {
+  return folders.flatMap(folder => [folder, ...allFolders(subFolders(folder))]);
+}
+
+export function findFolder(folders: FolderDraft[], id: string): FolderDraft | undefined {
+  return allFolders(folders).find(folder => folder.id === id);
+}
+
+export function parentFolderOf(folders: FolderDraft[], id: string): FolderDraft | undefined {
+  return allFolders(folders).find(folder => subFolders(folder).some(child => child.id === id));
+}
+
+export function mapFolder(folders: FolderDraft[], id: string, fn: (folder: FolderDraft) => FolderDraft): FolderDraft[] {
+  return folders.map(folder => {
+    if (folder.id === id) return fn(folder);
+    if (!folder.folders?.length) return folder;
+    const folders = mapFolder(folder.folders, id, fn);
+    return folders === folder.folders ? folder : { ...folder, folders };
+  });
+}
+
+export function mapFoldersDeep(folders: FolderDraft[], fn: (folder: FolderDraft) => FolderDraft): FolderDraft[] {
+  return folders.map(folder => fn(folder.folders?.length ? { ...folder, folders: mapFoldersDeep(folder.folders, fn) } : folder));
+}
+
+export function removeFolder(folders: FolderDraft[], id: string): FolderDraft[] {
+  return folders
+    .filter(folder => folder.id !== id)
+    .map(folder => (folder.folders?.length ? { ...folder, folders: removeFolder(folder.folders, id) } : folder));
 }
 
 export function hasNuvioCollectionSettings(entry: CollectionDraft): boolean {

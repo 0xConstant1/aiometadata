@@ -247,7 +247,7 @@ async function performAnimeSearch(type: string, query: string, language: string,
 
   logger.debug(`Found ${searchResults.length} anime results for query: "${query}"`);
 
-  const metas = await Utils.parseAnimeCatalogMetaBatch(searchResults, config, language);
+  const metas = await Utils.parseAnimeCatalogMetaBatch(searchResults, config, language, false, { light: config._searchLight === true });
   return metas;
 }
 
@@ -315,7 +315,8 @@ async function performKitsuSearch(type: string, query: string, language: string,
           } else if(preferredProvider === 'mal') {
             id = `mal:${mapping?.mal_id}`;
           }
-          if((config.mal?.useImdbIdForCatalogAndSearch && !isMovie)){
+          const light = config._searchLight === true;
+          if((config.mal?.useImdbIdForCatalogAndSearch && !isMovie) && !light){
             return (await cacheWrapMetaSmart(config.userUUID, id, async () => {
               const { getMeta } = await import("../lib/getMeta");
               return await getMeta(itemType, language, `kitsu:${kitsuId}`, config, config.userUUID, false);
@@ -325,9 +326,15 @@ async function performKitsuSearch(type: string, query: string, language: string,
 
           const imdbRating = imdbId ? await getImdbRating(imdbId, itemType) : 'N/A';
           const mediaType = isMovie ? 'movie' : 'series';
-          const background = mapping?.mal_id ? await Utils.getAnimeBg({malId: mapping?.mal_id, imdbId: imdbId, tvdbId: tvdbId, tmdbId: tmdbId, mediaType, malPosterUrl: item.coverImage?.original}, config) : item.coverImage?.original;
-          const poster = mapping?.mal_id ? await Utils.getAnimePoster({malId: mapping?.mal_id, imdbId: imdbId, tvdbId: tvdbId, tmdbId: tmdbId, mediaType, malPosterUrl: item.posterImage?.original}, config) : item.posterImage?.original;
-          const logo = isMovie ? tmdbId ? await moviedb.getTmdbMovieLogo(tmdbId, config) : null : await Utils.getAnimeLogo({malId: mapping?.mal_id, imdbId: imdbId, tvdbId: tvdbId, tmdbId: tmdbId, mediaType}, config);
+          const background = light
+            ? item.coverImage?.original
+            : mapping?.mal_id ? await Utils.getAnimeBg({malId: mapping?.mal_id, imdbId: imdbId, tvdbId: tvdbId, tmdbId: tmdbId, mediaType, malPosterUrl: item.coverImage?.original}, config) : item.coverImage?.original;
+          const poster = light
+            ? item.posterImage?.original
+            : mapping?.mal_id ? await Utils.getAnimePoster({malId: mapping?.mal_id, imdbId: imdbId, tvdbId: tvdbId, tmdbId: tmdbId, mediaType, malPosterUrl: item.posterImage?.original}, config) : item.posterImage?.original;
+          const logo = light
+            ? null
+            : isMovie ? tmdbId ? await moviedb.getTmdbMovieLogo(tmdbId, config) : null : await Utils.getAnimeLogo({malId: mapping?.mal_id, imdbId: imdbId, tvdbId: tvdbId, tmdbId: tmdbId, mediaType}, config);
 
           let finalPoster = poster || `${host}/missing_poster.png`;
           if (Utils.isPosterRatingEnabled(config)) {
@@ -345,7 +352,7 @@ async function performKitsuSearch(type: string, query: string, language: string,
           }
 
           return {
-            id: `kitsu:${kitsuId}`,
+            id: light && config.mal?.useImdbIdForCatalogAndSearch && !isMovie ? id : `kitsu:${kitsuId}`,
             type: mediaType,
             name: Utils.getKitsuLocalizedTitle(item.titles, language) || item.canonicalTitle,
             poster: finalPoster,
@@ -578,12 +585,21 @@ async function performTmdbSearch(type: string, query: string, language: string, 
 
   const sortedRawResults = Utils.sortSearchResults(Array.from(rawResults.values()), query).slice(0, 25);
 
+  const light = config._searchLight === true
+    && !hasAgeRatingCap(config)
+    && !(type === 'movie' && config.hideUnreleasedDigitalSearch);
+  const lightGenres = light ? await getGenreList('tmdb', language, type === 'movie' ? 'movie' : 'series', config).catch(() => []) : [];
+
   const hydrationPromises = sortedRawResults.map(async (media: any) => {
     try {
         const mediaType = media.media_type === 'movie' ? 'movie' : 'series';
         if(mediaType !== type) {
           logger.debug(`Filtering out ${media.title || media.name} - mediaType: ${mediaType}, searchType: ${type}`);
           return null;
+        }
+
+        if (light && (media.title || media.name)) {
+          return hydrateLight(media, mediaType, language, config, lightGenres);
         }
 
         let logoUrl; let backgroundUrl; let posterUrl;
@@ -828,6 +844,44 @@ const ADULT_KEYWORDS = new Set([
 /** A config that predates the field still filters, since the default is off. */
 function excludesAdult(config: any): boolean {
   return config?.includeAdult !== true;
+}
+
+const SOFT_GENRES = new Set([18, 35, 10749, 10766]);
+
+// Adult titles TMDB leaves unflagged are unclassified or thinly voted soft-genre entries.
+function looksAdultSuspect(media: any): boolean {
+  const genres: number[] = Array.isArray(media?.genre_ids) ? media.genre_ids : [];
+  if (!genres.length) return true;
+  return (media?.vote_count ?? 0) < 50 && genres.every((g) => SOFT_GENRES.has(g));
+}
+
+async function hydrateLight(media: any, mediaType: string, language: string, config: any, genreList: any[]): Promise<any> {
+  const keywords = excludesAdult(config) && looksAdultSuspect(media)
+    ? await (mediaType === 'movie'
+        ? moviedb.movieInfo({ id: media.id, language, append_to_response: 'keywords' }, config)
+        : moviedb.tvInfo({ id: media.id, language, append_to_response: 'keywords' }, config)
+      ).then((d: any) => d?.keywords ?? null).catch(() => null)
+    : null;
+
+  const allIds = await resolveAllIds(`tmdb:${media.id}`, mediaType, config, { tmdbId: media.id }, ['imdb']);
+  const parsed = Utils.parseMedia(media, mediaType, genreList, config);
+  if (!parsed) return null;
+
+  const fallbackImage = `${host}/missing_poster.png`;
+  const posterUrl = media.poster_path ? tmdbImageUrl(tmdbPosterSize(), media.poster_path) : fallbackImage;
+  parsed.id = allIds?.imdbId || `tmdb:${media.id}`;
+  parsed.poster = Utils.isPosterRatingEnabled(config)
+    ? Utils.buildPosterProxyUrl(host, mediaType, `tmdb:${media.id}`, posterUrl, language, config)
+    : posterUrl;
+  parsed.imdbRating = allIds?.imdbId ? await getImdbRating(allIds.imdbId, mediaType) : null;
+  parsed.popularity = media.popularity;
+  parsed.score = media.score;
+  if (allIds?.imdbId) parsed.imdb_id = allIds.imdbId;
+  parsed._tmdbId = String(media.id);
+  if (allIds?.tvdbId) parsed._tvdbId = String(allIds.tvdbId);
+  parsed.certification = null;
+  parsed.app_extras = { certification: null };
+  return { parsed, details: keywords ? { ...media, keywords } : media };
 }
 
 function isAdultTmdbItem(details: any): boolean {

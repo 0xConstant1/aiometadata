@@ -1,4 +1,4 @@
-import type { BuilderEntry } from '@shared/types';
+import { entrySources, type BuilderEntry } from '@shared/types';
 import type { CatalogConfig } from '@/contexts/config';
 import { deriveManifestCatalog } from './manifestSources';
 
@@ -39,9 +39,7 @@ export function findCollectionUsage(
   const entries: string[] = [];
 
   for (const entry of collections || []) {
-    const drafts = entry.kind === 'classicRow'
-      ? (entry.source ? [entry.source] : [])
-      : entry.folders.flatMap(folder => folder.sources);
+    const drafts = entrySources(entry);
 
     let hits = 0;
     for (const draft of drafts) {
@@ -62,10 +60,7 @@ export function findCollectionUsage(
 export function collectedCatalogKeys(collections: BuilderEntry[] | undefined): Set<string> {
   const keys = new Set<string>();
   for (const entry of collections || []) {
-    const drafts = entry.kind === 'classicRow'
-      ? (entry.source ? [entry.source] : [])
-      : entry.folders.flatMap(folder => folder.sources);
-    for (const draft of drafts) keys.add(catalogUsageKey(draft.catalogId, draft.type));
+    for (const draft of entrySources(entry)) keys.add(catalogUsageKey(draft.catalogId, draft.type));
   }
   return keys;
 }

@@ -194,9 +194,13 @@ async function startServer(): Promise<void> {
   });
   shutdownSequence.register('http server', () => closeHttpServer(server), { phase: 'traffic' });
 
+  const { attachJellyfinSocket } = require('./lib/jellyfin/socket');
+  attachJellyfinSocket(server);
+
   // Storage
   await database.initialize();
   shutdownSequence.register('metrics', () => require('./lib/metricsBatch').flushMetrics(), { phase: 'traffic' });
+  shutdownSequence.register('jellyfin artwork', () => require('./lib/jellyfin/items').flushRememberedImages(), { phase: 'traffic' });
   shutdownSequence.register('database', () => database.close());
   readiness.markReady('database');
   ok('database');
@@ -244,6 +248,7 @@ async function startServer(): Promise<void> {
     }
   });
   shutdownSequence.register('redis', () => redis.quit().then(() => undefined));
+  require('./lib/eventLoopLag').startEventLoopMonitor();
   // Before anything is cached, so an unusable Redis stops the boot outright.
   await require('./lib/metaHashStore').assertMetaHashSupport();
   // Re-applied every boot: CONFIG SET does not survive a restart. Reported on
@@ -278,6 +283,11 @@ async function startServer(): Promise<void> {
     }
   });
 
+  // The sync spells tracker rows through the id mappers, so it waits for them.
+  if (require('./lib/settingsService').getSetting('JELLYFIN_API_ENABLED')) {
+    require('./lib/jellyfin/playstateSync').startPlaystateSync();
+  }
+
   // Deferred work - never on the path to serving traffic
   startServerWithCacheWarming()
     .then(() => readiness.markReady('cacheWarming'))
@@ -291,6 +301,9 @@ async function startServer(): Promise<void> {
 
   const { startComprehensiveCatalogWarming } = require('./lib/comprehensiveCatalogWarmer.js');
   startComprehensiveCatalogWarming();
+
+  const { startRecommendationRefresh } = require('./utils/recommendations/refresh.js');
+  startRecommendationRefresh();
 
   const { startCacheCleanupScheduler } = require('./lib/cacheCleanupScheduler.js');
   const indexModule = require('./index.js');

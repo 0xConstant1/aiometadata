@@ -100,6 +100,13 @@ async function _fetchFromTmdb(tmdbId: string, type: string, config: any): Promis
       : await moviedb.tvExternalIds(tmdbId, config);
     const duration = Date.now() - startTime;
 
+    if (!externalIds) {
+      timingMetrics.recordTiming('tmdb_external_ids', duration, { type, tmdbId, success: false, notFound: true, method: 'dedicated_endpoint', provider: 'tmdb' });
+      timingMetrics.recordTiming(`api_tmdb_${type}`, duration, { operation: 'external_ids', tmdbId, success: false, notFound: true });
+      logger.debug(`[API Fetch] TMDB External IDs not found in ${duration}ms for ${type} ${tmdbId}`);
+      return {};
+    }
+
     timingMetrics.recordTiming('tmdb_external_ids', duration, {
       type,
       tmdbId,

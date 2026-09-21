@@ -17,7 +17,7 @@ const { getSearch } = require("./lib/getSearch");
 const { getManifest, resolveManifestTags, DEFAULT_LANGUAGE } = require("./lib/getManifest");
 const { resolveInstallFilters, uniformTagRating, allowsUnrated, scopeTagsToCatalog } = require("./utils/ageRating");
 const { getMeta } = require("./lib/getMeta");
-const { cacheWrapMetaSmart, cacheWrapCatalog, cacheWrapSearch, cacheWrapJikanApi, cacheWrapGlobal, getCacheHealth, clearCacheHealth, logCacheHealth, stableStringify, deleteKeysByPattern, scanKeys } = require("./lib/getCache");
+const { cacheWrapMetaSmart, cacheWrapCatalog, cacheWrapSearch, cacheWrapJikanApi, cacheWrapGlobal, classifyResultAllowEmpty, getCacheHealth, clearCacheHealth, logCacheHealth, stableStringify, deleteKeysByPattern, scanKeys } = require("./lib/getCache");
 const { hasPermission } = require("./lib/authSession");
 const { isOidcConfigured } = require("./lib/oidc");
 const { resolveConfigAccess } = require("./lib/configAccess");
@@ -663,6 +663,8 @@ const respond = function (req, res, data, opts?) {
       collectionImportCatalogCap: parseInt(getSetting('COLLECTION_IMPORT_CATALOG_CAP') || '', 10) || 400,
       simklTrendingPageSizeOptions: resolvedOptions,
       anilistRequiresAuth: require('./utils/anilistAccess').anilistRequiresAuth(),
+      jellyfinEnabled: String(getSetting('JELLYFIN_API_ENABLED') || '').trim().toLowerCase() === 'true',
+      jellyfinResolveOnOpen: String(getSetting('JELLYFIN_RESOLVE_ON_OPEN') || 'user'),
       traktSearchEnabled: getSetting('DISABLE_TRAKT_SEARCH') !== 'true',
       simklSearchEnabled: getSetting('DISABLE_SIMKL_SEARCH') !== 'true',
     };
@@ -687,6 +689,12 @@ const respond = function (req, res, data, opts?) {
 require('./lib/authRoutes').register(addon, {
   rateLimit: configLoadRateLimitMiddleware,
   requireAdmin: requireDashboardAdmin,
+});
+
+// --- Jellyfin API ---
+require('./lib/jellyfin').register(addon, {
+  loginRateLimit: configLoadRateLimitMiddleware,
+  enabled: () => String(getSetting('JELLYFIN_API_ENABLED') || '').trim().toLowerCase() === 'true',
 });
 const { requireSigninForAppPages, requireSigninForApi, isAuthenticatedRequest, respondIfSigninRequired } = require('./lib/signinGate');
 const { runWithRequestAuth } = require('./lib/requestSession');
@@ -1734,7 +1742,8 @@ addon.get("/api/mdblist/lists/search", async (req, res) => {
           totalItems: parseInt(response.headers?.['x-total-items'], 10) || 0,
         };
       },
-      mdblistListCacheTtl()
+      mdblistListCacheTtl(),
+      { resultClassifier: classifyResultAllowEmpty }
     );
     res.json(payload);
   } catch (error) {
@@ -2165,7 +2174,8 @@ addon.get("/api/tvdb/discover/reference", async (req, res) => {
           companyTypes: normalizedCompanyTypes,
         };
       },
-      TVDB_DISCOVER_CACHE_TTL
+      TVDB_DISCOVER_CACHE_TTL,
+      { resultClassifier: classifyResultAllowEmpty }
     );
 
     return res.json(payload);
@@ -2455,7 +2465,8 @@ addon.get("/api/tvdb/lists/resolve", async (req, res) => {
           itemCount: movieCount + seriesCount
         };
       },
-      6 * 60 * 60
+      6 * 60 * 60,
+      { resultClassifier: classifyResultAllowEmpty }
     );
 
     if (!preview) {
@@ -3124,6 +3135,99 @@ addon.get("/api/collections/image-prefix", (_req, res) => {
 addon.get("/api/collections/preview", collectionPreviewHandler);
 // POST carries the definition of a catalog that is staged but not yet saved.
 addon.post("/api/collections/preview", collectionPreviewHandler);
+
+/**
+ * What the recommendation engine currently knows, for the integration panel.
+ *
+ * Reads only what is already cached or cheap to read: it must never trigger a
+ * profile build, since opening a settings dialog should not spend a model call.
+ */
+addon.get("/api/recommendations/status", async (req: any, res: any) => {
+  try {
+    const userUUID = String(req.query.userUUID || '').trim();
+    if (!userUUID) return res.status(400).json({ error: "userUUID is required" });
+
+    const storedConfig = await loadConfigFromDatabase(userUUID);
+    if (!storedConfig) return res.status(404).json({ error: "User configuration not found" });
+    const config: any = { ...storedConfig, userUUID };
+
+    // The dialog reports on the settings in front of the user, which are not the
+    // saved ones until they save: reading the stored config alone made switching
+    // history source leave every figure on screen unchanged.
+    if (req.query.recommendations) {
+      try {
+        const pending = JSON.parse(String(req.query.recommendations));
+        if (pending && typeof pending === 'object') {
+          config.recommendations = { ...config.recommendations, ...pending };
+        }
+      } catch { /* a malformed override falls back to what is saved */ }
+    }
+
+    const { collectWatchedRows, isWatched, resolveSources }: any = require('./utils/recommendations/history');
+    const { summarise }: any = require('./utils/recommendations/rows');
+    const { resolveProvider }: any = require('./utils/recommendations/provider');
+
+    const sources = resolveSources(config);
+    const rows = (await collectWatchedRows(config, userUUID)).filter(isWatched);
+    const chosen = resolveProvider(config);
+
+    const { profileCacheKey }: any = require('./utils/recommendations/profile');
+    const redis = require('./lib/redisClient').default || require('./lib/redisClient');
+    const profileKey = `global:e2:${profileCacheKey(config, userUUID)}`;
+    let profile: any = null;
+    try {
+      const raw = await redis.get(profileKey);
+      if (raw) profile = JSON.parse(raw);
+    } catch { /* a missing profile is the normal state before the first build */ }
+
+    return res.json({
+      sources: sources.choice,
+      connected: { simkl: sources.simkl, mdblist: sources.mdblist },
+      provider: chosen ? { provider: chosen.provider, model: chosen.model } : null,
+      counts: summarise(rows, require('./utils/recommendations/rows').tuningFrom(config)),
+      profile: profile ? { summary: profile.summary, builtAt: profile.builtAt, builtFrom: profile.builtFrom } : null,
+    });
+  } catch (error: any) {
+    consola.withTag('Recommendations').warn(`Status failed: ${error.message}`);
+    return res.status(500).json({ error: "Could not read recommendation status" });
+  }
+});
+
+/** Starts building one recommendation catalog, so the work happens while the
+ *  user is still in settings rather than when they first open the row. */
+addon.post("/api/recommendations/generate", async (req: any, res: any) => {
+  try {
+    const userUUID = String(req.body?.userUUID || req.query?.userUUID || '').trim();
+    const catalogId = String(req.body?.catalogId || '').trim();
+    if (!userUUID || !catalogId) {
+      return res.status(400).json({ error: "userUUID and catalogId are required" });
+    }
+
+    const storedConfig = await loadConfigFromDatabase(userUUID);
+    if (!storedConfig) return res.status(404).json({ error: "User configuration not found" });
+
+    // The caller may still be editing, so the catalogs it intends to add are not
+    // in the saved config yet. Only the credentials and preferences are read.
+    const config: any = { ...storedConfig, userUUID };
+    if (req.body?.recommendations && typeof req.body.recommendations === 'object') {
+      config.recommendations = { ...config.recommendations, ...req.body.recommendations };
+    }
+
+    const { startJob }: any = require('./utils/recommendations/jobs');
+    const job = startJob(config, userUUID, catalogId);
+    return res.json({ job });
+  } catch (error: any) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+addon.get("/api/recommendations/jobs", (req: any, res: any) => {
+  const userUUID = String(req.query.userUUID || '').trim();
+  if (!userUUID) return res.status(400).json({ error: "userUUID is required" });
+  const { listJobs, pruneJobs }: any = require('./utils/recommendations/jobs');
+  pruneJobs();
+  return res.json({ jobs: listJobs(userUUID) });
+});
 
 // --- Trakt Proxy Endpoints ---
 // These proxy frontend Trakt calls through the backend rate limiter
@@ -5033,6 +5137,7 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
       config._currentSearchEngine = searchEngine;
       config._currentSearchType = searchType;
       config._currentSearchCatalogId = originalSearchId;
+      config._searchLight = extraArgs.light === '1';
 
       // Compute search-specific page size based on the provider's actual results per page
       let searchPageSize = 20; // default (TMDB, Kitsu)
@@ -5674,6 +5779,33 @@ addon.post(["/stremio/:userUUID/watch_state/push/:type/:id.json", "/stremio/:use
   } catch (error) {
     consola.error(`[Playback] Failed to handle ${type}/${id}: ${error.message}`);
     return res.status(500).json({ error: "Failed to record playback" });
+  }
+});
+
+// What the trackers and this server's own table hold, for a front-end to fill
+// its Continue Watching and Next Up from. Gated on the same opt-in as the push.
+addon.get("/stremio/:userUUID/watch_state/pull.json", async function (req, res) {
+  const { userUUID } = req.params;
+
+  let config;
+  try {
+    config = await loadConfigFromDatabase(userUUID);
+  } catch {
+    config = null;
+  }
+  if (!config || !config.playbackReporting) {
+    return res.status(404).json({ error: "Watch state is not enabled" });
+  }
+
+  try {
+    const { buildWatchStatePull } = require('./lib/watchState');
+    const since = typeof req.query.since === 'string' && req.query.since ? req.query.since : null;
+    const payload = await buildWatchStatePull(userUUID, config, since);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(payload);
+  } catch (error) {
+    consola.error(`[Watch State] Failed to build the pull for ${userUUID}: ${error.message}`);
+    return res.status(500).json({ error: "Failed to read watch state" });
   }
 });
 
@@ -6503,10 +6635,15 @@ addon.post('/api/admin/prune-id-mappings', requireDashboardAdmin, async (req, re
 
 // Get all users with basic info
 addon.get('/api/admin/users', requireDashboardAdmin, async (req, res) => {
-  
   try {
-    const users = await database.getAllUsersWithStats();
-    res.json({ users });
+    const limit = parseInt(String(req.query.limit ?? ''), 10);
+    const offset = parseInt(String(req.query.offset ?? ''), 10);
+    const page = await database.listUsersWithStats({
+      query: typeof req.query.q === 'string' ? req.query.q : '',
+      limit: Number.isFinite(limit) ? limit : 100,
+      offset: Number.isFinite(offset) ? offset : 0,
+    });
+    res.json(page);
   } catch (error) {
     consola.error('[Admin API] Error fetching users:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -7622,7 +7759,7 @@ addon.get("/api/dashboard/poster-cache/stats", requireDashboardAdmin, async (req
       enabled_types: posterCacheConfig.getEnabledClasses(),
       known_providers: posterCacheConfig.KNOWN_ART_PROVIDERS,
       domain_purge: posterCacheStore.domainPurgeStatus(),
-      provider_policies: posterCacheConfig.parseProviderPolicies(process.env.POSTER_CACHE_PROVIDER_POLICIES) || [],
+      provider_policies: posterCacheConfig.parseProviderPolicies(getSetting('POSTER_CACHE_PROVIDER_POLICIES')) || [],
       infer_ttl: posterCacheConfig.isInferTtlEnabled(),
       presets_enabled: posterCacheConfig.arePresetsEnabled(),
       follow_upstream: posterCacheConfig.followsUpstreamCacheControl(),
@@ -7635,7 +7772,7 @@ addon.get("/api/dashboard/poster-cache/stats", requireDashboardAdmin, async (req
   const policyPayload = {
     builtin: false,
     known_providers: posterCacheConfig.KNOWN_ART_PROVIDERS,
-    provider_policies: posterCacheConfig.parseProviderPolicies(process.env.POSTER_CACHE_PROVIDER_POLICIES) || [],
+    provider_policies: posterCacheConfig.parseProviderPolicies(getSetting('POSTER_CACHE_PROVIDER_POLICIES')) || [],
     presets_enabled: posterCacheConfig.arePresetsEnabled(),
     follow_upstream: posterCacheConfig.followsUpstreamCacheControl(),
     proxy_max_age_days: posterCacheConfig.getProxyMaxAgeDays(),
@@ -7885,6 +8022,51 @@ addon.get("/api/dashboard/content", requireAuthUnlessGuestMode, (req, res) => {
   } catch (error) {
     consola.error('[Dashboard API] Error:', error);
     res.status(500).json({ error: 'Failed to fetch content data' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin", requireDashboardAdmin, async (req, res) => {
+  try {
+    res.json(await require('./lib/jellyfin/dashboard').dashboardOverview());
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to fetch Jellyfin playback data' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/search", requireDashboardAdmin, async (req, res) => {
+  try {
+    res.json(await require('./lib/jellyfin/dashboard').dashboardSearch(String(req.query.q ?? '')));
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to search Jellyfin playback' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/:userUUID/export", requireDashboardAdmin, async (req, res) => {
+  try {
+    const payload = await require('./lib/jellyfin/dashboard').dashboardExport(String(req.params.userUUID));
+    res.setHeader('Content-Disposition', `attachment; filename="jellyfin-playback-${String(req.params.userUUID).slice(0, 8)}.json"`);
+    res.json(payload);
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to export Jellyfin playback' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/:userUUID", requireDashboardAdmin, async (req, res) => {
+  try {
+    const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
+    const rows = parseInt(String(req.query.rows ?? ''), 10);
+    const payload = await require('./lib/jellyfin/dashboard').dashboardConfiguration(String(req.params.userUUID), profile, Number.isFinite(rows) ? rows : undefined);
+    if (!payload) {
+      res.status(404).json({ error: 'No such configuration' });
+      return;
+    }
+    res.json(payload);
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to fetch Jellyfin playback data' });
   }
 });
 

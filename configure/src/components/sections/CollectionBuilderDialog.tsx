@@ -53,7 +53,16 @@ import {
   createClassicRowDraft,
   createCollectionDraft,
   createFolderDraft,
+  allFolders,
+  entrySources,
+  findFolder,
+  folderSources,
+  mapFolder,
+  mapFoldersDeep,
   newId,
+  parentFolderOf,
+  removeFolder,
+  subFolders,
   type AddonIdentity,
   type BuilderEntry,
   type CollectionDraft,
@@ -169,7 +178,7 @@ function collectIds(entries: BuilderEntry[]): Set<string> {
   for (const entry of entries) {
     ids.add(entry.id);
     if (entry.kind !== 'collection') continue;
-    for (const folder of entry.folders) ids.add(folder.id);
+    for (const folder of allFolders(entry.folders)) ids.add(folder.id);
   }
   return ids;
 }
@@ -177,10 +186,7 @@ function collectIds(entries: BuilderEntry[]): Set<string> {
 function collectSourceKeys(entries: BuilderEntry[]): string[] {
   const keys: string[] = [];
   for (const entry of entries) {
-    const sources = entry.kind === 'classicRow'
-      ? (entry.source ? [entry.source] : [])
-      : entry.folders.flatMap(folder => folder.sources);
-    for (const source of sources) keys.push(`${source.catalogId}:${source.type}`);
+    for (const source of entrySources(entry)) keys.push(`${source.catalogId}:${source.type}`);
   }
   return keys;
 }
@@ -195,7 +201,7 @@ function reissueTakenIds(entries: BuilderEntry[], taken: Set<string>): void {
     if (!entry.id || taken.has(entry.id)) entry.id = newId();
     taken.add(entry.id);
     if (entry.kind !== 'collection') continue;
-    for (const folder of entry.folders) {
+    for (const folder of allFolders(entry.folders)) {
       if (!folder.id || taken.has(folder.id)) folder.id = newId();
       taken.add(folder.id);
     }
@@ -470,7 +476,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     const owners = new Map<string, string>();
     for (const entry of entries) {
       if (entry.kind !== 'collection') continue;
-      for (const folder of entry.folders) owners.set(folder.id, entry.id);
+      for (const folder of allFolders(entry.folders)) owners.set(folder.id, entry.id);
     }
     return owners;
   }, [entries]);
@@ -655,6 +661,41 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     setTitleFocusId(folder.id);
   };
 
+  const addSubFolderIn = (entryId: string, parentId: string) => {
+    const folder = createFolderDraft();
+    setEntries(overEntry(entryId, current => ({
+      ...current,
+      folders: mapFolder(current.folders, parentId, parent => ({ ...parent, folders: [...subFolders(parent), folder] })),
+    })));
+    setSelection({ entryId, folderId: folder.id });
+    setTitleFocusId(folder.id);
+  };
+
+  const removeSubFolderIn = (entryId: string, folderId: string) => {
+    const entry = entries.find(item => item.id === entryId);
+    if (!entry || entry.kind !== 'collection') return;
+    const doomed = findFolder(entry.folders, folderId);
+    const parent = parentFolderOf(entry.folders, folderId);
+    if (!doomed || !parent) return;
+    const at = subFolders(parent).findIndex(f => f.id === folderId);
+    setSelection({ entryId, folderId: parent.id });
+    editEntryUndoable(
+      `Deleted ${doomed.title || 'folder'}`,
+      entryId,
+      current => ({ ...current, folders: removeFolder(current.folders, folderId) }),
+      current => (findFolder(current.folders, folderId)
+        ? current
+        : {
+          ...current,
+          folders: mapFolder(current.folders, parent.id, p => {
+            const children = [...subFolders(p)];
+            children.splice(Math.min(at, children.length), 0, doomed);
+            return { ...p, folders: children };
+          }),
+        })
+    );
+  };
+
   const duplicateFolderIn = (entryId: string, index: number) => {
     const entry = entries.find(item => item.id === entryId);
     if (!entry || entry.kind !== 'collection') return;
@@ -691,7 +732,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     if (typeof pickerTarget.replaceIndex === 'number') return [];
     const entry = entries.find(item => item.id === pickerTarget.entryId);
     if (!entry || entry.kind !== 'collection') return [];
-    const folder = entry.folders.find(item => item.id === pickerTarget.folderId);
+    const folder = pickerTarget.folderId ? findFolder(entry.folders, pickerTarget.folderId) : undefined;
     return folder ? folder.sources.map(catalogKey) : [];
   }, [pickerTarget, entries]);
 
@@ -721,8 +762,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
       if (entry.id !== entryId || entry.kind !== 'collection') return entry;
       return {
         ...entry,
-        folders: entry.folders.map(folder => {
-          if (folder.id !== folderId) return folder;
+        folders: mapFolder(entry.folders, folderId, folder => {
           const existing = new Set(folder.sources.map(catalogKey));
           const incoming = matching
             .filter(catalog => !existing.has(catalogKey(catalog)))
@@ -803,9 +843,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
         if (entry.kind === 'classicRow') return { ...entry, source: sources[0] };
         return {
           ...entry,
-          folders: entry.folders.map(folder => {
-            if (folder.id !== pickerTarget.folderId) return folder;
-
+          folders: mapFolder(entry.folders, String(pickerTarget.folderId), folder => {
             if (typeof pickerTarget.replaceIndex === 'number') {
               const swapped = folder.sources.map((existing, index) =>
                 index === pickerTarget.replaceIndex ? sources[0] : existing
@@ -1110,17 +1148,11 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const problemTargets = useMemo(() => buildProblemTargets(committedEntries), [committedEntries]);
 
   const countNative = useCallback((entry: BuilderEntry) => {
-    const sources = entry.kind === 'classicRow'
-      ? (entry.source ? [entry.source] : [])
-      : entry.folders.flatMap(folder => folder.sources);
-    return sources.filter(isNativeSource).length;
+    return entrySources(entry).filter(isNativeSource).length;
   }, []);
 
   const countStranded = useCallback((entry: BuilderEntry) => {
-    const sources = entry.kind === 'classicRow'
-      ? (entry.source ? [entry.source] : [])
-      : entry.folders.flatMap(folder => folder.sources);
-    return sources.filter(source => isStrandedNative(source, target)).length;
+    return entrySources(entry).filter(source => isStrandedNative(source, target)).length;
   }, [target]);
 
   /** Takes over client-resolved sources, in the narrowest scope the caller names. */
@@ -1150,7 +1182,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
       return {
         ...entry,
-        folders: entry.folders.map(folder => {
+        folders: mapFoldersDeep(entry.folders, folder => {
           if (folderId !== undefined && folder.id !== folderId) return folder;
           const seen = new Set<string>();
           const sources: SourceDraft[] = [];
@@ -1893,15 +1925,15 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                               depth={1}
                               title={folder.title}
                               placeholder="Untitled folder"
-                              count={String(folder.sources.length)}
-                              countHint={`${folder.sources.length} catalog${folder.sources.length === 1 ? '' : 's'}`}
-                              empty={folder.sources.length === 0}
+                              count={String(folderSources(folder).length)}
+                              countHint={`${folderSources(folder).length} catalog${folderSources(folder).length === 1 ? '' : 's'}`}
+                              empty={folderSources(folder).length === 0}
                               icon={Folder}
                               accent="text-muted-foreground"
                               severity={worstByFolder.get(folder.id)}
-                              allNative={folder.sources.length > 0
-                                && folder.sources.every(source => isStrandedNative(source, target))}
-                              isActive={selection.folderId === folder.id}
+                              allNative={folderSources(folder).length > 0
+                                && folderSources(folder).every(source => isStrandedNative(source, target))}
+                              isActive={selection.folderId === folder.id || allFolders(subFolders(folder)).some(child => child.id === selection.folderId)}
                               canMoveUp={folderIndex > 0}
                               canMoveDown={folderIndex < folderCount - 1}
                               onMoveTo={position => moveFolderTo(entry.id, folderIndex, position)}
@@ -1949,7 +1981,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="truncate font-medium">
                         {selected.kind === 'collection'
-                          ? selected.folders.find(folder => folder.id === selection.folderId)?.title
+                          ? findFolder(selected.folders, selection.folderId)?.title
                             || 'Untitled folder'
                           : ''}
                       </span>
@@ -1994,6 +2026,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       catalogs={sourceList.catalogs}
                       pendingKeys={pendingKeys}
                       target={target}
+                      userTags={config.tags ?? []}
                       onChange={updateEntry}
                       onUndoableChange={(label, apply, undo) =>
                         editEntryUndoable(label, selected.id, apply, undo)}
@@ -2008,9 +2041,13 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       selectedFolderId={selection.folderId}
                       onAddFolder={() => addFolderIn(selected.id)}
                       onRemoveFolder={() => {
+                        if (!selection.folderId) return;
                         const index = selected.folders.findIndex(f => f.id === selection.folderId);
                         if (index >= 0) removeFolderIn(selected.id, index);
+                        else removeSubFolderIn(selected.id, selection.folderId);
                       }}
+                      onAddSubFolder={parentId => addSubFolderIn(selected.id, parentId)}
+                      onSelectFolder={folderId => setSelection({ entryId: selected.id, folderId })}
                       focusFolderTitle={titleFocusId === selection.folderId}
                       onFolderTitleFocused={clearTitleFocus}
                       focusTitle={titleFocusId === selected.id}
@@ -2023,6 +2060,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       catalogs={sourceList.catalogs}
                       pendingKeys={pendingKeys}
                       target={target}
+                      userTags={config.tags ?? []}
                       onChange={updateEntry}
                       onAddSource={() => setPickerTarget({ entryId: selected.id, folderId: null })}
                       onRenameCatalog={renameCatalog}

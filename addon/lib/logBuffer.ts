@@ -90,6 +90,7 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
   [/(bearer\s+)[A-Za-z0-9._\-]{8,}/gi, '$1***'],
   [/\b(api[_-]?key|apikey|access[_-]?token|token|secret|password|client_secret)(["']?\s*[:=]\s*["']?)[A-Za-z0-9._\-]{6,}/gi, '$1$2***'],
   [/([?&](?:api_?key|apikey|token|key|password|client_secret|access_token)=)[^&\s"'#]+/gi, '$1***'],
+  [/\bpm-[A-Za-z0-9]{20,}/g, 'pm-***'],
 ];
 
 function redact(s: string): string {
@@ -338,9 +339,30 @@ export function endQuietWindow(): SuppressedCounts {
   return window ?? { suppressed: 0, warnings: 0 };
 }
 
+// withTag gives each logger its own options, so a level set on the root never
+// reaches the tagged ones every module made at load. The accessor they share is
+// redirected to one value so a change applies to all of them at once.
+function shareLogLevel(proto: any): void {
+  const accessor = Object.getOwnPropertyDescriptor(proto, 'level');
+  if (!accessor?.get || !accessor.set || (accessor.get as any).__shared) return;
+  let shared: number = accessor.get.call(consola);
+  const get = function (this: any): number { return shared; };
+  (get as any).__shared = true;
+  Object.defineProperty(proto, 'level', {
+    get,
+    set(this: any, value: number) {
+      accessor.set!.call(this, value);
+      shared = accessor.get!.call(this);
+    },
+    configurable: true,
+    enumerable: accessor.enumerable,
+  });
+}
+
 export function installLogReporter(): void {
   refreshSecrets();
   const proto = Object.getPrototypeOf(consola);
+  shareLogLevel(proto);
   const original = proto._log;
   proto._log = function patchedLog(logObj: any) {
     handleLogObj(logObj);

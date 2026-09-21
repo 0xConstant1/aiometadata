@@ -2,8 +2,21 @@
 
 export interface UserConfig {
   language?: string;
+  /** Install URL of a stream addon the Jellyfin server delegates playback to. */
+  jellyfinStreamUrl?: string;
   /** Playback is reported by the client, so the subtitle trigger is not used. */
   playbackReporting?: boolean;
+  /** Password a Jellyfin client signs in with, for accounts that have no configuration password. */
+  jellyfinAppPassword?: string;
+  /** Tracker the Jellyfin resume shelf reads from. `auto` picks a capable one. */
+  jellyfinResumeSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
+  /** Name and picture of the main Jellyfin user, the configuration itself. */
+  jellyfinUserName?: string;
+  jellyfinUserAvatar?: string;
+  jellyfinUserTags?: string[];
+  jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'introdb' | 'off';
+  jellyfinWatchlistServices?: string[];
+  jellyfinUsers?: Array<{ id: string; name: string; avatar?: string; tags: string[]; trackers?: boolean; trackerSource?: string; skipSource?: string; watchlistServices?: string[] }>;
   /** Serve the collection layout's images through this instance's image cache. */
   collectionImagesViaCache?: boolean;
   providers?: {

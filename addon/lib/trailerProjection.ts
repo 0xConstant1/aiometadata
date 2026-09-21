@@ -51,7 +51,7 @@ function inflight(key: string, work: () => Promise<TrailerStream[]>): Promise<Tr
 }
 
 async function addonResource(manifestUrl: string): Promise<'stream' | 'meta'> {
-  const { cacheWrapGlobal } = require('./getCache');
+  const { cacheWrapGlobal, classifyResultAllowEmpty } = require('./getCache');
   const addonHash = createHash('sha256').update(manifestUrl).digest('hex').slice(0, 12);
   const shape = await cacheWrapGlobal(
     `trailer_addon:manifest:v1:${addonHash}`,
@@ -62,7 +62,7 @@ async function addonResource(manifestUrl: string): Promise<'stream' | 'meta'> {
       return { resource: names.includes('stream') ? 'stream' : 'meta' };
     },
     envInt('TRAILER_ADDON_TTL', 24 * 60 * 60, 60),
-    { upstream: true }
+    { upstream: true, resultClassifier: classifyResultAllowEmpty }
   );
   return shape?.resource === 'stream' ? 'stream' : 'meta';
 }

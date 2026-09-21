@@ -26,6 +26,7 @@ import {
 } from './config.js';
 import { isNotModified, mergeRevalidated, type ConditionalValidators, type FetchOutcome } from './upstream.js';
 import { walkFiles, pruneEmptyDirs } from './walk.js';
+import { shapePoster } from './shape.js';
 import { envInt } from '../../utils/envNumber';
 
 const logger = consola.withTag('PosterCache');
@@ -778,8 +779,11 @@ export async function getOrFetch(
 
   const task = (async (): Promise<FetchResult> => {
     try {
-      const produced = await producer(revalidationHint(cached));
-      if (!isNotModified(produced)) return await store(produced);
+      let produced = await producer(revalidationHint(cached));
+      if (!isNotModified(produced)) {
+        if (imageClass === 'poster') produced = { ...produced, ...(await shapePoster(produced.body, produced.contentType)) };
+        return await store(produced);
+      }
 
       const merged = mergeRevalidated(cached?.upstream, produced.upstream);
 

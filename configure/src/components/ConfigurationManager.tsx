@@ -4,6 +4,7 @@ import { useSave } from "@/contexts/SaveContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +15,7 @@ import { TagChip } from "@/components/TagChip";
 import { AGE_RATING_ORDER } from "@/lib/ageRatings";
 import type { TagDef } from "@/contexts/config";
 import { ManagerSync } from "@/components/ManagerSync";
+import { JellyfinDialog } from "@/components/JellyfinDialog";
 import { cn } from "@/lib/utils";
 import { keyStatuses } from "@/lib/configStatus";
 import { Callout } from "@/components/settings/Callout";
@@ -297,6 +299,18 @@ export function ConfigurationManager() {
     return `${identity.installUrl}?${params.join('&')}`;
   }, [identity, selectedTags]);
 
+  const [jellyfinEnabled, setJellyfinEnabled] = useState(false);
+  const [showJellyfin, setShowJellyfin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/config")
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (!cancelled) setJellyfinEnabled(Boolean(data?.jellyfinEnabled)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   const toggleTag = (name: string) => {
     setSelectedTagNames(prev =>
       prev.includes(name) ? prev.filter(t => t !== name) : [...prev, name]
@@ -573,10 +587,14 @@ export function ConfigurationManager() {
             <Callout variant="info">
               <strong>Important:</strong> Save your UUID and password. You'll need both to access your configuration later.
             </Callout>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              {identity && jellyfinEnabled ? (
+                <JellyfinDialog open={showJellyfin} onOpenChange={setShowJellyfin} userUUID={identity.userUUID} />
+              ) : null}
               <Dialog open={showLoadDialog} onOpenChange={setShowLoadDialog}>
                 <Button
                   variant="outline"
+                  className="w-full sm:w-auto"
                   onClick={() => setShowLoadDialog(true)}
                   disabled={isLoadingLoad}
                 >
@@ -646,7 +664,7 @@ export function ConfigurationManager() {
                   </div>
                 </DialogContent>
               </Dialog>
-              <Button onClick={() => openInstall(taggedInstallUrl)}>
+              <Button className="w-full sm:w-auto" onClick={() => openInstall(taggedInstallUrl)}>
                 <Download className="h-4 w-4 mr-2" /> Install
               </Button>
               <ManagerSync
@@ -654,6 +672,11 @@ export function ConfigurationManager() {
                 currentProfileTags={selectedTags}
                 onSynced={() => { markManifestInstalled(); }}
               />
+              {jellyfinEnabled ? (
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowJellyfin(true)}>
+                  <img src="/jellyfin_icon.svg" alt="" aria-hidden="true" className="h-4 w-4 mr-2 object-contain" /> Jellyfin
+                </Button>
+              ) : null}
             </div>
           </CardContent>
         </Card>

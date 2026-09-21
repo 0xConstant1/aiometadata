@@ -1,0 +1,113 @@
+import { parseStremioId } from './ids';
+
+const idMapper: any = require('../id-mapper');
+const animeList: any = require('../anime-list-mapper');
+const wiki: any = require('../wiki-mapper');
+
+const database: any = require('../database');
+
+// One episode is spelled differently by each provider: kitsu:50040:6 is also tt37614297:1:6.
+export async function videoIdAliases(videoId: string): Promise<string[]> {
+  const parsed = parseStremioId(videoId);
+  // A film's other spelling comes from its meta at write time; Wikidata's pairing is not trusted for it.
+  if (!parsed || parsed.episode === null || parsed.episode === undefined) return [];
+
+  const out = new Set<string>();
+  const add = (id: string | null | undefined) => {
+    if (id && id !== videoId) out.add(id);
+  };
+
+  try {
+    if (parsed.idType === 'kitsu' || parsed.idType === 'mal' || parsed.idType === 'anilist' || parsed.idType === 'anidb') {
+      const numeric = parseInt(parsed.base.split(':')[1], 10);
+      const mapping =
+        parsed.idType === 'kitsu' ? idMapper.getMappingByKitsuId(numeric)
+        : parsed.idType === 'mal' ? idMapper.getMappingByMalId(numeric)
+        : parsed.idType === 'anilist' ? idMapper.getMappingByAnilistId(numeric)
+        : idMapper.getMappingByAnidbId(numeric);
+      if (!mapping) return [];
+
+      const episode = Number(parsed.episode);
+      if (mapping.kitsu_id) add(`kitsu:${mapping.kitsu_id}:${episode}`);
+      if (mapping.mal_id) add(`mal:${mapping.mal_id}:${episode}`);
+
+      const tvdb = mapping.anidb_id ? animeList.resolveTvdbEpisodeFromAnidbEpisode(mapping.anidb_id, 1, episode) : null;
+      if (tvdb?.tvdbId) {
+        add(`tvdb:${tvdb.tvdbId}:${tvdb.tvdbSeason}:${tvdb.tvdbEpisode}`);
+        if (mapping.imdb_id) add(`${mapping.imdb_id}:${tvdb.tvdbSeason}:${tvdb.tvdbEpisode}`);
+      }
+      return [...out];
+    }
+
+    if (parsed.idType === 'imdb' || parsed.idType === 'tvdb') {
+      const season = Number(parsed.season);
+      const episode = Number(parsed.episode);
+      const imdbId = parsed.idType === 'imdb' ? parsed.base : null;
+      const found = imdbId ? idMapper.getMappingByImdbId(imdbId) : idMapper.getMappingByTvdbId(parseInt(parsed.base.split(':')[1], 10));
+      const mapping = idMapper.mappingIsType(found, 'series') ? found : null;
+      const tvdbId = parsed.idType === 'tvdb'
+        ? parseInt(parsed.base.split(':')[1], 10)
+        : mapping?.thetvdb_id
+          || (mapping?.anidb_id ? animeList.resolveTvdbEpisodeFromAnidbEpisode(mapping.anidb_id, 1, 1)?.tvdbId : null)
+          || wiki.getByImdbId?.(imdbId, 'series')?.tvdbId
+          || null;
+
+      if (tvdbId) {
+        if (parsed.idType === 'imdb') add(`tvdb:${tvdbId}:${season}:${episode}`);
+        const anidb = await animeList.resolveAnidbEpisodeFromTvdbEpisode(tvdbId, season, episode);
+        const anime = anidb?.anidbId ? idMapper.getMappingByAnidbId(anidb.anidbId) : null;
+        if (anime?.kitsu_id) add(`kitsu:${anime.kitsu_id}:${anidb.anidbEpisode}`);
+        if (anime?.mal_id) add(`mal:${anime.mal_id}:${anidb.anidbEpisode}`);
+      }
+      if (parsed.idType === 'tvdb' && mapping?.imdb_id) add(`${mapping.imdb_id}:${season}:${episode}`);
+      return [...out];
+    }
+  } catch {
+    return [...out];
+  }
+  return [...out];
+}
+
+/** The same patch under every spelling of the episode. */
+export async function upsertPlaystateEverywhere(userUUID: string, videoId: string, patch: any, profile = '', known: string[] = []): Promise<void> {
+  await database.upsertPlaystate(userUUID, videoId, patch, profile);
+  const aliases = new Set([...(await videoIdAliases(videoId)), ...known.filter((id) => id && id !== videoId)]);
+  for (const alias of aliases) {
+    await database.upsertPlaystate(userUUID, alias, patch, profile);
+  }
+}
+
+/** Rows for the ids asked for, found under any spelling, keyed by the id asked for. */
+export async function getPlaystatesAcross(userUUID: string, videoIds: string[], profile = ''): Promise<Map<string, any>> {
+  const aliases = new Map<string, string[]>();
+  for (const id of videoIds) aliases.set(id, await videoIdAliases(id));
+
+  const lookup = new Set<string>(videoIds);
+  for (const list of aliases.values()) for (const alias of list) lookup.add(alias);
+
+  const rows: Map<string, any> = await database.getPlaystates(userUUID, [...lookup], profile);
+  const out = new Map<string, any>();
+  for (const id of videoIds) {
+    let pick: any = null;
+    for (const spelling of [id, ...(aliases.get(id) || [])]) {
+      const row = rows.get(spelling);
+      if (!row) continue;
+      if (!pick || (Number(row.updated_at) || 0) > (Number(pick.updated_at) || 0)) pick = row;
+    }
+    if (pick) out.set(id, pick);
+  }
+  return out;
+}
+
+/** One row per episode across its spellings; the first in the order given is kept. */
+export async function dedupeByAlias<T extends { videoId: string }>(rows: T[]): Promise<T[]> {
+  const taken = new Set<string>();
+  const out: T[] = [];
+  for (const row of rows) {
+    if (taken.has(row.videoId)) continue;
+    out.push(row);
+    taken.add(row.videoId);
+    for (const alias of await videoIdAliases(row.videoId)) taken.add(alias);
+  }
+  return out;
+}

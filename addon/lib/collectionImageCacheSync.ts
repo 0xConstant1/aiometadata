@@ -16,10 +16,10 @@ export async function syncCollectionImages(userUUID: string, config: any): Promi
 
   const urls: string[] = config?.collectionImagesViaCache ? collectionImageUrls(config.collections) : [];
   try {
-    await store.setPins(userUUID, urls.map((url) => ({ imageClass: 'poster', key: url })));
+    await store.setPins(userUUID, urls.map((url) => ({ imageClass: 'collection', key: url })));
     if (urls.length) {
       const warmQueue = require('./posterCache/warmQueue');
-      warmQueue.offer(urls.map((url) => ({ imageClass: 'poster', url })));
+      warmQueue.offer(urls.map((url) => ({ imageClass: 'collection', url })));
       logger.debug(`Queued ${urls.length} collection image(s) for ${userUUID.slice(0, 8)}`);
     }
   } catch (error: any) {

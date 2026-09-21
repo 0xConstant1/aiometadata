@@ -47,6 +47,7 @@ import { DashboardPerformance } from "./DashboardPerformance";
 import { DashboardOperations } from "./DashboardOperations";
 import { DashboardUsers } from "./DashboardUsers";
 import DashboardAccounts from "./DashboardAccounts";
+import DashboardJellyfin from "./DashboardJellyfin";
 import { DashboardSettings } from "./DashboardSettings";
 
 
@@ -400,7 +401,7 @@ function AdminStatusBadge({}: AdminStatusBadgeProps) {
 
 // Main Dashboard Component
 export function Dashboard() {
-  const { isAdmin, isGuest, adminKey, isLoading, adminKeyConfigured, guestModeEnabled, ssoEnabled } = useAdmin();
+  const { isAdmin, isGuest, adminKey, isLoading, adminKeyConfigured, guestModeEnabled, ssoEnabled, jellyfinEnabled } = useAdmin();
   const { isMobile } = useBreakpoint();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
@@ -636,6 +637,11 @@ export function Dashboard() {
           </div>
         ),
       },
+      ...(jellyfinEnabled ? [{
+        value: "jellyfin" as DashboardTab,
+        title: "Jellyfin",
+        component: <DashboardJellyfin activeTab={activeTab} />,
+      }] : []),
       {
         value: "logs",
         title: "Logs",
@@ -785,6 +791,7 @@ export function Dashboard() {
                 ...(accessLevel === 'admin' ? [
                   { value: "operations", label: "Ops" },
                   { value: "users", label: usersTabLabel },
+                  ...(jellyfinEnabled ? [{ value: "jellyfin", label: "Jellyfin" }] : []),
                   { value: "logs", label: "Logs" },
                   { value: "settings", label: "Settings" },
                 ] : []),
@@ -876,6 +883,11 @@ export function Dashboard() {
               />
             </TabsContent>
 
+            {jellyfinEnabled && (
+              <TabsContent value="jellyfin" className="mt-0">
+                <DashboardJellyfin activeTab={activeTab} />
+              </TabsContent>
+            )}
             <TabsContent value="logs" className="mt-0">
               <DashboardLogs
                 data={dashboardData.logs}

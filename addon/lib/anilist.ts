@@ -284,6 +284,7 @@ class AniListAPI {
             pageInfo { hasNextPage total }
             mediaList(userName: $userName, type: ANIME, status: $status, sort: $sort) {
               hiddenFromStatusLists
+              createdAt
               score(format: POINT_100)
               media {
                 id

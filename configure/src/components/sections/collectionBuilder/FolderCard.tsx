@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Plus, Tags, Trash2, Tv } from 'lucide-react';
+import { ChevronLeft, FolderPlus, Plus, Tags, Trash2, Tv } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -30,7 +30,7 @@ import {
 import { getTagColor } from '@/lib/tagColors';
 import { catalogKey, type ManifestCatalog } from '@/lib/collectionBuilder/manifestSources';
 import { aliasHint, TERMS, type Target } from '@/lib/collectionBuilder/terms';
-import { hasNuvioFolderArt, type FolderDraft, type SourceDraft } from '@shared/types';
+import { folderSources, hasNuvioFolderArt, subFolders, type FolderDraft, type SourceDraft } from '@shared/types';
 
 import { ImageUrlField } from './ImageUrlField';
 import { ScopeChip } from './ScopeChip';
@@ -52,6 +52,9 @@ export function FolderCard({
   onAddByTag,
   focusTitle,
   onTitleFocused,
+  parent,
+  onOpenFolder,
+  onAddSubFolder,
 }: {
   folder: FolderDraft;
   catalogs: ManifestCatalog[];
@@ -73,8 +76,13 @@ export function FolderCard({
   onAddByTag: (tag: string) => void;
   focusTitle?: boolean;
   onTitleFocused?: () => void;
+  parent?: FolderDraft | null;
+  onOpenFolder?: (folderId: string) => void;
+  onAddSubFolder?: () => void;
 }) {
   const terms = TERMS[target];
+  const children = subFolders(folder);
+  const canNest = Boolean(onAddSubFolder) && !parent;
   const [showExtras, setShowExtras] = useState(false);
   const nuvioArtVisible = target === 'nuvio' || hasNuvioFolderArt(folder);
 
@@ -114,6 +122,15 @@ export function FolderCard({
 
   return (
     <div className="@container space-y-5 rounded-xl border border-white/[0.06] bg-card/80 p-4">
+      {parent && onOpenFolder && (
+        <button
+          type="button"
+          onClick={() => onOpenFolder(parent.id)}
+          className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" /> Inside {parent.title || terms.child}
+        </button>
+      )}
       <div className="flex items-center gap-2">
         <Label htmlFor={`${uid}-title`} className="sr-only">{terms.childTitle}</Label>
         <Input
@@ -187,6 +204,42 @@ export function FolderCard({
         </Label>
       </div>
 
+      {(canNest || children.length > 0) && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium">Folders inside</Label>
+              <ScopeChip scope="jellyfin" />
+            </div>
+            {canNest && (
+              <Button variant="outline" size="sm" className="h-8" onClick={onAddSubFolder}>
+                <FolderPlus className="mr-1 h-3.5 w-3.5" /> Add folder inside
+              </Button>
+            )}
+          </div>
+          {children.length > 0 && (
+            <div className="grid gap-1.5 @2xl:grid-cols-2">
+              {children.map(child => (
+                <button
+                  key={child.id}
+                  type="button"
+                  onClick={() => onOpenFolder?.(child.id)}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-left text-sm transition-colors hover:bg-white/[0.05]"
+                >
+                  <span className="truncate">{child.title || 'Untitled folder'}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {folderSources(child).length} catalog{folderSources(child).length === 1 ? '' : 's'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Jellyfin clients open these as folders within this one. Fusion and Nuvio have no nested folders, so there the catalogs inside them are exported as this folder's own.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Label className="text-sm font-medium" title={aliasHint('sources') ?? undefined}>{terms.sources}</Label>
@@ -214,7 +267,7 @@ export function FolderCard({
             </Button>
           </div>
         </div>
-        {folder.sources.length === 0 && (
+        {folder.sources.length === 0 && children.length === 0 && (
           <button
             type="button"
             onClick={onAddSource}

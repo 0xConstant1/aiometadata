@@ -602,7 +602,7 @@ async function cacheWrapInternal(key: string, method: () => Promise<any>, ttl: n
 
         if (finalTtl > 0) {
         if (classification.type !== 'SUCCESS') {
-            cacheLogger.warn(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
+            (classification.type === 'EMPTY_RESULT' ? cacheLogger.debug : cacheLogger.warn)(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
         }
 
         try {
@@ -746,7 +746,7 @@ async function cacheWrapGlobalInternal(key: string, method: () => Promise<any>, 
 
       if (finalTtl > 0) {
       if (classification.type !== 'SUCCESS') {
-        globalCacheLogger.warn(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
+        (classification.type === 'EMPTY_RESULT' ? globalCacheLogger.debug : globalCacheLogger.warn)(`Caching ${classification.type} result for ${versionedKey} for ${finalTtl}s`);
     }
 
     if (result !== null && result !== undefined) {
@@ -1267,6 +1267,7 @@ const CATALOG_META_FIELDS = [
   '_kitsuId',
   '_anilistId',
   '_anidbId',
+  '_listedAt',
   'slug',
   'links',
   'behaviorHints',
@@ -1450,6 +1451,12 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     };
   }
 
+  if (idOnly.startsWith('publicmetadb.')) {
+    catalogConfig.apiKeys = {
+      publicmetadb: config.apiKeys?.publicmetadb || ''
+    };
+  }
+
   if (idOnly.startsWith('mal.userlist.') || idOnly === 'mal.suggestions') {
     catalogConfig.apiKeys = {
       malTokenId: config.apiKeys?.malTokenId || ''
@@ -1474,8 +1481,39 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     catalogConfig.streaming = config.streaming || [];
   }
 
+  // What a recommendation row contains is decided by the model that wrote it, so
+  // the model belongs in the key. Without it, switching provider or model leaves
+  // the previous one's picks being served for the rest of the catalog TTL, which
+  // reads as the setting having done nothing.
+  if (idOnly.startsWith('recommendations.')) {
+    const { RECOMMENDATION_EPOCH, pickOrder, voteFloor }: any = require('../utils/recommendations/provider');
+    catalogConfig.recommendations = {
+      epoch: RECOMMENDATION_EPOCH,
+      provider: config.recommendations?.provider || '',
+      geminiModel: config.recommendations?.gemini_model || '',
+      openrouterModel: config.recommendations?.openrouter_model || '',
+      hasGemini: !!config.apiKeys?.gemini,
+      hasOpenrouter: !!config.apiKeys?.openrouter,
+      sources: config.recommendations?.sources || '',
+      // Every setting that moves the picks has to move the page as well.
+      webSearch: config.recommendations?.web_search === true,
+      reasoningEffort: config.recommendations?.reasoning_effort || '',
+      stalledWeight: config.recommendations?.stalled_weight || '',
+      staleAfterDays: config.recommendations?.stale_after_days || '',
+      refreshHours: config.recommendations?.refresh_hours || '',
+      // Ordering is applied to a built row, so it changes the page but not the
+      // picks: the page has to notice, and nothing needs writing again.
+      // The resolved values, not the raw settings: the gear sets these per
+      // catalog so two rows must not share a page, and a page whose setting is
+      // simply unset still has to notice when the default itself moves.
+      order: pickOrder(config, idOnly),
+      minVotes: voteFloor(config, idOnly),
+    };
+  }
+
   const catalogConfigString = JSON.stringify(catalogConfig);
   const configHash = hashConfig(catalogConfigString);
+  const catalogConfigShown = JSON.stringify(catalogConfig, (field, value) => (field === 'apiKeys' && value && typeof value === 'object' ? Object.keys(value) : value));
 
   let cacheTTL = CATALOG_TTL();
   let cachingDisabled = false;
@@ -1508,6 +1546,15 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     { label: 'SimKL', matches: idOnly.startsWith('simkl.') },
     { label: 'discover', matches: isDiscoverCatalog },
   ];
+
+  // The page and the picks it was built from expire together, so refresh-ahead
+  // rewrites both once per interval. Held apart, the shorter of the two decided
+  // the cadence: a page on the instance default rebuilt the row roughly twice a
+  // day whatever the viewer had chosen, and each rebuild is a model call.
+  if (idOnly.startsWith('recommendations.')) {
+    const { refreshTtl }: any = require('../utils/recommendations/provider');
+    cacheTTL = refreshTtl(config);
+  }
 
   const ttlSource = ttlOverrideSources.find(source => source.matches);
   if (ttlSource) {
@@ -1550,7 +1597,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
   const isUserScopedCatalog = isAuthCatalog || idOnly.includes('stremthru.') || idOnly.startsWith('custom.') || idOnly.startsWith('letterboxd.');
   const cacheKeyIdentifier = isAuthCatalog ? (config.sessionId || 'no-session') : (isUserScopedCatalog ? (userUUID || '') : '');
   const catalogSig = shortSignature(`${cacheKeyIdentifier}|${idOnly}|${configHash}|ttl:${cacheTTL}`);
-  cacheLogger.debug(`[Catalog] Key detail (${idOnly}) [sig:${catalogSig}] scope:${contentScope} userScoped:${isUserScopedCatalog} ttl:${cacheTTL}s catalogConfig:${catalogConfigString} catalogKey:${catalogKey}`);
+  cacheLogger.debug(`[Catalog] Key detail (${idOnly}) [sig:${catalogSig}] scope:${contentScope} userScoped:${isUserScopedCatalog} ttl:${cacheTTL}s catalogConfig:${catalogConfigShown} catalogKey:${catalogKey}`);
 
   if (isMDBListCatalog) {
     options = {
@@ -1574,7 +1621,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
       if (typeof existingOnHit === 'function') {
         existingOnHit(hit);
       }
-      cacheLogger.debug(`[Catalog] HIT detail (${idOnly}) [sig:${catalogSig}] catalogConfig:${catalogConfigString} catalogKey:${catalogKey}`);
+      cacheLogger.debug(`[Catalog] HIT detail (${idOnly}) [sig:${catalogSig}] catalogConfig:${catalogConfigShown} catalogKey:${catalogKey}`);
     },
   };
   // The key keeps the configured TTL so it stays stable across runs; only the

@@ -8,6 +8,7 @@ import {
   type CollectionDraft,
   type CollectionViewMode,
   type FolderDraft,
+  subFolders,
   type FusionAspectRatio,
   type FusionCardStyle,
   SUFFIX_TYPES,
@@ -385,6 +386,19 @@ function fusionItem(
   };
 }
 
+
+function mapSourcesDeep(
+  folders: FolderDraft[],
+  fn: (source: SourceDraft) => SourceDraft,
+  finish: (sources: SourceDraft[]) => SourceDraft[] = sources => sources
+): FolderDraft[] {
+  return folders.map(folder => ({
+    ...folder,
+    sources: finish(folder.sources.map(fn)),
+    ...(subFolders(folder).length ? { folders: mapSourcesDeep(subFolders(folder), fn, finish) } : {}),
+  }));
+}
+
 export function fromFusionWidgets(
   input: unknown,
   notes: string[],
@@ -513,7 +527,7 @@ function withBlueprintTypes(entries: BuilderEntry[], blueprints: CatalogBlueprin
     }
     return {
       ...entry,
-      folders: entry.folders.map(folder => ({ ...folder, sources: folder.sources.map(apply) })),
+      folders: mapSourcesDeep(entry.folders, apply),
     };
   });
 }
@@ -634,10 +648,7 @@ export function remapSources(
     }
     return {
       ...entry,
-      folders: entry.folders.map(folder => ({
-        ...folder,
-        sources: dedupe(folder.sources.map(swap)),
-      })),
+      folders: mapSourcesDeep(entry.folders, swap, dedupe),
     };
   });
 

@@ -1,5 +1,5 @@
 import { nextCopyTitle } from '@/lib/collectionBuilder/entryOps';
-import { newId, type BuilderEntry, type FusionAspectRatio, type TileShape } from '@shared/types';
+import { allFolders, newId, type BuilderEntry, type FusionAspectRatio, type TileShape } from '@shared/types';
 
 export const SHAPE_LABELS: Record<TileShape, string> = {
   POSTER: 'Poster',
@@ -50,7 +50,7 @@ export function clone<T>(value: T): T {
 
 export function entrySourceCount(entry: BuilderEntry): number {
   if (entry.kind === 'classicRow') return entry.source ? 1 : 0;
-  return entry.folders.reduce((total, folder) => total + folder.sources.length, 0);
+  return allFolders(entry.folders).reduce((total, folder) => total + folder.sources.length, 0);
 }
 
 export function duplicateEntryDraft(entry: BuilderEntry): BuilderEntry {

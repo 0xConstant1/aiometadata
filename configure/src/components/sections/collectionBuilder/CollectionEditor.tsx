@@ -2,16 +2,18 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { FolderPlus, Replace, Tv } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import type { TagDef } from '@/contexts/config';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { type ManifestCatalog } from '@/lib/collectionBuilder/manifestSources';
 import { TERMS, type Target } from '@/lib/collectionBuilder/terms';
-import { hasNuvioCollectionSettings, type CollectionDraft, type FolderDraft, type SourceDraft } from '@shared/types';
+import { findFolder, hasNuvioCollectionSettings, mapFolder, parentFolderOf, type CollectionDraft, type FolderDraft, type SourceDraft } from '@shared/types';
 import { isNativeSource } from '@shared/catalogReconstruction';
 
 import { FolderCard } from './FolderCard';
+import { UserTagsField } from './UserTagsField';
 import { ImageUrlField } from './ImageUrlField';
 import { ScopeChip } from './ScopeChip';
 import { type TagOption } from './shared';
@@ -27,12 +29,15 @@ export function CollectionEditor({
   onReplaceSource,
   onRenameCatalog,
   tagOptions,
+  userTags = [],
   onAddByTag,
   nativeCount,
   onConvertNative,
   selectedFolderId,
   onAddFolder,
   onRemoveFolder,
+  onAddSubFolder,
+  onSelectFolder,
   focusFolderTitle,
   onFolderTitleFocused,
   focusTitle,
@@ -54,6 +59,7 @@ export function CollectionEditor({
   /** Renames the catalog itself, everywhere it appears. */
   onRenameCatalog?: (source: SourceDraft, name: string) => void;
   tagOptions: TagOption[];
+  userTags?: TagDef[];
   onAddByTag: (folderId: string, tag: string) => void;
   /** Sources in this collection the app resolves itself and this addon could take over. */
   nativeCount: number;
@@ -62,6 +68,8 @@ export function CollectionEditor({
   selectedFolderId: string | null;
   onAddFolder: () => void;
   onRemoveFolder: () => void;
+  onAddSubFolder: (parentId: string) => void;
+  onSelectFolder: (folderId: string) => void;
   focusFolderTitle?: boolean;
   onFolderTitleFocused?: () => void;
   focusTitle?: boolean;
@@ -86,7 +94,8 @@ export function CollectionEditor({
 
   const update = (patch: Partial<CollectionDraft>) => onChange({ ...entry, ...patch });
 
-  const activeFolder = entry.folders.find(folder => folder.id === selectedFolderId) ?? null;
+  const activeFolder = selectedFolderId ? findFolder(entry.folders, selectedFolderId) ?? null : null;
+  const parentFolder = activeFolder ? parentFolderOf(entry.folders, activeFolder.id) ?? null : null;
   const folderNativeCount = activeFolder?.sources.filter(isNativeSource).length ?? 0;
 
   return (
@@ -112,6 +121,8 @@ export function CollectionEditor({
           <ScopeChip scope="fusion" />
         </div>
       </div>
+
+      <UserTagsField tags={userTags} value={entry.tags} onChange={next => update({ tags: next })} />
 
       {nuvioBoxVisible && (
       <div className="space-y-3 rounded-xl border border-cyan-400/20 bg-cyan-500/10 p-3">
@@ -236,16 +247,19 @@ export function CollectionEditor({
           pendingKeys={pendingKeys}
           target={target}
           onChange={next => update({
-            folders: entry.folders.map(f => (f.id === activeFolder.id ? next : f)),
+            folders: mapFolder(entry.folders, activeFolder.id, () => next),
           })}
           onUndoableChange={onUndoableChange && ((label, apply, undo) => {
             const over = (fn: (folder: FolderDraft) => FolderDraft) =>
               (current: CollectionDraft): CollectionDraft => ({
                 ...current,
-                folders: current.folders.map(f => (f.id === activeFolder.id ? fn(f) : f)),
+                folders: mapFolder(current.folders, activeFolder.id, fn),
               });
             onUndoableChange(label, over(apply), over(undo));
           })}
+          parent={parentFolder}
+          onOpenFolder={onSelectFolder}
+          onAddSubFolder={() => onAddSubFolder(activeFolder.id)}
           onRemove={onRemoveFolder}
           onAddSource={() => onAddSource(activeFolder.id)}
           onReplaceSource={index => onReplaceSource(activeFolder.id, index)}

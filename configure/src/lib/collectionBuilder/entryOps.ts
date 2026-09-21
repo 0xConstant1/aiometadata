@@ -1,4 +1,4 @@
-import type { BuilderEntry, FolderDraft } from '@shared/types';
+import { allFolders, folderSources, type BuilderEntry, type FolderDraft } from '@shared/types';
 
 const COPY_SUFFIX = /^(.*?) copy(?: (\d+))?$/;
 
@@ -15,7 +15,7 @@ function haystack(entry: BuilderEntry): string {
   if (entry.kind === 'classicRow') {
     if (entry.source) parts.push(entry.source.name || entry.source.catalogId);
   } else {
-    for (const folder of entry.folders) {
+    for (const folder of allFolders(entry.folders)) {
       parts.push(folder.title);
       for (const source of folder.sources) parts.push(source.name || source.catalogId);
     }
@@ -36,8 +36,7 @@ export interface FilteredEntry {
 }
 
 function folderHaystack(folder: FolderDraft): string {
-  const parts = [folder.title];
-  for (const source of folder.sources) parts.push(source.name || source.catalogId);
+  const parts = allFolders([folder]).flatMap(f => [f.title, ...f.sources.map(source => source.name || source.catalogId)]);
   return parts.join(' ').toLowerCase();
 }
 
@@ -67,13 +66,13 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 export function describeEntryCount(entry: BuilderEntry): string {
   if (entry.kind === 'classicRow') return entry.source ? '1 catalog' : 'No catalog';
-  const catalogs = entry.folders.reduce((total, folder) => total + folder.sources.length, 0);
+  const catalogs = entry.folders.reduce((total, folder) => total + folderSources(folder).length, 0);
   return `${plural(entry.folders.length, 'folder')} · ${plural(catalogs, 'catalog')}`;
 }
 
 /** The same tally, short enough to leave the rail's width to the name. */
 export function tallyEntryCount(entry: BuilderEntry): string {
   if (entry.kind === 'classicRow') return entry.source ? '1' : '0';
-  const catalogs = entry.folders.reduce((total, folder) => total + folder.sources.length, 0);
+  const catalogs = entry.folders.reduce((total, folder) => total + folderSources(folder).length, 0);
   return `${entry.folders.length} · ${catalogs}`;
 }

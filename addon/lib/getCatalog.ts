@@ -1,5 +1,6 @@
 require("dotenv").config();
 import { getGenreList } from "./getGenreList.js";
+import { stampListedAt } from "../utils/listedAt";
 import { getLanguages } from "./getLanguages.js";
 import { fetchMDBListItems, parseMDBListItems, fetchMDBListBatchMediaInfo, fetchMDBListUpNext, parseMDBListUpNextItems, usesMdblistExternalItemsEndpoint, supportsMdblistScoreFilters } from "../utils/mdbList.js";
 import { fetchStremThruCatalog, parseStremThruItems } from "../utils/stremthru.js";
@@ -125,6 +126,12 @@ async function getCatalog(type: string, language: string, page: number, id: stri
       logger.debug(`Routing to Simkl catalog handler for id: ${id}`);
       const simklResults = await getSimklCatalog(type, id, genre, page, language, config, userUUID, includeVideos, skip);
       return { metas: simklResults };
+    }
+    else if (id.startsWith('recommendations.')) {
+      logger.debug(`Routing to recommendation handler for id: ${id}`);
+      const { getRecommendationCatalog }: any = require('../utils/recommendations/catalog');
+      const picks = await getRecommendationCatalog(type, id, page, config, userUUID);
+      return { metas: picks };
     }
     else if (id.startsWith('movielens.')) {
       logger.debug(`Routing to MovieLens catalog handler for id: ${id}`);
@@ -1024,6 +1031,9 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
     }
     
     let metas = await parseMDBListItems(response.items, type, language, config, includeVideos);
+    if (listId === 'watchlist') {
+      metas = stampListedAt(metas, response.items, (item: any) => ({ imdb: item?.imdb_id, tmdb: item?.id, tvdb: item?.tvdb_id }), (item: any) => item?.watchlist_at);
+    }
 
     return metas;
   }
@@ -2312,6 +2322,9 @@ async function getTraktCatalog(
     const useShowPoster = catalogConfig?.metadata?.useShowPosterForUpNext || false;
     logger.debug(`Up Next: useShowPosterForUpNext = ${useShowPoster}`);
     let metas = await parseTraktItems(response.items, type, language, config, includeVideos, useShowPoster);
+    if (catalogId.startsWith('trakt.watchlist')) {
+      metas = stampListedAt(metas, response.items, (item: any) => (item?.movie ?? item?.show)?.ids ?? {}, (item: any) => item?.listed_at);
+    }
     const parseTime = Date.now() - parseStart;
     logger.info(`Up Next: parseTraktItems took ${parseTime}ms for ${response.items.length} items`);
     
@@ -2452,9 +2465,10 @@ async function getAniListCatalog(
     
     // Resolve AniList media IDs to Stremio metas
     const metas = await resolveAniListItemsToMetas(response.items, type, language, config, userUUID, includeVideos);
+    const listedMetas = stampListedAt(metas, response.items, (item: any) => ({ anilist: item?.media?.id, mal: item?.media?.idMal }), (item: any) => item?.createdAt ? item.createdAt * 1000 : null);
     
     logger.success(`[AniList] Processed ${metas.length} items for catalog ${catalogId} (page ${page})`);
-    return metas;
+    return listedMetas;
     
   } catch (err: any) {
     const errorLine = err.stack?.split('\n')[1]?.trim() || 'unknown';
@@ -2611,7 +2625,8 @@ async function getMalUserListCatalog(
     });
 
     const metas = await Utils.parseAnimeCatalogMetaBatch(newItems, config, language);
-    const validMetas = metas.filter((meta: any) => meta !== null);
+    const listedMetas = stampListedAt(metas, response.items, (item: any) => ({ mal: item?.node?.id }), (item: any) => item?.list_status?.updated_at);
+    const validMetas = listedMetas.filter((meta: any) => meta !== null);
 
     logger.success(`[MAL] Processed ${validMetas.length} items for catalog ${catalogId} (page ${page})`);
     return validMetas;
@@ -2657,7 +2672,7 @@ async function getLetterboxdCatalog(
       `letterboxd-list:${identifier}:${isWatchlist}`,
       async () => await fetchLetterboxdList(identifier, isWatchlist),
       catalogConfig?.cacheTTL || 7200,
-      { enableErrorCaching: true, maxRetries: 2 }
+      { enableErrorCaching: true, maxRetries: 2, resultClassifier: classifyResultAllowEmpty }
     );
     
     if (!listData?.data?.items) {
@@ -3177,6 +3192,7 @@ async function getSimklCatalog(
               type: itemType,
               ...media,
               simkl_status: item.status,
+              simkl_added_to_watchlist_at: item.added_to_watchlist_at,
               simkl_rating: item.user_rating,
               simkl_last_watched: item.last_watched,
               simkl_next_to_watch: item.next_to_watch,
@@ -3268,6 +3284,7 @@ async function getSimklCatalog(
       || listMediaType === 'anime';
     const parseStart = Date.now();
     let metas = await parseSimklItems(response.items, type as 'movie' | 'series', config, userUUID, includeVideos, isAnimeCatalog);
+    metas = stampListedAt(metas, response.items, (item: any) => item?.ids ?? {}, (item: any) => item?.simkl_added_to_watchlist_at);
     const parseTime = Date.now() - parseStart;
     logger.info(`[Simkl] parseSimklItems took ${parseTime}ms for ${response.items.length} items`);
     
@@ -3355,10 +3372,15 @@ async function getPublicMetaDBCatalog(
       const listId = catalogId.replace('publicmetadb.list.', '');
       const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
       const [data, listType] = await Promise.all([
-        fetchListItems(apiKey, listId, page, pageSize),
+        fetchListItems(apiKey, listId, page, pageSize).catch((error: any) => {
+          if (!String(error?.message || '').includes('403')) throw error;
+          logger.warn(`[PublicMetaDB] List ${listId} is not on this account; it is a row left over from an older configuration. Remove it, or reinstall the addon in the client.`);
+          return { items: [] };
+        }),
         publicMetaDBListType(config, catalogId),
       ]);
       let metas = await parseListItems(data.items || [], type, language, config);
+      metas = stampListedAt(metas, data.items || [], (item: any) => ({ tmdb: item?.tmdb_id }), (item: any) => item?.created);
       logger.success(`[PublicMetaDB] ${listType === 'watchlist' ? 'Watchlist' : 'List'} ${listId}: ${metas.length} items (page ${page})`);
       return metas;
     }

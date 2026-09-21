@@ -1,4 +1,4 @@
-import type { BuilderEntry, ExportNote } from '@shared/types';
+import { allFolders, type BuilderEntry, type ExportNote } from '@shared/types';
 import { catalogKey, type ManifestCatalog, type SourceIssue } from './manifestSources';
 
 /** Where in the design a problem lives, and so what selecting it should open. */
@@ -24,7 +24,7 @@ export function buildProblemTargets(entries: BuilderEntry[]): Map<string, Proble
   for (const entry of entries) {
     map.set(entry.id, { entryId: entry.id, folderId: null });
     if (entry.kind !== 'collection') continue;
-    for (const folder of entry.folders) {
+    for (const folder of allFolders(entry.folders)) {
       map.set(folder.id, { entryId: entry.id, folderId: folder.id });
     }
   }

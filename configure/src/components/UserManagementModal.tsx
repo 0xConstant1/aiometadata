@@ -89,8 +89,10 @@ interface UserManagementModalProps {
 
 export function UserManagementModal({ isOpen, onClose, adminKey }: UserManagementModalProps) {
   const [users, setUsers] = useState<User[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [total, setTotal] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  const [query, setQuery] = useState("");
+  const PAGE_SIZE = 100;
   const [selectedUser, setSelectedUser] = useState<UserDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -105,23 +107,18 @@ export function UserManagementModal({ isOpen, onClose, adminKey }: UserManagemen
   const [aliasesEnabled, setAliasesEnabled] = useState(false);
 
   useEffect(() => {
+    const timer = setTimeout(() => setQuery(searchTerm.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
     if (isOpen) {
       fetchUsers();
       fetchAliasesEnabled();
     }
-  }, [isOpen]);
+  }, [isOpen, query]);
 
-  useEffect(() => {
-    const term = searchTerm.toLowerCase();
-    const filtered = users.filter(user =>
-      user.uuid.toLowerCase().includes(term) ||
-      (user.alias || '').toLowerCase().includes(term) ||
-      user.created_at.toLowerCase().includes(term)
-    );
-    setFilteredUsers(filtered);
-  }, [users, searchTerm]);
-
-  const fetchUsers = async () => {
+  const fetchUsers = async (offset = 0) => {
     setLoading(true);
     try {
       const headers: Record<string, string> = {
@@ -132,14 +129,16 @@ export function UserManagementModal({ isOpen, onClose, adminKey }: UserManagemen
         headers['x-admin-key'] = adminKey;
       }
 
-      const response = await fetch('/api/admin/users', {
+      const params = new URLSearchParams({ q: query, limit: String(PAGE_SIZE), offset: String(offset) });
+      const response = await fetch(`/api/admin/users?${params.toString()}`, {
         method: 'GET',
         headers,
       });
 
       if (response.ok) {
         const data = await response.json();
-        setUsers(data.users || []);
+        setUsers((previous) => (offset > 0 ? [...previous, ...(data.users || [])] : (data.users || [])));
+        setTotal(Number(data.total) || 0);
       } else {
         toast.error('Failed to fetch users');
       }
@@ -387,14 +386,14 @@ export function UserManagementModal({ isOpen, onClose, adminKey }: UserManagemen
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search users by UUID..."
+                  placeholder="Search by the start of a UUID, or an alias"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={fetchUsers} disabled={loading}>
+                <Button variant="outline" size="sm" onClick={() => fetchUsers()} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
                   <span className="hidden sm:inline">Refresh</span>
                 </Button>
@@ -442,14 +441,14 @@ export function UserManagementModal({ isOpen, onClose, adminKey }: UserManagemen
                         Loading users...
                       </TableCell>
                     </TableRow>
-                  ) : filteredUsers.length === 0 ? (
+                  ) : users.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={aliasesEnabled ? 8 : 7} className="text-center py-8 text-muted-foreground">
                         No users found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredUsers.map((user) => (
+                    users.map((user) => (
                       <TableRow key={user.uuid}>
                         <TableCell className="font-mono text-sm">
                           {user.uuid.substring(0, 8)}...
@@ -541,12 +540,12 @@ export function UserManagementModal({ isOpen, onClose, adminKey }: UserManagemen
                   <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
                   Loading users...
                 </div>
-              ) : filteredUsers.length === 0 ? (
+              ) : users.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   No users found
                 </div>
               ) : (
-                filteredUsers.map((user) => (
+                users.map((user) => (
                   <div key={user.uuid} className="p-3 border rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-mono text-sm">
@@ -619,8 +618,13 @@ export function UserManagementModal({ isOpen, onClose, adminKey }: UserManagemen
               )}
             </div>
 
-            <div className="text-sm text-muted-foreground">
-              Showing {filteredUsers.length} of {users.length} users
+            <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+              <span>Showing {users.length} of {total} users{query ? ` matching "${query}"` : ""}</span>
+              {users.length < total && (
+                <Button variant="outline" size="sm" onClick={() => fetchUsers(users.length)} disabled={loading}>
+                  Load more
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>

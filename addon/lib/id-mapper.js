@@ -1593,13 +1593,48 @@ async function enrichMalEpisodes(videos, kitsuId, preserveIds = false) {
  * @param {string} type - The Stremio type ('movie' or 'series') to help disambiguate.
  * @returns {object|null} - The best matching mapping object, or null.
  */
+/**
+ * Whether an entry's TMDB id belongs to the space the caller is asking about.
+ *
+ * TMDB numbers films and shows separately, so the same number is usually a valid
+ * id on both sides: 10494 is the film Perfect Blue and the series Nowhere Man.
+ * `themoviedb_type` records which side an entry's id came from, and without
+ * checking it a series lookup matched an anime film and the meta came back as
+ * that film. Only `movie` and `series` are decided here; anything else, or an
+ * entry with nothing recorded, is left to the caller as before.
+ */
+// A film's entry carries its franchise show's ids, so the entry's own type is checked.
+function mappingIsType(mapping, type) {
+  if (!mapping || (type !== 'movie' && type !== 'series')) return true;
+  if (!mapping.type) return true;
+  const seriesLike = seriesLikeTypes.has(String(mapping.type).toLowerCase());
+  return type === 'series' ? seriesLike : !seriesLike;
+}
+
+function tmdbNamespaceMatches(item, type) {
+  if (type !== 'movie' && type !== 'series') return true;
+  const wanted = type === 'movie' ? 'movie' : 'tv';
+
+  if (item.themoviedb_type) return item.themoviedb_type === wanted;
+
+  // Older entries predate the namespace being recorded, so their own shape is
+  // the next best evidence.
+  if (!item.type) return true;
+  const seriesLike = seriesLikeTypes.has(String(item.type).toLowerCase());
+  return wanted === 'tv' ? seriesLike : !seriesLike;
+}
+
 function getMappingByTmdbId(tmdbId, type) {
   if (!isInitialized) return null;
 
   const numericTmdbId = parseInt(tmdbId, 10);
-  const allMatches = tmdbIdToAnimeListMap.get(numericTmdbId) || [];
+  const indexed = tmdbIdToAnimeListMap.get(numericTmdbId) || [];
+  const allMatches = indexed.filter(item => tmdbNamespaceMatches(item, type));
 
   if (allMatches.length === 0) {
+    if (indexed.length) {
+      logger.debug(`[ID Mapper] TMDB ID ${numericTmdbId} is anime on the other side of the id space, not as '${type}'`);
+    }
     return null;
   }
   
@@ -2196,6 +2231,75 @@ async function resolveKitsuIdForEpisodeByTmdb(tmdbId, seasonNumber, episodeNumbe
   }
 }
 
+// TMDB numbers a few long-running shows on a running count, so a season's first episode is not 1.
+async function tmdbEpisodeNumberAt(tmdbId, seasonNumber, position, config = {}) {
+  if (!Number.isInteger(position) || position < 1) return position;
+  try {
+    const { seasonInfo } = require('./getTmdb.js');
+    const season = await seasonInfo({ id: tmdbId, season_number: seasonNumber, language: 'en-US' }, config);
+    const episodes = Array.isArray(season?.episodes) ? season.episodes : [];
+    const first = episodes[0]?.episode_number;
+    if (!Number.isInteger(first) || first === 1) return position;
+    const episode = episodes[position - 1];
+    return Number.isInteger(episode?.episode_number) ? episode.episode_number : first + position - 1;
+  } catch (error) {
+    logger.debug(`[ID Mapper] Season details unavailable for TMDB ${tmdbId} S${seasonNumber}: ${error?.message || error}`);
+    return position;
+  }
+}
+
+async function applyTmdbEpisodeNumbers(map, config = {}) {
+  for (const entry of map.values()) {
+    if (!entry || entry.isFranchiseFallback === undefined) continue;
+    entry.relativeEpisodeNumber = entry.relativeEpisodeNumber ?? entry.episodeNumber;
+    entry.episodeNumber = await tmdbEpisodeNumberAt(entry.tmdbId, entry.seasonNumber, entry.relativeEpisodeNumber, config);
+  }
+}
+
+async function tmdbEpisodePosition(tmdbId, seasonNumber, episodeNumber, config = {}) {
+  try {
+    const { seasonInfo } = require('./getTmdb.js');
+    const season = await seasonInfo({ id: tmdbId, season_number: seasonNumber, language: 'en-US' }, config);
+    const episodes = Array.isArray(season?.episodes) ? season.episodes : [];
+    const index = episodes.findIndex((episode) => episode?.episode_number === episodeNumber);
+    if (index >= 0) return index + 1;
+    const first = episodes[0]?.episode_number;
+    return Number.isInteger(first) && first > 1 ? episodeNumber - first + 1 : episodeNumber;
+  } catch (error) {
+    logger.debug(`[ID Mapper] Season details unavailable for TMDB ${tmdbId} S${seasonNumber}: ${error?.message || error}`);
+    return episodeNumber;
+  }
+}
+
+// The Kitsu-to-TMDB walk in reverse.
+async function resolveKitsuEpisodeFromTmdb(tmdbId, seasonNumber, episodeNumber, config = {}) {
+  if (!isInitialized) return null;
+  const franchiseInfo = await getFranchiseInfoFromTmdbId(tmdbId);
+  if (!franchiseInfo) return null;
+
+  const kitsuEntries = franchiseInfo.kitsuDetails
+    .filter(entry => entry.subtype?.toLowerCase() === 'tv')
+    .sort((a, b) => new Date(a.startDate || '9999-12-31') - new Date(b.startDate || '9999-12-31'));
+  if (!kitsuEntries.length) return null;
+
+  const tmdbSeasons = (await getTmdbSeasonInfo(tmdbId, config)) || [];
+  const position = await tmdbEpisodePosition(tmdbId, seasonNumber, episodeNumber, config);
+  let absolute = position;
+  for (const season of tmdbSeasons) {
+    if (season.season_number === 0 || season.season_number >= seasonNumber) continue;
+    absolute += season.episode_count || 0;
+  }
+
+  let remaining = absolute;
+  for (const entry of kitsuEntries) {
+    const count = entry.episodeCount || 0;
+    if (count > 0 && remaining <= count) return { kitsuId: entry.id, episodeNumber: remaining, absoluteEpisodeNumber: absolute };
+    if (count > 0) remaining -= count;
+  }
+  const last = kitsuEntries[kitsuEntries.length - 1];
+  return { kitsuId: last.id, episodeNumber: remaining, absoluteEpisodeNumber: absolute };
+}
+
 async function getTmdbEpisodeResolutionContext(kitsuId, config = {}) {
   if (!isInitialized) return null;
 
@@ -2335,7 +2439,7 @@ function buildTmdbEpisodeMapFromContext(context, kitsuId, kitsuEpisodeNumbers, o
 
     const tmdbSeasonNumber = season.season_number;
     const relativeEpisodeNumber = absoluteEpisodeNumber - cumulativeEpisodes;
-    const tmdbEpisodeNumber = tmdbId === 37854 ? absoluteEpisodeNumber : relativeEpisodeNumber;
+    const tmdbEpisodeNumber = relativeEpisodeNumber;
 
     if (logSingleEpisode) {
       logger.debug(`[ID Mapper] Kitsu ${kitsuId} Ep ${entry.episodeNumber} (Absolute: ${absoluteEpisodeNumber}) -> TMDB ${tmdbId} S${tmdbSeasonNumber}E${tmdbEpisodeNumber}`);
@@ -2376,7 +2480,9 @@ async function resolveTmdbEpisodesFromKitsu(kitsuId, kitsuEpisodeNumbers, config
       return new Map();
     }
 
-    return buildTmdbEpisodeMapFromContext(context, kitsuId, kitsuEpisodeNumbers);
+    const map = buildTmdbEpisodeMapFromContext(context, kitsuId, kitsuEpisodeNumbers);
+    await applyTmdbEpisodeNumbers(map, config);
+    return map;
   } catch (error) {
     logger.error(`[ID Mapper] Error resolving TMDB episodes from Kitsu ID ${kitsuId}:`, error);
     return new Map();
@@ -2401,6 +2507,7 @@ async function resolveTmdbEpisodeFromKitsu(kitsuId, kitsuEpisodeNumber, config =
     }
 
     const tmdbEpisodeMap = buildTmdbEpisodeMapFromContext(context, kitsuId, [kitsuEpisodeNumber], { logSingleEpisode: true });
+    await applyTmdbEpisodeNumbers(tmdbEpisodeMap, config);
     return tmdbEpisodeMap.get(kitsuEpisodeNumber) || null;
   } catch (error) {
     logger.error(`[ID Mapper] Error resolving TMDB episode from Kitsu ID ${kitsuId} episode ${kitsuEpisodeNumber}:`, error);
@@ -2894,6 +3001,9 @@ module.exports = {
   resolveKitsuIdForEpisodeByTvdb,
   resolveTmdbEpisodeFromKitsu,
   resolveTmdbEpisodesFromKitsu,
+  resolveKitsuEpisodeFromTmdb,
+  tmdbEpisodePosition,
+  mappingIsType,
   getImdbEpisodeIdFromTmdbEpisodeWhenAllSeasonsMapToSameImdb,
   getAllMappings,
   cleanup,

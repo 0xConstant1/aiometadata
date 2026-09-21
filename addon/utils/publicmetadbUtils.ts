@@ -184,6 +184,47 @@ async function fetchResume(apiKey: string): Promise<any[]> {
   return data.items || [];
 }
 
+async function fetchDropped(apiKey: string, page: number = 1, perPage: number = 100): Promise<{ items: any[]; total: number; totalPages: number }> {
+  const data = await makeRequest(`/api/external/dropped?page=${page}&perPage=${Math.min(Math.max(1, perPage), 100)}`, apiKey);
+  return { items: Array.isArray(data?.items) ? data.items : [], total: Number(data?.total) || 0, totalPages: Number(data?.totalPages) || 1 };
+}
+
+async function setDropped(apiKey: string, tmdbId: number | string, dropped: boolean): Promise<void> {
+  if (dropped) {
+    await makeRequest('/api/external/dropped', apiKey, 'POST', { tmdb_id: Number(tmdbId), media_type: 'tv' });
+    return;
+  }
+  await makeRequest(`/api/external/dropped/${encodeURIComponent(String(tmdbId))}/tv`, apiKey, 'DELETE');
+}
+
+async function fetchWatched(apiKey: string, page: number = 1, perPage: number = 500): Promise<{ items: any[]; total: number; totalPages: number }> {
+  const data = await makeRequest(`/api/external/watched?page=${page}&perPage=${Math.min(Math.max(1, perPage), 500)}`, apiKey);
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    total: Number(data?.total) || 0,
+    totalPages: Number(data?.totalPages) || 1,
+  };
+}
+
+async function tmdbIdFrom(ids: Record<string, any>, mediaType: 'movie' | 'series'): Promise<number | null> {
+  if (ids.tmdb) return Number(ids.tmdb) || null;
+  if (!ids.imdb) return null;
+  const resolved = await resolveAllIds(ids.imdb, mediaType, {}, undefined, ['tmdb']);
+  return resolved?.tmdbId ? parseInt(resolved.tmdbId, 10) : null;
+}
+
+async function clearResume(apiKey: string, tmdbId: number, mediaType: 'movie' | 'tv', season?: number, episode?: number): Promise<boolean> {
+  const matches = (await fetchResume(apiKey)).filter((item: any) =>
+    Number(item?.tmdb_id) === Number(tmdbId) &&
+    item?.media_type === mediaType &&
+    (mediaType === 'movie' || (Number(item?.season) === season && Number(item?.episode) === episode))
+  );
+  for (const item of matches) {
+    if (item?.id) await makeRequest(`/api/external/resume/${encodeURIComponent(item.id)}`, apiKey, 'DELETE');
+  }
+  return matches.length > 0;
+}
+
 async function fetchLists(apiKey: string, page: number = 1, perPage: number = 50): Promise<any> {
   return makeRequest(`/api/external/lists?page=${page}&perPage=${perPage}`, apiKey);
 }
@@ -226,6 +267,33 @@ async function publicMetaDBListType(config: any, catalogId: string): Promise<Pmd
     return await resolveListType(apiKey, catalogId.slice('publicmetadb.list.'.length));
   } catch {
     return null;
+  }
+}
+
+async function publicMetaDBWatchlistCatalog(config: any): Promise<any | null> {
+  const lists = (config?.catalogs ?? []).filter((c: any) => typeof c?.id === 'string' && c.id.startsWith('publicmetadb.list.'));
+  const known = lists.find((c: any) => c?.metadata?.listType === 'watchlist');
+  if (known) return known;
+  for (const catalog of lists) {
+    if (catalog?.metadata?.listType) continue;
+    if ((await publicMetaDBListType(config, catalog.id)) === 'watchlist') return catalog;
+  }
+  return null;
+}
+
+async function setListItem(apiKey: string, listId: string, tmdbId: number | string, mediaType: 'movie' | 'tv', listed: boolean): Promise<void> {
+  if (listed) {
+    await makeRequest(`/api/external/lists/${listId}/items`, apiKey, 'POST', { tmdb_id: Number(tmdbId), media_type: mediaType });
+    return;
+  }
+  for (let page = 1; page <= 20; page++) {
+    const data = await fetchListItems(apiKey, listId, page, 500);
+    const item = (data.items || []).find((i: any) => String(i?.tmdb_id) === String(tmdbId) && i?.media_type === mediaType);
+    if (item?.id) {
+      await makeRequest(`/api/external/lists/${listId}/items/${item.id}`, apiKey, 'DELETE');
+      return;
+    }
+    if (page >= (data.totalPages || 1)) return;
   }
 }
 
@@ -407,11 +475,28 @@ async function parsePickItems(
 
 export interface PmdbPlaybackOptions {
   /** Omitted, this stays the immediate mark-watched the subtitle trigger sends. */
-  action?: 'watched' | 'stop';
+  action?: 'watched' | 'stop' | 'unwatch';
   /** Whether the sender judged it finished. Only meaningful with action 'stop'. */
   played?: boolean;
   positionMs?: number;
   runtimeMs?: number;
+}
+
+// Each mark-watched creates a play rather than setting a flag, so unmarking
+// deletes them all: removing one by record id would leave a rewatch behind.
+async function removeWatched(
+  apiKey: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+  season?: number,
+  episode?: number
+): Promise<any> {
+  const params = new URLSearchParams({ tmdb_id: String(tmdbId), media_type: mediaType });
+  if (mediaType === 'tv' && season != null && episode != null) {
+    params.set('season', String(season));
+    params.set('episode', String(episode));
+  }
+  return makeRequest(`/api/external/watched?${params.toString()}`, apiKey, 'DELETE');
 }
 
 /**
@@ -428,16 +513,16 @@ async function saveResume(
   season?: number,
   episode?: number
 ): Promise<any> {
+  // A film's point is stored under season 0, episode 0, and only matches an
+  // existing one when both are sent; left out, a second save is a duplicate.
   const body: any = {
     tmdb_id: tmdbId,
     media_type: mediaType,
+    season: mediaType === 'tv' && season != null ? season : 0,
+    episode: mediaType === 'tv' && episode != null ? episode : 0,
     position_ms: Math.max(0, Math.round(positionMs)),
     runtime_ms: Math.max(1, Math.round(runtimeMs)),
   };
-  if (mediaType === 'tv' && season != null && episode != null) {
-    body.season = season;
-    body.episode = episode;
-  }
   return makeRequest('/api/external/resume', apiKey, 'POST', body);
 }
 
@@ -454,6 +539,12 @@ async function reportPlayback(
   season?: number,
   episode?: number
 ): Promise<boolean> {
+  if (options.action === 'unwatch') {
+    const result = await removeWatched(apiKey, tmdbId, mediaType, season, episode);
+    logger.info(`[Watch Tracking] Cleared ${result?.deleted ?? 0} play(s): tmdb:${tmdbId}`);
+    return result?.success !== false;
+  }
+
   if (options.action === 'stop') {
     const position = options.positionMs ?? 0;
     const runtime = options.runtimeMs ?? 0;
@@ -532,13 +623,43 @@ function getMemoryStats() {
   return { rateLimitStates: rateLimitStates.size };
 }
 
+export interface PmdbSkip {
+  intro_start_ms?: number | null;
+  intro_end_ms?: number | null;
+  credits_start_ms?: number | null;
+  credits_end_ms?: number | null;
+  source?: string;
+}
+
+async function fetchSkips(
+  apiKey: string,
+  query: { tmdbId: string | number; mediaType: 'movie' | 'tv'; season?: number | null; episode?: number | null }
+): Promise<PmdbSkip[]> {
+  const params = new URLSearchParams({ tmdb_id: String(query.tmdbId), media_type: query.mediaType });
+  if (query.mediaType === 'tv') {
+    if (query.season !== null && query.season !== undefined) params.set('season', String(query.season));
+    if (query.episode !== null && query.episode !== undefined) params.set('episode', String(query.episode));
+  }
+  const data = await makeRequest(`/api/external/skips?${params.toString()}`, apiKey);
+  return Array.isArray(data?.items) ? data.items : [];
+}
+
 export {
   validateKey,
+  fetchSkips,
   fetchResume,
+  fetchDropped,
+  fetchWatched,
   saveResume,
+  clearResume,
+  tmdbIdFrom,
+  removeWatched,
   fetchLists,
   fetchListItems,
   publicMetaDBListType,
+  publicMetaDBWatchlistCatalog,
+  setListItem,
+  setDropped,
   fetchPicks,
   fetchPickItems,
   markWatched,

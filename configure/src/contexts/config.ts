@@ -15,13 +15,29 @@ export interface TagDef {
   allowUnratedContent?: boolean;
 }
 
+/** A user on the Jellyfin sign-in screen, made of the profile tags it picks. */
+export interface JellyfinUser {
+  id: string;
+  name: string;
+  /** Picture address. Absent shows the client's own placeholder. */
+  avatar?: string;
+  /** Catalogs carrying any of these are in; none means every catalog. */
+  tags: string[];
+  /** Whether this user is the same person as the account, sharing its watch history and trackers. */
+  trackers?: boolean;
+  /** Absent follows the main user. */
+  trackerSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
+  skipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
+  watchlistServices?: string[];
+}
+
 export interface CatalogConfig {
   id: string;
   name: string;
   type: 'movie' | 'series' | 'anime' | 'all';
   enabled: boolean;
   tags?: string[];
-  source: 'tmdb' | 'tvdb' | 'mal' | 'tvmaze' | 'mdblist' | 'trakt' | 'streaming' | 'stremthru' | 'custom' | 'anilist' | 'letterboxd' | 'simkl' | 'movielens' | 'flixpatrol' | 'publicmetadb' | 'merged'; // Keep source as the display label
+  source: 'tmdb' | 'tvdb' | 'mal' | 'tvmaze' | 'mdblist' | 'trakt' | 'streaming' | 'stremthru' | 'custom' | 'anilist' | 'letterboxd' | 'simkl' | 'movielens' | 'flixpatrol' | 'publicmetadb' | 'recommendations' | 'merged'; // Keep source as the display label
   sourceUrl?: string; // Store the actual URL for StremThru and custom catalogs
   showInHome: boolean;
   genres?: string[]; // Optional genres array for catalogs that support genre filtering
@@ -117,6 +133,13 @@ export interface CatalogConfig {
     maxFutureDays?: number;
     includeRated?: boolean;
     listUserId?: number | string;
+    /**
+     * Recommendation rows only, and named apart from the `order` and `minVotes`
+     * above, which are a sort direction and a TMDB filter and mean other things.
+     * Unset follows whatever was set for every row.
+     */
+    pickOrder?: 'suggested' | 'popular' | 'acclaimed' | 'balanced';
+    pickMinVotes?: number;
   };
 }
 
@@ -278,6 +301,42 @@ export interface AppConfig {
     gemini_model?: string;
     openrouter_model?: string;
   };
+  /** Model overrides for the recommendation catalogs. */
+  recommendations?: {
+    provider?: 'gemini' | 'openrouter';
+    gemini_model?: string;
+    openrouter_model?: string;
+    /** Which watch histories the profile is built from. */
+    sources?: 'simkl' | 'mdblist' | 'both';
+    /** Gemini google_search grounding, or the OpenRouter :online suffix. Off unless set. */
+    web_search?: boolean;
+    /**
+     * How much thinking the model may spend before it answers. Billed and
+     * counted against the same reply budget as the answer, so a high setting
+     * can leave a long list with no room to finish. OpenRouter only.
+     */
+    reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high';
+    /**
+     * How much a series left unfinished counts against it. Stalling is weak
+     * evidence: people stop because a season ended or they forgot, not only
+     * because they lost interest.
+     */
+    stalled_weight?: 'ignore' | 'note' | 'mild' | 'dislike';
+    /** Days without an episode before an unfinished title reads as set aside. */
+    stale_after_days?: number;
+    /**
+     * How often the rows are written again. Each rebuild is a large model call
+     * that is charged for, so nothing shorter than six hours is offered.
+     */
+    refresh_hours?: 6 | 12 | 24;
+    /**
+     * How a built row is arranged. Applied when the row is read, so changing it
+     * rearranges what exists rather than costing a rebuild.
+     */
+    order?: 'suggested' | 'popular' | 'acclaimed' | 'balanced';
+    /** Titles with fewer votes than this are dropped, whatever the ordering. */
+    min_votes?: number;
+  };
   searchEnabled: boolean;
   sessionId: string;
   timezone?: string;
@@ -342,8 +401,22 @@ export interface AppConfig {
   tags?: TagDef[];
   catalogModeOnly?: boolean;
   hideStremioCatalogs?: boolean;
+  /** Install URL of a stream addon the Jellyfin server delegates playback to. */
+  jellyfinStreamUrl?: string;
+  jellyfinResolveOnOpen?: boolean;
   /** Playback is reported by the client, so the subtitle trigger is not used. */
   playbackReporting?: boolean;
+  /** Password a Jellyfin client signs in with, for accounts that have no configuration password. */
+  jellyfinAppPassword?: string;
+  /** Tracker the Jellyfin resume shelf reads from. `auto` picks a capable one. */
+  jellyfinResumeSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
+  /** Name and picture of the main Jellyfin user, the configuration itself. */
+  jellyfinUserName?: string;
+  jellyfinUserAvatar?: string;
+  jellyfinUserTags?: string[];
+  jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
+  jellyfinWatchlistServices?: string[];
+  jellyfinUsers?: JellyfinUser[];
   customPosterUrlPattern?: string;
   customBackgroundUrlPattern?: string;
   customLandscapeUrlPattern?: string;

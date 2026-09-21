@@ -521,6 +521,43 @@ function shouldTrackMal(config: any): boolean {
 /**
  * Main tracking function - tracks anime watch progress on MAL
  */
+async function fetchPlanToWatchIds(accessToken: string): Promise<number[]> {
+  const ids: number[] = [];
+  let offset = 0;
+  for (let page = 0; page < 20; page += 1) {
+    const params = new URLSearchParams({ status: 'plan_to_watch', limit: '500', offset: String(offset), fields: 'id' });
+    const data = await makeRateLimitedRequest(() =>
+      malRequest(`${MAL_API_BASE}/users/@me/animelist?${params.toString()}`, { accessToken })
+    );
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    for (const row of rows) if (row?.node?.id) ids.push(Number(row.node.id));
+    if (!data?.paging?.next || rows.length < 500) break;
+    offset += rows.length;
+  }
+  return ids;
+}
+
+async function setPlanToWatch(malId: number, listed: boolean, accessToken: string): Promise<boolean> {
+  try {
+    if (listed) {
+      await makeRateLimitedRequest(() =>
+        malRequest(`${MAL_API_BASE}/anime/${malId}/my_list_status`, { method: 'PUT', form: { status: 'plan_to_watch' }, accessToken })
+      );
+      return true;
+    }
+    // A title with progress is history, not a watchlist entry.
+    const current = await getAnimeStatus(malId, accessToken);
+    if (current?.listStatus && current.listStatus.status !== 'plan_to_watch') return false;
+    await makeRateLimitedRequest(() =>
+      malRequest(`${MAL_API_BASE}/anime/${malId}/my_list_status`, { method: 'DELETE', accessToken })
+    );
+    return true;
+  } catch (error: any) {
+    logger.error(`[MAL Tracker] Watchlist ${listed ? 'add' : 'remove'} failed for MAL ID ${malId}: ${error.message}`);
+    return false;
+  }
+}
+
 async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID: string): Promise<{ success: boolean; reason?: string; updated?: boolean }> {
   const startTime = Date.now();
 
@@ -603,6 +640,8 @@ export {
   getAuthenticatedUser,
   resolveMalId,
   getAnimeStatus,
+  fetchPlanToWatchIds,
+  setPlanToWatch,
   determineStatus,
   updateProgress,
   shouldTrackMal,

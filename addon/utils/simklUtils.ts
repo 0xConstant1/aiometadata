@@ -1,6 +1,7 @@
-import { httpGet, httpPost } from "./httpClient.js";
+import { httpGet, httpPost, httpRequest } from "./httpClient.js";
+import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { getMeta } from "../lib/getMeta.js";
-import { cacheWrapMetaSmart, cacheWrapGlobal } from "../lib/getCache.js";
+import { cacheWrapMetaSmart, cacheWrapGlobal, classifyResultAllowEmpty } from "../lib/getCache.js";
 import { UserConfig } from "../types/index.js";
 import * as Utils from "./parseProps.js";
 import { progress } from "framer-motion";
@@ -466,6 +467,46 @@ async function getSimklRatings(
   }
 }
 
+// Paused sessions across every type, which is the shape a continue watching
+// row wants. Anime entries carry their own kitsu numbering alongside the TVDB
+// one, so an episode needs no mapping to name it the way the meta does.
+// The whole library in one call, movies, shows and anime together. Episodes are
+// only loaded for the in-progress buckets unless every status is asked for, so a
+// finished show would otherwise arrive as a bare count, and the anime variant
+// carries each episode's broadcast numbering beside its own. Simkl suspends a
+// client_id for polling this, so a caller gates the refetch on the digest.
+async function fetchSimklAllItems(accessToken: string): Promise<any> {
+  if (!accessToken) return null;
+
+  try {
+    const response = await makeAuthenticatedSimklRequest(
+      `${SIMKL_BASE_URL}/sync/all-items?extended=full_anime_seasons&episode_watched_at=yes&include_all_episodes=yes&next_watch_info=yes`,
+      accessToken,
+      'Simkl fetchSimklAllItems'
+    );
+    return response?.data ?? null;
+  } catch (error: any) {
+    logger.error(`[Simkl] Fetching the library failed: ${error.message}`);
+    return null;
+  }
+}
+
+async function fetchPlaybackSessions(accessToken: string): Promise<any[]> {
+  if (!accessToken) return [];
+
+  try {
+    const response = await makeAuthenticatedSimklRequest(
+      `${SIMKL_BASE_URL}/sync/playback`,
+      accessToken,
+      'Simkl fetchPlaybackSessions'
+    );
+    return Array.isArray(response?.data) ? response.data : [];
+  } catch (error: any) {
+    logger.error(`[Simkl] Fetching playback sessions failed: ${error.message}`);
+    return [];
+  }
+}
+
 async function makeRateLimitedSimklRequest(url: string, context: string = 'Simkl Proxy'): Promise<any> {
   const headers = {
     'Content-Type': 'application/json',
@@ -532,7 +573,8 @@ async function fetchSimklItemDetail(type: 'movie' | 'tv', simklId: string | numb
         return null;
       }
     },
-    24 * 60 * 60
+    24 * 60 * 60,
+    { resultClassifier: classifyResultAllowEmpty }
   );
 }
 
@@ -954,9 +996,122 @@ function normalizeEpisodeIdInput(input: EpisodeIdInput | null | undefined) {
   return Object.keys(ids).length > 0 ? ids : null;
 }
 
+export async function addToHistory(
+  idInput: Record<string, string | number>,
+  accessToken: string,
+  season?: number,
+  episode?: number,
+  episodes?: EpisodeRef[]
+): Promise<boolean> {
+  const payload = historyPayload(idInput, season, episode, episodes);
+
+  try {
+    const response = await httpPost(`${SIMKL_BASE_URL}/sync/history`, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'simkl-api-key': simklClientIdFor(accessToken),
+      },
+      dispatcher: simklDispatcher,
+      timeout: 10000,
+    });
+    if (response.status >= 200 && response.status < 300) {
+      logger.info('[Simkl] Added to history', { ids: idInput, season, episode });
+      return true;
+    }
+    logger.warn(`[Simkl] Add to history answered ${response.status}`);
+    return false;
+  } catch (error: any) {
+    logger.error(`[Simkl] Failed to add to history: ${error.message}`);
+    return false;
+  }
+}
+
+/** True when a playback entry is the title, and for a show the episode, named. */
+export function playbackEntryMatches(
+  entry: any,
+  idInput: Record<string, string | number>,
+  season?: number,
+  episode?: number
+): boolean {
+  const ids = (entry?.anime ?? entry?.show ?? entry?.movie)?.ids ?? {};
+  const shared = Object.entries(idInput).some(([key, value]) => ids[key] != null && String(ids[key]) === String(value));
+  if (!shared) return false;
+  if (season == null || episode == null) return !entry?.episode;
+
+  const ep = entry?.episode;
+  if (!ep) return false;
+  return (Number(ep.season) === season && Number(ep.number) === episode)
+    || (Number(ep.tvdb_season) === season && Number(ep.tvdb_number) === episode);
+}
+
+/** Drops the paused session so the title leaves continue watching. */
+export async function clearPlayback(
+  idInput: Record<string, string | number>,
+  accessToken: string,
+  season?: number,
+  episode?: number
+): Promise<boolean> {
+  const sessions = await fetchPlaybackSessions(accessToken);
+  const matches = sessions.filter((entry) => entry?.id && playbackEntryMatches(entry, idInput, season, episode));
+  if (!matches.length) return true;
+
+  try {
+    for (const entry of matches) {
+      await httpRequest(`${SIMKL_BASE_URL}/sync/playback/${entry.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'simkl-api-key': simklClientIdFor(accessToken),
+        },
+        dispatcher: simklDispatcher,
+        timeout: 10000,
+      });
+    }
+    logger.info('[Simkl] Cleared the resume point', { ids: idInput, season, episode });
+    return true;
+  } catch (error: any) {
+    logger.error(`[Simkl] Clearing the resume point failed: ${error.message}`);
+    return false;
+  }
+}
+
+// A show sent with no seasons is removed from the library entirely, so an
+// episode always names both its season and its number.
+export async function removeFromHistory(
+  idInput: Record<string, string | number>,
+  accessToken: string,
+  season?: number,
+  episode?: number,
+  episodes?: EpisodeRef[]
+): Promise<boolean> {
+  const payload = historyPayload(idInput, season, episode, episodes);
+
+  try {
+    const response = await httpPost(`${SIMKL_BASE_URL}/sync/history/remove`, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'simkl-api-key': simklClientIdFor(accessToken),
+      },
+      dispatcher: simklDispatcher,
+      timeout: 10000,
+    });
+    if (response.status >= 200 && response.status < 300) {
+      logger.info('[Simkl] Removed from history', { ids: idInput, season, episode });
+      return true;
+    }
+    logger.warn(`[Simkl] Remove from history answered ${response.status}`);
+    return false;
+  } catch (error: any) {
+    logger.error(`[Simkl] Failed to remove from history: ${error.message}`);
+    return false;
+  }
+}
+
 export interface SimklScrobbleOptions {
   /** checkin is fire and forget and self-completes; start and stop are a session. */
-  action?: 'checkin' | 'start' | 'stop';
+  action?: 'checkin' | 'start' | 'pause' | 'stop';
   /** 0-100. Simkl marks an item watched on stop at 80 or above. */
   progress?: number;
 }
@@ -1158,19 +1313,27 @@ function mergeItems(existingItems: any[], newItems: any[]): any[] {
 
 async function fetchSimklWatchedItems(
   accessToken: string,
-  type: 'movies' | 'shows' | 'anime' = 'movies'
+  type: 'movies' | 'shows' | 'anime' = 'movies',
+  status: 'completed' | 'dropped' | 'hold' = 'completed'
 ): Promise<any[]> {
   try {
     const endpoint = type === 'movies' ? 'movies' : type === 'shows' ? 'tv' : 'anime';
-    const url = `${SIMKL_BASE_URL}/sync/all-items/${endpoint}/completed`;
+    // Default richness on purpose: it already carries user_rating, last_watched_at
+    // and the episode counters. `extended=full` only adds per-episode arrays.
+    const url = `${SIMKL_BASE_URL}/sync/all-items/${endpoint}/${status}`;
     
     const response: any = await makeAuthenticatedSimklRequest(
       url,
       accessToken,
-      `Simkl fetchWatchedItems (${type})`
+      `Simkl fetchWatchedItems (${type}/${status})`
     );
     
-    const items = response.data || [];
+    // The payload is an object keyed by media kind, never a bare array, so an
+    // Array.isArray guard on it silently returns nothing.
+    const payload = response.data;
+    const items = Array.isArray(payload)
+      ? payload
+      : (payload?.movies || payload?.shows || payload?.anime || []);
     return Array.isArray(items) ? items : [];
   } catch (error: any) {
     logger.error(`Error fetching Simkl watched items: ${error.message}`);
@@ -1192,7 +1355,10 @@ async function fetchSimklWatchingItems(
       `Simkl fetchWatchingItems (${type})`
     );
     
-    const items = response.data || [];
+    const payload = response.data;
+    const items = Array.isArray(payload)
+      ? payload
+      : (payload?.shows || payload?.anime || payload?.movies || []);
     return Array.isArray(items) ? items : [];
   } catch (error: any) {
     logger.error(`Error fetching Simkl watching items: ${error.message}`);
@@ -1366,7 +1532,7 @@ async function getSimklWatchedIds(config: any): Promise<SimklWatchedIds | null> 
 
       logger.info(`[Watched IDs] ${movieImdbIds.length} movies, ${showImdbIds.length} shows, ${malIds.length} anime completed on Simkl`);
       return { movieImdbIds, showImdbIds, malIds, anilistIds };
-    }, SIMKL_WATCHLIST_TTL);
+    }, SIMKL_WATCHLIST_TTL, { resultClassifier: classifyResultAllowEmpty });
 
     return {
       movieImdbIds: new Set(watched.movieImdbIds),
@@ -2158,9 +2324,12 @@ export {
   makeAuthenticatedSimklRequest,
   getSimklRatings,
   getSimklToken,
+  fetchPlaybackSessions,
+  fetchSimklAllItems,
   getSimklWatchedIds,
   fetchSimklUserLists,
   fetchSimklListPage,
+  fetchSimklWatchedItems,
   getSimklActivityFingerprint,
   fetchSimklTrendingItems,
   fetchSimklRecipeItems,

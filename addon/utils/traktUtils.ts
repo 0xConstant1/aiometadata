@@ -1,7 +1,8 @@
-import { httpGet, httpPost } from "./httpClient.js";
+import { httpGet, httpPost, httpRequest } from "./httpClient.js";
+import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { getMeta } from "../lib/getMeta.js";
 import { mapWithLimit } from "./concurrency.js";
-import { cacheWrapMetaSmart, cacheWrapGlobal, readGlobalCache, writeGlobalCache } from "../lib/getCache.js";
+import { cacheWrapMetaSmart, cacheWrapGlobal, classifyResultAllowEmpty, readGlobalCache, writeGlobalCache } from "../lib/getCache.js";
 import { UserConfig } from "../types/index.js";
 const consola = require('consola');
 const crypto = require('crypto');
@@ -635,7 +636,7 @@ async function fetchTraktUpNextEpisodes(
           return resp.data;
         },
         86400, // 1 day TTL
-        { upstream: true }
+        { upstream: true, resultClassifier: classifyResultAllowEmpty }
       );
       showDataMap.set(showId, data);
     } catch(e) {}
@@ -3245,6 +3246,113 @@ export async function checkinMovie(
       return true;
     }
     logger.error(`[Trakt Checkin] Movie check-in failed: ${error.message}`);
+    return false;
+  }
+}
+
+export async function addToHistory(
+  idInput: Record<string, string | number>,
+  accessToken: string,
+  season?: number,
+  episode?: number,
+  episodes?: EpisodeRef[]
+): Promise<boolean> {
+  const payload = historyPayload(idInput, season, episode, episodes);
+
+  try {
+    await makeRateLimitedRequest(
+      () => httpPost('https://api.trakt.tv/sync/history', payload, {
+        dispatcher: traktDispatcher,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'trakt-api-version': '2',
+          'trakt-api-key': process.env.TRAKT_CLIENT_ID
+        }
+      }),
+      'Trakt addToHistory',
+      3,
+      accessToken
+    );
+    logger.info('[Trakt] Added to history', { ids: idInput, season, episode });
+    return true;
+  } catch (error: any) {
+    logger.error(`[Trakt] Failed to add to history: ${error.message}`);
+    return false;
+  }
+}
+
+// Trakt adds a history entry per scrobble, so removal is by item, not entry,
+// and an episode must name its season: a show sent bare clears the whole show.
+export async function removeFromHistory(
+  idInput: Record<string, string | number>,
+  accessToken: string,
+  season?: number,
+  episode?: number,
+  episodes?: EpisodeRef[]
+): Promise<boolean> {
+  const payload = historyPayload(idInput, season, episode, episodes);
+
+  try {
+    await makeRateLimitedRequest(
+      () => httpPost('https://api.trakt.tv/sync/history/remove', payload, {
+        dispatcher: traktDispatcher,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'trakt-api-version': '2',
+          'trakt-api-key': process.env.TRAKT_CLIENT_ID
+        }
+      }),
+      'Trakt removeFromHistory',
+      3,
+      accessToken
+    );
+    logger.info('[Trakt] Removed from history', { ids: idInput, season, episode });
+    return true;
+  } catch (error: any) {
+    logger.error(`[Trakt] Failed to remove from history: ${error.message}`);
+    return false;
+  }
+}
+
+/** Drops the paused playback entry so the title leaves continue watching. */
+export async function clearPlayback(
+  idInput: Record<string, string | number>,
+  accessToken: string,
+  season?: number,
+  episode?: number
+): Promise<boolean> {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
+    'trakt-api-version': '2',
+    'trakt-api-key': TRAKT_CLIENT_ID
+  };
+
+  try {
+    const response = await makeAuthenticatedRateLimitedTraktRequest(
+      'https://api.trakt.tv/sync/playback',
+      accessToken,
+      'Trakt clearPlayback'
+    );
+    const { playbackEntryMatches } = require('./simklUtils');
+    const matches = (Array.isArray(response?.data) ? response.data : [])
+      .filter((entry: any) => entry?.id && playbackEntryMatches(entry, idInput, season, episode));
+    if (!matches.length) return true;
+
+    for (const entry of matches) {
+      await makeRateLimitedRequest(
+        () => httpRequest(`https://api.trakt.tv/sync/playback/${entry.id}`, { method: 'DELETE', headers, dispatcher: traktDispatcher }),
+        'Trakt clearPlayback',
+        3,
+        accessToken
+      );
+    }
+    logger.info('[Trakt] Cleared the resume point', { ids: idInput, season, episode });
+    return true;
+  } catch (error: any) {
+    logger.error(`[Trakt] Clearing the resume point failed: ${error.message}`);
     return false;
   }
 }

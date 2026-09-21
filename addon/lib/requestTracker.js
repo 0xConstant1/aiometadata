@@ -197,8 +197,7 @@ class RequestTracker {
               /\/catalog\/[^/]+\/[^/]+\/(.*)\.(json|xml)$/i,
             );
             if (extrasMatch && extrasMatch[1]) {
-              const extrasPart = extrasMatch[1];
-              const segments = extrasPart.split("/");
+              const segments = extrasMatch[1].split(/[/&]/);
               for (const segment of segments) {
                 if (segment.toLowerCase().startsWith("search=")) {
                   const val = segment.substring("search=".length);
@@ -312,8 +311,7 @@ class RequestTracker {
               /\/catalog\/[^/]+\/[^/]+\/(.*)\.(json|xml)$/i,
             );
             if (extrasMatch && extrasMatch[1]) {
-              const extrasPart = extrasMatch[1];
-              const segments = extrasPart.split("/");
+              const segments = extrasMatch[1].split(/[/&]/);
               for (const segment of segments) {
                 if (segment.toLowerCase().startsWith("search=")) {
                   const val = segment.substring("search=".length);

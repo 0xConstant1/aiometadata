@@ -1,3 +1,4 @@
+import { historyPayload, type EpisodeRef } from './historyPayload';
 import { httpGet, httpPost } from "./httpClient.js";
 import { resolveAllIds } from "../lib/id-resolver.js";
 const buildInfo = require('../lib/buildInfo');
@@ -1410,6 +1411,14 @@ async function makeRateLimitedMDBListRequest(url: string, apiKey: string, contex
   );
 }
 
+async function makeRateLimitedMDBListPost(url: string, body: any, apiKey: string, context: string = 'MDBList Proxy'): Promise<any> {
+  return await makeRateLimitedRequest(
+    () => httpPost(url, body, { headers: { 'Content-Type': 'application/json' }, timeout: 10000, dispatcher: mdblistDispatcher }),
+    apiKey,
+    context
+  );
+}
+
 /**
  * Validate an MDBList API key using the rate-limited path with no retries.
  */
@@ -1654,15 +1663,13 @@ async function historySync(
   idInput: Record<string, string | number>,
   apiKey: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  const payload =
-    season != null && episode != null
-      ? { shows: [{ ids: idInput, seasons: [{ number: season, episodes: [{ number: episode }] }] }] }
-      : { movies: [{ ids: idInput }] };
+  const payload = historyPayload(idInput, season, episode, episodes);
 
   try {
-    await makeRateLimitedRequest(
+    const response: any = await makeRateLimitedRequest(
       () => httpPost(`https://api.mdblist.com/sync/${path}?apikey=${apiKey}`, payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 10000,
@@ -1671,6 +1678,13 @@ async function historySync(
       apiKey,
       `MDBList /sync/${path} (${formatIdSummary(idInput)})`
     );
+    // A miss comes back inside a 200.
+    const missed = response?.data?.not_found;
+    const missing = ['movies', 'shows', 'episodes'].reduce((n, key) => n + (Array.isArray(missed?.[key]) ? missed[key].length : 0), 0);
+    if (missing > 0) {
+      logger.warn(`[MDBList] /sync/${path} did not find the title`, { ids: idInput, season, episode, not_found: missed });
+      return false;
+    }
     logger.info(`[MDBList] ${path === 'watched' ? 'Added to' : 'Removed from'} history`, { ids: idInput, season, episode });
     return true;
   } catch (error: any) {
@@ -1683,18 +1697,20 @@ async function addToHistory(
   idInput: Record<string, string | number>,
   apiKey: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  return historySync('watched', idInput, apiKey, season, episode);
+  return historySync('watched', idInput, apiKey, season, episode, episodes);
 }
 
 async function removeFromHistory(
   idInput: Record<string, string | number>,
   apiKey: string,
   season?: number,
-  episode?: number
+  episode?: number,
+  episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  return historySync('watched/remove', idInput, apiKey, season, episode);
+  return historySync('watched/remove', idInput, apiKey, season, episode, episodes);
 }
 
 // A resume point is held separately from watched status, so clearing a watch
@@ -1737,9 +1753,18 @@ export interface MdblistScrobbleOptions {
   progress?: number;
 }
 
+function responseDetail(error: any): string {
+  const data = error?.response?.data;
+  const text = typeof data === 'string' ? data : data ? JSON.stringify(data) : '';
+  return text ? ` (${text.slice(0, 300)})` : '';
+}
+
+function scrobblePath(action: string): string {
+  return action === 'checkin' ? 'checkin' : `scrobble/${action}`;
+}
+
 function scrobbleUrl(action: string, apiKey: string): string {
-  const path = action === 'checkin' ? 'checkin' : `scrobble/${action}`;
-  return `https://api.mdblist.com/${path}?apikey=${apiKey}`;
+  return `https://api.mdblist.com/${scrobblePath(action)}?apikey=${apiKey}`;
 }
 
 async function checkinMovie(
@@ -1770,17 +1795,17 @@ async function checkinMovie(
         dispatcher: mdblistDispatcher
       }),
       apiKey,
-      `MDBList checkinMovie (${formatIdSummary(idInput)})`
+      `MDBList ${scrobblePath(action)} (${formatIdSummary(idInput)})`
     );
 
-    logger.info('[MDBList Checkin] Movie check-in successful', { ids: idInput });
+    logger.info(`[MDBList ${action}] Movie reported`, { ids: idInput });
     return true;
   } catch (error: any) {
     if (error.response?.status === 409) {
-      logger.info('[MDBList Checkin] Session already managed by another API (409 Conflict)');
+      logger.info(`[MDBList ${action}] Session already managed by another API (409 Conflict)`);
       return true;
     }
-    logger.error(`[MDBList Checkin] Movie check-in failed: ${error.message}`);
+    logger.error(`[MDBList ${action}] Movie report failed: ${error.message}${responseDetail(error)}`);
     return false;
   }
 }
@@ -1826,17 +1851,17 @@ async function checkinEpisode(
         dispatcher: mdblistDispatcher
       }),
       apiKey,
-      `MDBList checkinEpisode (${formatIdSummary(idInput)} S${season}E${episode})`
+      `MDBList ${scrobblePath(action)} (${formatIdSummary(idInput)} S${season}E${episode})`
     );
 
-    logger.info('[MDBList Checkin] Episode check-in successful', { ids: idInput, season, episode });
+    logger.info(`[MDBList ${action}] Episode reported`, { ids: idInput, season, episode });
     return true;
   } catch (error: any) {
     if (error.response?.status === 409) {
-      logger.info('[MDBList Checkin] Session already managed by another API (409 Conflict)');
+      logger.info(`[MDBList ${action}] Session already managed by another API (409 Conflict)`);
       return true;
     }
-    logger.error(`[MDBList Checkin] Episode check-in failed: ${error.message}`);
+    logger.error(`[MDBList ${action}] Episode report failed: ${error.message}${responseDetail(error)}`);
     return false;
   }
 }
@@ -1946,6 +1971,7 @@ export {
   fetchMDBListGenres,
   convertGenreToSlug,
   makeRateLimitedMDBListRequest,
+  makeRateLimitedMDBListPost,
   testMdblistKey,
   fetchMDBListUpNext,
   parseMDBListUpNextItems,

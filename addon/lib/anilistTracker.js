@@ -472,6 +472,53 @@ async function updateProgress(anilistId, episode, totalEpisodes, accessToken) {
  * @param {ParsedMediaId} parsedId - Parsed media identifier
  * @returns {Promise<{anilistId: number, episode: number}|null>} AniList ID and episode or null if resolution fails
  */
+async function anilistRequest(query, variables, accessToken) {
+  const response = await makeRateLimitedRequest(() =>
+    httpPost(ANILIST_GRAPHQL_URL, { query, variables }, {
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      timeout: REQUEST_TIMEOUT_MS
+    })
+  );
+  const errors = parseGraphQLErrors(response.data);
+  if (errors.hasErrors) throw new Error(errors.errors.map(e => e.message).join(', '));
+  return response.data?.data;
+}
+
+async function fetchPlanningIds(accessToken) {
+  const viewer = await anilistRequest('query { Viewer { id } }', {}, accessToken);
+  const userId = viewer?.Viewer?.id;
+  if (!userId) return [];
+  const data = await anilistRequest(
+    'query ($userId: Int) { MediaListCollection(userId: $userId, type: ANIME, status: PLANNING) { lists { entries { mediaId } } } }',
+    { userId },
+    accessToken
+  );
+  const ids = [];
+  for (const list of data?.MediaListCollection?.lists || []) for (const entry of list?.entries || []) if (entry?.mediaId) ids.push(Number(entry.mediaId));
+  return ids;
+}
+
+async function setPlanning(anilistId, listed, accessToken) {
+  try {
+    if (listed) {
+      await anilistRequest(
+        'mutation ($mediaId: Int) { SaveMediaListEntry(mediaId: $mediaId, status: PLANNING) { id } }',
+        { mediaId: parseInt(anilistId, 10) },
+        accessToken
+      );
+      return true;
+    }
+    const entry = (await getMediaStatus(anilistId, accessToken))?.mediaListEntry;
+    // A title with progress is history, not a watchlist entry.
+    if (!entry?.id || (entry.status && entry.status !== 'PLANNING')) return false;
+    await anilistRequest('mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }', { id: entry.id }, accessToken);
+    return true;
+  } catch (error) {
+    logger.error(`[AniList Tracker] Watchlist ${listed ? 'add' : 'remove'} failed for AniList ID ${anilistId}: ${error.message}`);
+    return false;
+  }
+}
+
 async function resolveAniListId(parsedId) {
   if (!parsedId || !parsedId.provider || !parsedId.id) {
     logger.warn('[AniList Tracker] Invalid parsedId provided to resolveAniListId');
@@ -820,6 +867,8 @@ module.exports = {
   // AniList operations
   getMediaStatus,
   updateProgress,
+  fetchPlanningIds,
+  setPlanning,
   resolveAniListId,
   determineStatus,
   

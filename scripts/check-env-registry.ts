@@ -15,8 +15,10 @@ const INTERNAL_ALLOWLIST = new Set<string>([
   'POSTER_CACHE_LOG_PIPE',
 ]);
 
+/** Known debt: warned about, never grown. A setting not listed here fails the check. */
 const ENV_RE = /process\.env\.([A-Z_][A-Z0-9_]*)|process\.env\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]/g;
 const GET_SETTING_RE = /getSetting\(\s*['"]([A-Z_][A-Z0-9_]*)['"]/g;
+const ENV_HELPER_RE = /\benvInt\(\s*['"]([A-Z_][A-Z0-9_]*)['"]/g;
 
 // Top-level const/let/var whose initializer reads process.env, inline or via an IIFE: frozen until restart.
 const MODULE_INLINE_RE = /^(?:export\s+)?(?:const|let|var)\s+\w+\s*=(?![^\n;]*=>)(?![^\n;]*\bfunction\b)[^\n;]*?process\.env\.([A-Z_][A-Z0-9_]*)/gm;
@@ -64,6 +66,10 @@ for (const file of files) {
     }
     GET_SETTING_RE.lastIndex = 0;
     while ((m = GET_SETTING_RE.exec(line)) !== null) settingKeysUsed.add(m[1]);
+    ENV_HELPER_RE.lastIndex = 0;
+    while ((m = ENV_HELPER_RE.exec(line)) !== null) {
+      if (!used.has(m[1])) used.set(m[1], `${rel}:${i + 1}`);
+    }
   });
 
   let mm: RegExpExecArray | null;

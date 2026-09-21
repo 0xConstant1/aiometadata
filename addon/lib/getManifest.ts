@@ -9,6 +9,7 @@ import buildInfo from "./buildInfo";
 import catalogsTranslationsJson from "../static/translations.json";
 import catalogTypesJson from "../static/catalog-types.json";
 import { PLAYBACK_MANIFEST_EVENTS, WATCH_STATE_VERSION } from "./playbackHandler";
+import { watchStatePullTtl } from "./watchState";
 const jikan: any = require('./mal');
 const DEFAULT_LANGUAGE = "en-US";
 const catalogsTranslations: Record<string, Record<string, string>> = catalogsTranslationsJson;
@@ -1093,6 +1094,13 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       if (isSimkl(userCatalog.id)) {
         return true;
       }
+      if (userCatalog.id.startsWith('recommendations.')) {
+        // Needs a history to read and a model to read it with.
+        const hasHistory = !!(config.apiKeys?.simklTokenId || config.apiKeys?.mdblist);
+        const hasModel = !!(config.apiKeys?.gemini || config.apiKeys?.openrouter
+          || process.env.GEMINI_API_KEY || process.env.BUILT_IN_GEMINI_API_KEY || process.env.OPENROUTER_API_KEY);
+        return hasHistory && hasModel;
+      }
       if (userCatalog.id.startsWith('movielens.')) {
         return !!config.apiKeys?.movieLensCredId;
       }
@@ -1161,6 +1169,21 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
           const result = await createSimklCatalog(userCatalog, showPrefix, prefixName);
           logger.debug(`Simkl catalog result:`, result ? 'success' : 'failed');
           return result;
+      }
+      if (userCatalog.id.startsWith('recommendations.')) {
+          logger.debug(`Processing recommendation catalog: ${userCatalog.id}`);
+          // No genre filter; off the home board a required extra keeps it to Discover.
+          return {
+            id: userCatalog.id,
+            type: userCatalog.displayType || userCatalog.type,
+            name: `${showPrefix ? `${prefixName} - ` : ""}${userCatalog.name}`,
+            pageSize: parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20,
+            extra: [
+              ...(userCatalog.showInHome ? [] : [{ name: 'genre', options: ['None'], isRequired: true }]),
+              { name: 'skip' },
+            ],
+            showInHome: userCatalog.showInHome
+          };
       }
       if (userCatalog.id.startsWith('movielens.')) {
           logger.debug(`Processing MovieLens catalog: ${userCatalog.id}`);
@@ -1658,9 +1681,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   }
 
   // Declared only when the user has opted in, since declaring it is what makes
-  // a front-end start delivering. The prefixes are the ones the tracker can
-  // actually parse, so nothing arrives that would only be discarded.
-  // Named as strings: a reader validates object resources against the names it
+  // a front-end start delivering. Named as strings: a reader validates object resources against the names it
   // knows, and one that has never heard of these would reject the manifest whole.
   const playbackReporting = watchTrackingEnabled && config.playbackReporting === true;
   if (playbackReporting) {
@@ -1677,7 +1698,11 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
     resources,
     ...(playbackReporting
       ? {
-          watchState: { version: WATCH_STATE_VERSION, push: { events: PLAYBACK_MANIFEST_EVENTS } },
+          watchState: {
+            version: WATCH_STATE_VERSION,
+            push: { events: PLAYBACK_MANIFEST_EVENTS, bulk: true },
+            pull: { items: true, watched: true, ttlSeconds: watchStatePullTtl() },
+          },
           playback: { version: 1, events: PLAYBACK_MANIFEST_EVENTS },
         }
       : {}),

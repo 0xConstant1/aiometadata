@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react';
 import { AlertTriangle, Plus, Rows3 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import type { TagDef } from '@/contexts/config';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -13,6 +14,7 @@ import type { ClassicRowDraft, SourceDraft } from '@shared/types';
 import { ImageUrlField } from './ImageUrlField';
 import { SourceRow } from './SourceRow';
 import { ASPECT_BY_SHAPE, SHAPE_LABELS, SHAPE_ORDER, SHAPE_PREVIEW } from './shared';
+import { UserTagsField } from './UserTagsField';
 
 export function ClassicRowEditor({
   entry,
@@ -22,6 +24,7 @@ export function ClassicRowEditor({
   onChange,
   onAddSource,
   onRenameCatalog,
+  userTags = [],
   focusTitle,
   onTitleFocused,
   unsupportedNote,
@@ -34,6 +37,7 @@ export function ClassicRowEditor({
   onAddSource: () => void;
   /** Renames the catalog itself, everywhere it appears. */
   onRenameCatalog?: (source: SourceDraft, name: string) => void;
+  userTags?: TagDef[];
   focusTitle?: boolean;
   onTitleFocused?: () => void;
   /** Set when this row's catalog carries a type Fusion will not import. */
@@ -87,6 +91,8 @@ export function ClassicRowEditor({
           onChange={next => update({ backgroundImageURL: next })}
         />
       </div>
+
+      <UserTagsField tags={userTags} value={entry.tags} onChange={next => update({ tags: next })} />
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">

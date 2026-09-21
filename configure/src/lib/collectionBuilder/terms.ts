@@ -2,6 +2,7 @@ export type Target = 'nuvio' | 'fusion';
 
 export const NUVIO_CHIP = 'bg-cyan-800/70 text-cyan-200 border-cyan-600/50';
 export const FUSION_CHIP = 'bg-violet-800/70 text-violet-200 border-violet-600/50';
+export const JELLYFIN_CHIP = 'bg-amber-800/70 text-amber-200 border-amber-600/50';
 
 export interface TargetTerms {
   entryTitle: string;
