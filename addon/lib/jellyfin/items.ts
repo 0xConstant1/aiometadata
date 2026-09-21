@@ -676,20 +676,15 @@ export function buildSeasons(
   const videos = Array.isArray(meta?.videos) ? meta.videos : [];
   const numbers = seasonNumbersFrom(videos);
 
-  // Keyed by season where the meta carries it. Older cached metas hold only the
-  // bare list, which dropped the season numbers, so that is trusted only when
-  // there is one poster per season published and otherwise falls back to the
-  // series poster rather than hanging the wrong season's art on a season.
-  const byNumber = meta?.app_extras?.seasonPosterByNumber;
-  const posters = Array.isArray(meta?.app_extras?.seasonPosters) ? meta.app_extras.seasonPosters : [];
-  const aligned = posters.length === numbers.length;
+  const seasonPosters = meta?.app_extras?.seasonPosters;
+  const byNumber = seasonPosters && !Array.isArray(seasonPosters) ? seasonPosters : undefined;
 
   const art = parentArt(meta, seriesId, serverId);
-  return numbers.map((season, index) => {
+  return numbers.map((season) => {
     const id = encodeJellyfinId({ k: 'season', t: mediaType, i: String(meta.id), s: season });
     const episodes = videos.filter((v: any) => v.season === season);
 
-    const primary = byNumber?.[season] || (aligned ? posters[index] : undefined) || meta.poster || undefined;
+    const primary = byNumber?.[season] || meta.poster || undefined;
     if (primary) rememberImages(serverId, id, { primary, backdrop: meta.background || undefined });
 
     return {
