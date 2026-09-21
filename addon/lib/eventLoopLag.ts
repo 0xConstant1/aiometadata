@@ -5,7 +5,6 @@ export interface EventLoopLag {
   p50Ms: number;
   p99Ms: number;
   maxMs: number;
-  /** Stalls long enough for the container health check to miss a beat. */
   stallsOverSecond: number;
   sinceMs: number;
 }
@@ -21,7 +20,6 @@ export function startEventLoopMonitor(): void {
   histogram = monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
   startedAt = Date.now();
-  // The histogram keeps no history, so a stall is counted as it happens.
   timer = setInterval(() => {
     if (!histogram) return;
     const max = histogram.max / 1e6;

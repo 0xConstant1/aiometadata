@@ -61,7 +61,6 @@ interface Named {
   episodeTitle: string | null;
 }
 
-/** A dashboard read is not worth a provider call; past this it shows the id. */
 async function withDeadline<T>(work: Promise<T>): Promise<T | null> {
   let timer: NodeJS.Timeout | undefined;
   try {
@@ -194,7 +193,7 @@ export async function dashboardOverview(): Promise<any> {
   const now = Date.now();
   const sessions = await liveSessions();
   if (overviewMemo && now - overviewMemo.at < ttl) {
-    return { ...overviewMemo.value, playingNow: playingNow(sessions, now), sessions: sessions.length, sync: syncStatus() };
+    return { ...overviewMemo.value, ...liveCounts(sessions, now), sync: syncStatus() };
   }
   const [playedDay, playedWeek, seen] = await Promise.all([
     database.countPlayedSince(now - 24 * 60 * 60 * 1000),
@@ -208,12 +207,17 @@ export async function dashboardOverview(): Promise<any> {
     activeDays: envInt('JELLYFIN_ACTIVE_DAYS', 7, 1),
   };
   overviewMemo = { at: now, value };
-  return { ...value, playingNow: playingNow(sessions, now), sessions: sessions.length, sync: syncStatus() };
+  return { ...value, ...liveCounts(sessions, now), sync: syncStatus() };
 }
 
-function playingNow(sessions: LiveSession[], now: number): number {
+function liveCounts(sessions: LiveSession[], now: number): { playingNow: number; pausedNow: number; sessions: number } {
   const window = envInt('JELLYFIN_DASHBOARD_LIVE_SECONDS', 120, 10) * 1000;
-  return sessions.filter((s) => !s.paused && now - s.at <= window).length;
+  const fresh = sessions.filter((s) => now - s.at <= window);
+  return {
+    playingNow: fresh.filter((s) => !s.paused).length,
+    pausedNow: fresh.filter((s) => s.paused).length,
+    sessions: sessions.length,
+  };
 }
 
 export interface SearchRow {
@@ -233,8 +237,6 @@ export async function dashboardSearch(query: string): Promise<{ query: string; r
   if (/^[0-9a-f-]{2,36}$/i.test(q)) {
     for (const uuid of await database.findUserUUIDsByPrefix(q.toLowerCase(), limit)) candidates.add(uuid);
   }
-  // Matching names means reading every active configuration, so it only runs
-  // when the id prefix found nothing, and it runs bounded.
   if (candidates.size === 0) {
     const needle = q.toLowerCase();
     const seen = ((await seenConfigurations()) ?? []).slice(0, envInt('JELLYFIN_DASHBOARD_NAME_SCAN_MAX', 200, 1));

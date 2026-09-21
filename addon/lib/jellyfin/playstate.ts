@@ -122,6 +122,44 @@ export async function liveSessions(): Promise<LiveSession[]> {
   return out.sort((a, b) => b.at - a.at);
 }
 
+const touched = new LRUCache<string, number>({
+  max: envInt('JELLYFIN_SESSION_CACHE_MAX', 5000, 1),
+  ttl: envInt('JELLYFIN_SESSION_CACHE_TTL', 12 * 60 * 60, 60) * 1000,
+});
+
+/** A ping arrives every few seconds; only the first of an interval is acted on. */
+export function sessionTouchDue(userUUID: string): boolean {
+  const now = Date.now();
+  const interval = envInt('JELLYFIN_SESSION_TOUCH_INTERVAL', 30, 1) * 1000;
+  if (now - (touched.get(userUUID) ?? 0) < interval) return false;
+  touched.set(userUUID, now);
+  return true;
+}
+
+/** A Ping names no item, so every session open under the profile is carried forward. */
+export async function touchSessions(userUUID: string, profile: string): Promise<void> {
+  const now = Date.now();
+  const stale = envInt('JELLYFIN_SESSION_TOUCH_INTERVAL', 30, 1) * 1000;
+  const prefix = `${userUUID}:${profile}:`;
+
+  const keys = new Set<string>();
+  for (const [key] of positions.entries()) if (key.startsWith(prefix)) keys.add(key);
+  if (redis) {
+    try {
+      const cutoff = now - liveWindowMs();
+      const cap = envInt('JELLYFIN_SESSION_CACHE_MAX', 5000, 1);
+      const live: string[] = await redis.zrevrangebyscore(POSITIONS_INDEX, '+inf', cutoff, 'LIMIT', 0, cap);
+      for (const key of live) if (key.startsWith(prefix)) keys.add(key);
+    } catch { /* what this process holds still carries forward */ }
+  }
+
+  for (const key of keys) {
+    const held = await getPosition(key);
+    if (!held || now - held.at < stale) continue;
+    setPosition(key, { ...held, at: now });
+  }
+}
+
 function ticksToMs(value: any): number | null {
   const ticks = typeof value === 'number' ? value : parseInt(String(value), 10);
   return Number.isFinite(ticks) ? Math.round(ticks / TICKS_PER_MS) : null;

@@ -38,7 +38,7 @@ const imageHash = (scope: string): string => `jf:img:${scope}`;
 const imageField = (itemId: string): string => normaliseJellyfinId(itemId);
 
 function imageTtl(): number {
-  return envInt('JELLYFIN_IMAGE_CACHE_TTL', 7 * 24 * 60 * 60, 60);
+  return envInt('JELLYFIN_IMAGE_URL_TTL', 7 * 24 * 60 * 60, 60);
 }
 
 // A listing remembers art item by item, so the writes are held back and sent
@@ -234,11 +234,6 @@ function rememberLength(kind: 'catalog' | 'page', key: string, value: number): v
   redis.set(at, String(value), 'EX', lengthTtl()).catch(() => undefined);
 }
 
-/**
- * Both caches live in this process, so a restart loses them and every listing
- * walks each catalog from the start again. Reading them back in one round trip
- * keeps the skip guards working immediately.
- */
 export async function warmCatalogLengths(userUUID: string, catalogs: CatalogRef[], extras: Record<string, string> = {}, tags: string[] = [], keepKey = ''): Promise<void> {
   if (!redis || catalogs.length === 0) return;
   const wanted: Array<{ kind: 'catalog' | 'page'; key: string; at: string }> = [];
@@ -256,7 +251,6 @@ export async function warmCatalogLengths(userUUID: string, catalogs: CatalogRef[
       if (Number.isFinite(value) && value >= 0) (w.kind === 'catalog' ? catalogLengths : pageLengths).set(w.key, value);
     });
   } catch {
-    // The caches simply stay cold.
   }
 }
 
@@ -303,7 +297,6 @@ export async function fetchWindow(
   const budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength || 0);
 
   const knownLength = keep ? undefined : catalogLengths.get(lengthKey);
-  // No catalog pages in fewer than this, so a shorter page is the last one.
   const minPage = envInt('JELLYFIN_CATALOG_MIN_PAGE', 10, 1);
   let stop = false;
 
@@ -313,8 +306,6 @@ export async function fetchWindow(
       break;
     }
 
-    // Pages are independent once the stride is known, so the first is read
-    // alone to learn it and the rest of the walk goes a few at a time.
     const wanted = offset + limit - collected.length;
     const ahead = pageLength
       ? Math.max(1, Math.min(walkConcurrency(), Math.ceil(wanted / pageLength), budget - pages))
@@ -351,9 +342,6 @@ export async function fetchWindow(
         const key = meta?.id ? String(meta.id) : null;
         if (!key || seen.has(key)) continue;
         seen.add(key);
-        // Filtered here rather than after the window is cut, so a start index
-        // counts the items a client actually receives. A movie list holding a
-        // series would otherwise return a short page, which reads as the end.
         if (keep && !keep(meta)) continue;
         collected.push(meta);
       }
@@ -740,11 +728,71 @@ export function buildEpisodes(
   serverId: string,
   season: number | null
 ): any[] {
-  const videos = Array.isArray(meta?.videos) ? meta.videos : [];
-  const wanted = season === null ? videos : videos.filter((v: any) => v.season === season);
+  const wanted = episodeVideos(meta, season);
   const art = parentArt(meta, seriesId, serverId);
+  return wanted.map((video: any) => buildEpisode(meta, video, mediaType, seriesId, serverId, art));
+}
 
-  return wanted.map((video: any) => {
+function episodeVideos(meta: any, season: number | null): any[] {
+  const videos = Array.isArray(meta?.videos) ? meta.videos : [];
+  return season === null ? videos : videos.filter((v: any) => v.season === season);
+}
+
+/** The season and episode an item's id is built from, as buildEpisode spells them. */
+function episodeIdentity(meta: any, video: any): { base: string; season: number | null; episode: number } {
+  const parsed = parseStremioId(String(video.id ?? ''));
+  if (parsed) return { base: parsed.base, season: parsed.season, episode: parsed.episode as number };
+  return {
+    base: String(meta.id),
+    season: Number.isInteger(video.season) ? video.season : null,
+    episode: Number(video.episode),
+  };
+}
+
+/** The video an episode descriptor names, without building the ones it does not. */
+export function findEpisodeVideo(meta: any, descriptor: any): any | null {
+  for (const video of episodeVideos(meta, null)) {
+    const id = episodeIdentity(meta, video);
+    if (id.base === descriptor.i && id.season === descriptor.s && id.episode === descriptor.e) return video;
+  }
+  return null;
+}
+
+const sortSeason = (video: any): number => (Number.isInteger(video.season) ? video.season : null) ?? 0;
+
+/** A page of a series' episodes, built without constructing the ones it leaves out. */
+export function pageEpisodes(
+  meta: any,
+  mediaType: string,
+  seriesId: string,
+  serverId: string,
+  season: number | null,
+  options: { sortBy: string; descending: boolean; startIndex: number; limit: number }
+): { page: any[]; total: number } {
+  let wanted = episodeVideos(meta, season);
+  if (options.sortBy.includes('IndexNumber')) {
+    wanted = [...wanted].sort(
+      (a: any, b: any) => (sortSeason(a) - sortSeason(b)) || (Number(a.episode) - Number(b.episode))
+    );
+    if (options.descending) wanted.reverse();
+  }
+  const art = parentArt(meta, seriesId, serverId);
+  const page = wanted
+    .slice(options.startIndex, options.startIndex + options.limit)
+    .map((video: any) => buildEpisode(meta, video, mediaType, seriesId, serverId, art));
+  return { page, total: wanted.length };
+}
+
+export function buildEpisode(
+  meta: any,
+  video: any,
+  mediaType: string,
+  seriesId: string,
+  serverId: string,
+  parentImages?: Record<string, any>
+): any {
+  const art = parentImages ?? parentArt(meta, seriesId, serverId);
+  {
     const hasSeason = Number.isInteger(video.season);
 
     // A video carries its own id, and it is not always built from the series
@@ -804,5 +852,5 @@ export function buildEpisodes(
       EnableMediaSourceDisplay: true,
       MediaSources: placeholderSources(id),
     };
-  });
+  }
 }

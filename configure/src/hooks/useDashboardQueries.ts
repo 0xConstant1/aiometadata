@@ -1479,6 +1479,7 @@ export interface JellyfinOverview {
   activeConfigurations: number | null;
   activeDays: number;
   playingNow: number;
+  pausedNow: number;
   sessions: number;
   sync: { startedAt: number; finishedAt: number; configurations: number; added: number; running: boolean };
 }

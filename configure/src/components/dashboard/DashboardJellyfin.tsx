@@ -430,7 +430,7 @@ function Configuration({ userUUID, activeTab, onClose }: { userUUID: string; act
       )}
       <div className={`divide-y divide-white/[0.06] border-t border-white/[0.06] transition-opacity ${isFetching && !isLoading ? "opacity-60" : "opacity-100"}`}>
         {data.sessions.length > 0 && (
-          <Shelf title="Playing now" count={data.sessions.length}>
+          <Shelf title="Open sessions" count={data.sessions.length}>
             <div className={wide}>{data.sessions.map((s, i) => <SessionCard key={`${s.title}-${i}`} s={s} />)}</div>
           </Shelf>
         )}
@@ -480,7 +480,7 @@ export default function DashboardJellyfin({ activeTab }: { activeTab: DashboardT
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Playing now" value={o?.playingNow ?? "…"} hint={o ? `${o.sessions} session${o.sessions === 1 ? "" : "s"} known` : undefined} />
+        <Stat label="Playing now" value={o?.playingNow ?? "…"} hint={o ? `${o.pausedNow} paused, ${o.sessions} session${o.sessions === 1 ? "" : "s"} open` : undefined} />
         <Stat label="Active configurations" value={o ? (o.activeConfigurations ?? "—") : "…"} hint={o ? `used the server in the last ${o.activeDays} days` : undefined} />
         <Stat label="Plays, 24 h" value={o?.playedDay ?? "…"} hint={o ? `${o.playedWeek} this week` : undefined} />
         <Stat label="Tracker sync" value={sync ? (sync.running ? "…" : sync.finishedAt ? when(sync.finishedAt) : "—") : "…"} hint={syncHint || undefined} />

@@ -47,7 +47,17 @@ function parseMediaId(id: any): ParsedMediaId | null {
     return null;
   }
 
-  const [prefix, ...rest] = parts;
+  let [prefix, ...rest] = parts;
+
+  if (prefix === 'mal' && rest.length > 0) {
+    const kitsuId = require('./id-mapper').getMappingByMalId(rest[0])?.kitsu_id;
+    if (kitsuId === undefined || kitsuId === null) {
+      logger.debug(`[Watch Tracking] No Kitsu id known for MAL ${rest[0]}`);
+      return null;
+    }
+    prefix = 'kitsu';
+    rest = [String(kitsuId), ...rest.slice(1)];
+  }
 
   const isImdb = prefix.startsWith('tt');
   const imdbMatch = isImdb ? /^tt\d+$/.test(prefix) : false;

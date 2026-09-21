@@ -23,7 +23,7 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
-import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, knownCatalogLength, metaToBaseItem, pageChildren, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
+import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -38,7 +38,7 @@ import { setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyWatchedState, isWatched, ownNextUpRows, upcomingFollowed, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { registerStubs } from './stubs';
-import { recordPlayed, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData } from './playstate';
+import { recordPlayed, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
 
 const database: any = require('../database');
 
@@ -100,8 +100,7 @@ async function seriesForEpisode(userUUID: string, config: any, descriptor: any):
     const imdb = mapping?.imdb_id;
     if (imdb) {
       const meta = await fetchMeta(userUUID, 'series', String(imdb));
-      const wanted = encodeJellyfinId(descriptor);
-      if (meta && buildEpisodes(meta, descriptor.t, '', '', null).some((e: any) => e.Id === wanted)) {
+      if (meta && findEpisodeVideo(meta, descriptor)) {
         return { meta, seriesId: encodeJellyfinId({ k: 'series', t: descriptor.t, i: String(meta.id) }) };
       }
     }
@@ -168,8 +167,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.once('finish', () => {
       const ms = Number(process.hrtime.bigint() - started) / 1e6;
       const slow = envInt('JELLYFIN_SLOW_REQUEST_MS', 1000, 1);
-      // A handler that takes seconds is the one holding the event loop, and the
-      // path alone never said which.
       if (ms >= slow) logger.warn(`${Math.round(ms)}ms ${res.statusCode} ${line}`);
       else logger.debug(`${Math.round(ms)}ms ${res.statusCode} ${line}`);
     });
@@ -663,8 +660,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const tags = profileTags(config);
 
       const typesKey = includeItemTypes ? String(includeItemTypes) : '';
-      // One read for the whole pool, so the skip guards below work on a process
-      // that has just started rather than after it has walked every catalog once.
       await warmCatalogLengths(userUUID, pool, extras, tags, typesKey);
       for (const catalog of pool) {
         if (collected.length >= limit) break;
@@ -723,21 +718,35 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           (String(req.query.Recursive ?? req.query.recursive ?? '').toLowerCase() === 'true' &&
             String(includeItemTypes ?? '').split(',').map((t) => t.trim()).includes('Episode'));
 
+        const filters = String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim());
+        const sortBy = String(req.query.SortBy ?? req.query.sortBy ?? '');
+        const descending = String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase() === 'descending';
+        const applyState = async (items: any[]) =>
+          applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
+
+        // Filtering on played judges every child, so only an unfiltered page is built alone.
+        if (wantsEpisodes && !filters.includes('IsPlayed') && !filters.includes('IsUnplayed')) {
+          const windowed = pageEpisodes(
+            meta,
+            descriptor.t,
+            encodeSeriesId(descriptor),
+            serverId,
+            descriptor.k === 'season' ? descriptor.s : null,
+            { sortBy, descending, startIndex, limit }
+          );
+          await applyState(windowed.page);
+          res.json(itemList(windowed.page, windowed.total, startIndex));
+          return;
+        }
+
         const children = wantsEpisodes
           ? buildEpisodes(meta, descriptor.t, encodeSeriesId(descriptor), serverId, descriptor.k === 'season' ? descriptor.s : null)
           : buildSeasons(meta, descriptor.t, String(parentId), serverId);
 
         const { page, total } = await pageChildren(
           children,
-          {
-            filters: String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim()),
-            sortBy: String(req.query.SortBy ?? req.query.sortBy ?? ''),
-            descending: String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase() === 'descending',
-            startIndex,
-            limit,
-          },
-          async (items: any[]) =>
-            applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config)
+          { filters, sortBy, descending, startIndex, limit },
+          applyState
         );
 
         res.json(itemList(page, total, startIndex));
@@ -852,7 +861,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const config = await loadConfig(req);
     const base = normaliseStreamBase(config?.jellyfinStreamUrl || '');
     if (!base) {
-      logger.debug(`No stream addon configured for ${req.params.userUUID}`);
+      logger.warn(`No stream addon configured for ${req.params.userUUID}: it will show no streams for anything`);
       return [];
     }
 
@@ -1512,8 +1521,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (descriptor.k === 'episode') {
       const meta = await fetchMeta(userUUID, 'series', descriptor.i);
       if (!meta) return undefined;
-      const seriesId = encodeSeriesId(descriptor);
-      buildEpisodes(meta, descriptor.t, seriesId, scope, null);
+      const video = findEpisodeVideo(meta, descriptor);
+      if (video) buildEpisode(meta, video, descriptor.t, encodeSeriesId(descriptor), scope);
       return (await recallImages(scope, itemId)) ?? { primary: meta.poster || undefined };
     }
 
@@ -1553,9 +1562,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const chain: any[] = [];
 
     if (descriptor.k === 'episode') {
-      const wanted = normaliseJellyfinId(String(req.params.itemId));
-      const episode = buildEpisodes(meta, descriptor.t, found.seriesId, serverId, null).find((e: any) => e.Id === wanted);
-      const number = episode?.ParentIndexNumber ?? descriptor.s;
+      const video = findEpisodeVideo(meta, descriptor);
+      const number = (Number.isInteger(video?.season) ? video.season : null) ?? descriptor.s;
       const season = number === null || number === undefined
         ? null
         : buildSeasons(meta, descriptor.t, series.Id, serverId).find((entry: any) => entry.IndexNumber === number);
@@ -2608,7 +2616,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     );
   });
 
-  router.post('/Sessions/Playing/Ping', (_req: any, res: any) => ack(res));
+  router.post('/Sessions/Playing/Ping', async (req: any, res: any) => {
+    ack(res);
+    const userUUID = req.params?.userUUID;
+    if (!userUUID || !sessionTouchDue(userUUID)) return;
+    touchSessions(userUUID, profileKey(await loadConfig(req))).catch((error: any) =>
+      logger.debug(`Ping keepalive failed: ${error?.message || error}`)
+    );
+  });
 
   // A client reads the new state back out of the response here rather than
   // trusting a bare acknowledgement, and reports the server as not supporting

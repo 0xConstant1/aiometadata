@@ -39,8 +39,3 @@ export async function cachedArtwork(key: string, load: () => Promise<Artwork>): 
   loading.set(key, work);
   return work;
 }
-
-export function _resetArtworkCache(): void {
-  held.clear();
-  loading.clear();
-}
