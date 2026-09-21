@@ -415,8 +415,9 @@ async function makeAuthenticatedSimklRequest(
   url: string,
   accessToken: string,
   context: string = 'Simkl (Auth)',
-  method: 'GET' | 'POST' = 'GET',
-  body?: any
+  method: 'GET' | 'POST' | 'DELETE' = 'GET',
+  body?: any,
+  timeout?: number
 ): Promise<any> {
   const headers = {
     'Content-Type': 'application/json',
@@ -427,18 +428,26 @@ async function makeAuthenticatedSimklRequest(
   const bucket = simklBucketFor(accessToken);
   const minInterval = bucket === SIMKL_APP_BUCKET
     ? undefined
-    : method === 'POST' ? SIMKL_V2_POST_INTERVAL_MS : SIMKL_V2_GET_INTERVAL_MS;
+    : method === 'GET' ? SIMKL_V2_GET_INTERVAL_MS : SIMKL_V2_POST_INTERVAL_MS;
+  const extra = timeout ? { timeout } : {};
 
-  if (method === 'POST') {
+  if (method === 'DELETE') {
     return await makeRateLimitedRequest(
-      () => httpPost(url, body || {}, { headers, dispatcher: simklDispatcher }),
+      () => httpRequest(url, { method: 'DELETE', headers, dispatcher: simklDispatcher, ...extra }),
+      context,
+      undefined,
+      { bucket, minInterval }
+    );
+  } else if (method === 'POST') {
+    return await makeRateLimitedRequest(
+      () => httpPost(url, body || {}, { headers, dispatcher: simklDispatcher, ...extra }),
       context,
       undefined,
       { bucket, minInterval }
     );
   } else {
     return await makeRateLimitedRequest(
-      () => httpGet(url, { headers, dispatcher: simklDispatcher }),
+      () => httpGet(url, { headers, dispatcher: simklDispatcher, ...extra }),
       context,
       undefined,
       { bucket, minInterval }
@@ -1006,15 +1015,9 @@ export async function addToHistory(
   const payload = historyPayload(idInput, season, episode, episodes);
 
   try {
-    const response = await httpPost(`${SIMKL_BASE_URL}/sync/history`, payload, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'simkl-api-key': simklClientIdFor(accessToken),
-      },
-      dispatcher: simklDispatcher,
-      timeout: 10000,
-    });
+    const response = await makeAuthenticatedSimklRequest(
+      `${SIMKL_BASE_URL}/sync/history`, accessToken, 'Simkl add to history', 'POST', payload, 10000
+    );
     if (response.status >= 200 && response.status < 300) {
       logger.info('[Simkl] Added to history', { ids: idInput, season, episode });
       return true;
@@ -1058,15 +1061,9 @@ export async function clearPlayback(
 
   try {
     for (const entry of matches) {
-      await httpRequest(`${SIMKL_BASE_URL}/sync/playback/${entry.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'simkl-api-key': simklClientIdFor(accessToken),
-        },
-        dispatcher: simklDispatcher,
-        timeout: 10000,
-      });
+      await makeAuthenticatedSimklRequest(
+        `${SIMKL_BASE_URL}/sync/playback/${entry.id}`, accessToken, 'Simkl clear playback', 'DELETE', undefined, 10000
+      );
     }
     logger.info('[Simkl] Cleared the resume point', { ids: idInput, season, episode });
     return true;
@@ -1088,15 +1085,9 @@ export async function removeFromHistory(
   const payload = historyPayload(idInput, season, episode, episodes);
 
   try {
-    const response = await httpPost(`${SIMKL_BASE_URL}/sync/history/remove`, payload, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'simkl-api-key': simklClientIdFor(accessToken),
-      },
-      dispatcher: simklDispatcher,
-      timeout: 10000,
-    });
+    const response = await makeAuthenticatedSimklRequest(
+      `${SIMKL_BASE_URL}/sync/history/remove`, accessToken, 'Simkl remove from history', 'POST', payload, 10000
+    );
     if (response.status >= 200 && response.status < 300) {
       logger.info('[Simkl] Removed from history', { ids: idInput, season, episode });
       return true;
