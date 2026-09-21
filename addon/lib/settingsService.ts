@@ -28,6 +28,7 @@ export async function initializeSettings(): Promise<void> {
     bootValues.set(def.key, getSetting(def.key));
   }
   initialized = true;
+  applySideEffects();
   logger.info(`Loaded ${rows.length} settings from database`);
 }
 
@@ -76,6 +77,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
     originalEnv.set(def.envVar, process.env[def.envVar]);
   }
   process.env[def.envVar] = value;
+  applySideEffects(key);
   logger.info(`Setting ${key} updated`);
 }
 
@@ -97,6 +99,7 @@ export async function resetSetting(key: string): Promise<void> {
     delete process.env[def.envVar];
   }
   originalEnv.delete(def.envVar);
+  applySideEffects(key);
   logger.info(`Setting ${key} reset to default`);
 }
 
@@ -117,6 +120,17 @@ function evaluateDisabledState(): Map<string, string> {
     }
   }
   return disabled;
+}
+
+/** consola reads CONSOLA_LEVEL once when it is created, so a stored value is applied to it directly. */
+function applyLogLevel(): void {
+  const parsed = parseInt(getSetting('CONSOLA_LEVEL'), 10);
+  if (Number.isFinite(parsed)) consola.level = parsed;
+}
+
+/** Settings the process has to be told about, rather than reading them when next needed. */
+export function applySideEffects(key?: string): void {
+  if (key === undefined || key === 'CONSOLA_LEVEL') applyLogLevel();
 }
 
 export function getAllSettings(): object[] {

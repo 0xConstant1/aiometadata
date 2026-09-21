@@ -28,8 +28,7 @@ const host = process.env.HOST_NAME.startsWith('http')
 
 const logger = consola.withTag('ParseProps');
 
-// Check if debug is enabled (CONSOLA_LEVEL >= 4)
-const isDebugEnabled = consola.level >= 4;
+const isDebugEnabled = () => consola.level >= 4;
 
 /**
  * Helper function to check if RPDB is enabled for the current context
@@ -634,7 +633,7 @@ function sortSearchResults(results, query) {
   });
 
   // 4. LOGGING (debug only)
-  if (isDebugEnabled) {
+  if (isDebugEnabled()) {
     logger.debug(
       `Intent: ${isPersonSearchIntent ? "Persons" : "Title"} | Query: "${query}" | Raw Matches: ${processedResults.length}`
     );
@@ -846,7 +845,7 @@ function sortTvdbSearchResults(results, query) {
   
   
   // 4. LOGGING for verification and debugging.
-  if (isDebugEnabled) {
+  if (isDebugEnabled()) {
     logger.debug(
       `[TVDB Sort] Query: "${query}" | Raw Matches: ${processedResults.length}`
     );

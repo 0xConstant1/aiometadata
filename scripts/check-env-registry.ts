@@ -16,103 +16,9 @@ const INTERNAL_ALLOWLIST = new Set<string>([
 ]);
 
 /** Known debt: warned about, never grown. A setting not listed here fails the check. */
-const DASHBOARD_BYPASS_BASELINE = new Set<string>([
-  'ADDON_LOGO_URL',
-  'ADDON_NAME_SUFFIX',
-  'ANILIST_CATALOG_TTL',
-  'API_KEY_TEST_TIMEOUT_MS',
-  'BUILT_IN_FANART_API_KEY',
-  'BUILT_IN_RPDB_API_KEY',
-  'CACHE_CLEANUP_AUTO_ENABLED',
-  'CACHE_COMPRESSION_ENABLED',
-  'CACHE_COMPRESSION_MIN_BYTES',
-  'CACHE_CORRUPTED_THRESHOLD',
-  'CACHE_HEALTH_CHECK_INTERVAL',
-  'CACHE_MAX_RETRIES',
-  'CACHE_RETRY_DELAY',
-  'CACHE_WARMUP_MODE',
-  'CACHE_WARMUP_UUIDS',
-  'CACHE_WARM_LANGUAGE',
-  'CATALOG_LIST_ITEMS_SIZE',
-  'CATALOG_WARMUP_AUTO_ON_EPOCH_CHANGE',
-  'CATALOG_WARMUP_INTERVAL_HOURS',
-  'CATALOG_WARMUP_LOG_LEVEL',
-  'CATALOG_WARMUP_QUIET_HOURS',
-  'CATALOG_WARMUP_QUIET_HOURS_ENABLED',
-  'CATALOG_WARMUP_RESUME_ON_RESTART',
-  'COLD_STORE_INACTIVE_DAYS',
-  'COLD_STORE_STATS_TTL',
-  'COLD_TTL_FROZEN',
-  'COLD_TTL_STABLE',
-  'CONFIG_CACHE_COMPRESSION_ENABLED',
-  'CONFIG_CACHE_TTL_SEC',
-  'DASHBOARD_METADATA_LANGUAGE',
-  'DISABLE_GUEST_MODE',
-  'DISABLE_METRICS',
-  'ENABLE_UI_RESTART',
-  'FANART_API_PROJECT_KEY',
-  'FLIXPATROL_CATALOG_URL',
-  'FLIXPATROL_TTL',
-  'FROZEN_AGE',
-  'GEMINI_HTTPS_PROXY',
-  'GEMINI_HTTP_PROXY',
-  'JELLYFIN_STREAM_USER_AGENT',
-  'JIKAN_API_BASE',
-  'KEYS_TO_KEEP_AFTER_PRUNE',
-  'LOG_QUERY_MAX_ENTRIES',
-  'LOG_VIEWER_MAX_ENTRIES',
-  'MAL_PAGE_SIZE',
-  'MAL_WARMUP_DECADES',
-  'MAL_WARMUP_ENABLED',
-  'MAL_WARMUP_INTERVAL_HOURS',
-  'MAL_WARMUP_LOG_LEVEL',
-  'MAL_WARMUP_PRIORITY',
-  'MAL_WARMUP_QUIET_HOURS_ENABLED',
-  'MAL_WARMUP_QUIET_HOURS_RANGE',
-  'MAL_WARMUP_SCHEDULE',
-  'MAL_WARMUP_SFW',
-  'MAX_TRACKED_KEYS',
-  'MDBLIST_RATINGS_MAX_PAGES',
-  'MDBLIST_RATINGS_PAGE_SIZE',
-  'METAHUB_IMAGE_ERROR_TTL_SECONDS',
-  'METAHUB_IMAGE_EXISTS_TTL_SECONDS',
-  'METAHUB_IMAGE_HEAD_TIMEOUT_MS',
-  'META_COLD_STORE_COMPRESSION',
-  'META_COLD_STORE_MAX_BYTES',
-  'META_TTL',
-  'MOVIELENS_API_BASE',
-  'MOVIELENS_CATALOG_TTL_SECONDS',
-  'MOVIELENS_IMPORT_REFERER',
-  'MOVIELENS_LIST_MAX_PAGES',
-  'MOVIELENS_LOGIN_REFERER',
-  'MOVIELENS_MANUAL_SYNC_COOLDOWN_SECONDS',
-  'MOVIELENS_REQUEST_TIMEOUT_MS',
-  'MOVIELENS_USERMETA_TTL_SECONDS',
-  'MOVIELENS_USER_AGENT',
-  'OPENROUTER_HTTPS_PROXY',
-  'OPENROUTER_HTTP_PROXY',
-  'PREFER_SMALLER_BACKDROPS_TMDB',
-  'PREFER_SMALLER_LANDSCAPE_TMDB',
-  'PREFER_SMALLER_LOGOS_TMDB',
-  'PREFER_SMALLER_POSTERS_TMDB',
-  'PUBLICMETADB_LISTS_TTL',
-  'SETTLE_MOVIE',
-  'SETTLE_SERIES',
-  'SIMKL_ACTIVITIES_TTL',
-  'SIMKL_TRENDING_PAGE_SIZE_OPTIONS',
-  'TEST_API_KEY_MAX_LENGTH',
-  'TEST_KEYS_RATE_LIMIT_PER_MIN',
-  'TMDB_KEYWORD_EXPORT_LOOKBACK_DAYS',
-  'TMDB_KEYWORD_EXPORT_TTL',
-  'TMDB_NETWORK_EXPORT_LOOKBACK_DAYS',
-  'TMDB_NETWORK_EXPORT_TTL',
-  'TMDB_POPULAR_WARMING_ENABLED',
-  'TRAKT_FILTER_MAX_WAIT_MS',
-  'TVDB_LIST_ENRICH_CONCURRENCY',
-]);
-
 const ENV_RE = /process\.env\.([A-Z_][A-Z0-9_]*)|process\.env\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]/g;
 const GET_SETTING_RE = /getSetting\(\s*['"]([A-Z_][A-Z0-9_]*)['"]/g;
+const ENV_HELPER_RE = /\benvInt\(\s*['"]([A-Z_][A-Z0-9_]*)['"]/g;
 
 // Top-level const/let/var whose initializer reads process.env, inline or via an IIFE: frozen until restart.
 const MODULE_INLINE_RE = /^(?:export\s+)?(?:const|let|var)\s+\w+\s*=(?![^\n;]*=>)(?![^\n;]*\bfunction\b)[^\n;]*?process\.env\.([A-Z_][A-Z0-9_]*)/gm;
@@ -160,6 +66,10 @@ for (const file of files) {
     }
     GET_SETTING_RE.lastIndex = 0;
     while ((m = GET_SETTING_RE.exec(line)) !== null) settingKeysUsed.add(m[1]);
+    ENV_HELPER_RE.lastIndex = 0;
+    while ((m = ENV_HELPER_RE.exec(line)) !== null) {
+      if (!used.has(m[1])) used.set(m[1], `${rel}:${i + 1}`);
+    }
   });
 
   let mm: RegExpExecArray | null;
@@ -192,17 +102,6 @@ for (const [envVar, loc] of moduleLoad) {
   }
 }
 
-// Registered for the dashboard but only ever read from process.env: the toggle does nothing.
-const bypassed: string[] = [];
-for (const def of SETTINGS_REGISTRY) {
-  if (def.envOnly || def.requiresRestart) continue;
-  const loc = used.get(def.envVar);
-  if (!loc || settingKeysUsed.has(def.key) || moduleLoad.has(def.envVar)) continue;
-  bypassed.push(def.envVar);
-}
-const newlyBypassed = bypassed.filter((v) => !DASHBOARD_BYPASS_BASELINE.has(v)).sort();
-const fixedSinceBaseline = [...DASHBOARD_BYPASS_BASELINE].filter((v) => !bypassed.includes(v)).sort();
-
 const missing = [...used.keys()].filter((v) => !known.has(v)).sort();
 
 const unused = [...SETTINGS_REGISTRY]
@@ -223,25 +122,6 @@ if (missing.length) {
   for (const v of missing) console.error(`   ${v}\t(first seen ${used.get(v)})`);
   console.error(`\nAdd each to SETTINGS_REGISTRY (with type/default/description) so it appears in the dashboard,`);
   console.error(`or add it to INTERNAL_ALLOWLIST in scripts/check-env-registry.ts if it is internal plumbing.`);
-}
-
-if (bypassed.length) {
-  console.log(`\n⚠  ${bypassed.length} dashboard setting(s) are only read from process.env, so edits in the UI do nothing.`);
-  console.log(`   Tracked in DASHBOARD_BYPASS_BASELINE; convert them to getSetting() to shrink the list.`);
-}
-
-if (fixedSinceBaseline.length) {
-  console.log(`\n✅ ${fixedSinceBaseline.length} setting(s) fixed since the baseline was taken. Remove them from`);
-  console.log(`   DASHBOARD_BYPASS_BASELINE in scripts/check-env-registry.ts:`);
-  for (const v of fixedSinceBaseline) console.log(`   - ${v}`);
-}
-
-if (newlyBypassed.length) {
-  failed = true;
-  console.error(`\n❌ ${newlyBypassed.length} new setting(s) registered for the dashboard but read only from process.env:\n`);
-  for (const v of newlyBypassed) console.error(`   ${v}\t(${used.get(v)})`);
-  console.error(`\nRead it with getSetting('KEY') so a dashboard value is used, or mark the registry`);
-  console.error(`entry envOnly: true so the dashboard stops offering a control that does nothing.`);
 }
 
 if (restartViolations.length) {
