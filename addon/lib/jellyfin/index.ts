@@ -136,6 +136,40 @@ function userFor(profile: Profile, serverId: string, configuration?: any): any {
 
 const USER_CONFIGURATION_ID = 'user-configuration';
 
+const CACHEABLE_PATH =
+  /^\/(items\/[^/]+\/images|persons\/[^/]+\/images|userimage|users\/[^/]+\/images|images\/general|videos\/)/i;
+
+function landingPage(req: any): string {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIOMetadata for Jellyfin</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0; padding: 3rem 1.5rem;
+         background: #101418; color: #e6e9ee; }
+  main { max-width: 34rem; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin: 0 0 1rem; }
+  p { margin: 0 0 1rem; color: #aab3c0; }
+  code { background: #1c2430; padding: .15rem .4rem; border-radius: .25rem; color: #e6e9ee; }
+  a { color: #7aa7ff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>AIOMetadata for Jellyfin</h1>
+  <p>This address is a Jellyfin-compatible API, not a web client. Add
+     <code>${origin}${req.baseUrl}</code> as a server in a Jellyfin app and sign
+     in with your configuration password.</p>
+  <p>Streams are played directly, so nothing is transcoded here.</p>
+  <p><a href="${origin}/configure">Open the configuration page</a></p>
+</main>
+</body>
+</html>`;
+}
+
 export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): any {
   const loginRateLimit = options.loginRateLimit || ((_req: any, _res: any, next: any) => next());
   const router = express.Router({ mergeParams: true, caseSensitive: false });
@@ -156,7 +190,22 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   });
 
   router.use((req: any, _res: any, next: any) => {
-    if (/^\/emby(\/|$)/i.test(req.url)) req.url = req.url.replace(/^\/emby/i, '') || '/';
+    if (/^\/(emby|mediabrowser)(\/|$)/i.test(req.url)) {
+      req.url = req.url.replace(/^\/(emby|mediabrowser)/i, '') || '/';
+    }
+    if (req.url.length > 1 && /\/(\?|$)/.test(req.url)) {
+      req.url = req.url.replace(/\/(\?|$)/, '$1');
+    }
+    next();
+  });
+
+  // A client that parses every response as JSON reads a bodyless 304 as the server being unreachable.
+  router.use((req: any, res: any, next: any) => {
+    if (!CACHEABLE_PATH.test(req.path)) {
+      delete req.headers['if-none-match'];
+      delete req.headers['if-modified-since'];
+      res.setHeader('Cache-Control', 'no-store');
+    }
     next();
   });
 
@@ -357,6 +406,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   router.post('/Sessions/Logout', async (req: any, res: any) => {
     await revokeToken(req.jellyfin?.token);
     res.status(204).end();
+  });
+
+  // A client derives the API base by truncating the address at /web, so /web must answer.
+  router.all('/', (req: any, res: any) => {
+    res.redirect(302, `${req.baseUrl}/web/`);
+  });
+  router.all(['/web', '/web/index.html'], (req: any, res: any) => {
+    res.type('html').send(landingPage(req));
   });
 
   // --- Authenticated surface ---

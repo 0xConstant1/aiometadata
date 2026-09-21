@@ -1,5 +1,5 @@
 // The official Kotlin SDK refuses anything below 12.0.0.
-export const JELLYFIN_VERSION = '12.0.0';
+export const JELLYFIN_VERSION = '12.1.0';
 export const SERVER_NAME = 'AIOMetadata';
 
 export function publicSystemInfo(serverId: string, localAddress: string): any {
