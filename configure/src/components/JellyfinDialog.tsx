@@ -189,6 +189,20 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             </p>
           </div>
         )}
+        {!main && (
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Stream addon</Label>
+            <Input
+              className="h-8 text-xs"
+              placeholder="Same as you"
+              value={user?.streamUrl ?? ''}
+              onChange={(e) => onChange({ streamUrl: e.target.value.trim() ? e.target.value : undefined })}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              An address this user plays from instead of the one above, so a user can be pointed at a different addon. Empty follows yours.
+            </p>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Skip intro and credits</Label>
           <Select value={skipValue} onValueChange={(v) => onChange({ skipSource: v === 'inherit' ? undefined : (v as JellyfinUser['skipSource']) })}>
@@ -543,6 +557,19 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                   disabled={resolveForced !== null}
                   onCheckedChange={(next) => setConfig(prev => ({ ...prev, jellyfinResolveOnOpen: next ? true : undefined }))}
                   aria-label="Wait for the streams when a title opens"
+                />
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium">Show a Latest row per catalog</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Off by default. A client asks each catalog for its newest titles to fill a row per catalog on the home screen, which is one catalog read each and slow to draw when many are enabled. There is no date a title entered a catalog here, so the row is its first page rather than what is new.
+                  </p>
+                </div>
+                <Switch
+                  checked={config.jellyfinLatestRows ?? false}
+                  onCheckedChange={(next) => setConfig(prev => ({ ...prev, jellyfinLatestRows: next ? true : undefined }))}
+                  aria-label="Show a Latest row per catalog"
                 />
               </div>
             </div>

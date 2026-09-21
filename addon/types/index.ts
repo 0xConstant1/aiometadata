@@ -4,6 +4,7 @@ export interface UserConfig {
   language?: string;
   /** Install URL of a stream addon the Jellyfin server delegates playback to. */
   jellyfinStreamUrl?: string;
+  jellyfinLatestRows?: boolean;
   /** Playback is reported by the client, so the subtitle trigger is not used. */
   playbackReporting?: boolean;
   /** Password a Jellyfin client signs in with, for accounts that have no configuration password. */

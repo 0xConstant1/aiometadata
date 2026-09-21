@@ -170,6 +170,9 @@ function landingPage(req: any): string {
 </html>`;
 }
 
+const streamCacheKey = (userUUID: string, profile: string, type: string, id: string): string =>
+  `${userUUID}:${profile}:${type}:${id}`;
+
 export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): any {
   const loginRateLimit = options.loginRateLimit || ((_req: any, _res: any, next: any) => next());
   const router = express.Router({ mergeParams: true, caseSensitive: false });
@@ -926,7 +929,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (!stremioId) return [];
 
     const stremioType = descriptor.k === 'movie' ? 'movie' : 'series';
-    const cacheKey = `${req.params.userUUID}:${stremioType}:${stremioId}`;
+    const cacheKey = streamCacheKey(req.params.userUUID, profileKey(config), stremioType, stremioId);
 
     const streams =
       recallStreams(cacheKey) ??
@@ -952,10 +955,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   };
 
   // What the picker says when a resolve leaves nothing to list.
-  const streamFailure = (req: any, descriptor: any): string => {
+  const streamFailure = async (req: any, descriptor: any): Promise<string> => {
     const stremioId = stremioIdFor(descriptor);
     const stremioType = descriptor.k === 'movie' ? 'movie' : 'series';
-    return recallFailure(`${req.params.userUUID}:${stremioType}:${stremioId}`) ?? 'No streams found for this title';
+    const key = streamCacheKey(req.params.userUUID, profileKey(await loadConfig(req)), stremioType, stremioId);
+    return recallFailure(key) ?? 'No streams found for this title';
   };
 
   /**
@@ -1098,7 +1102,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     );
     if (!resolved.length) {
       if (!Array.isArray(item.MediaSources) || !item.MediaSources.length) return;
-      const reason = placeholderMediaSource(item.MediaSources[0].Id, streamFailure(req, descriptor));
+      const reason = placeholderMediaSource(item.MediaSources[0].Id, await streamFailure(req, descriptor));
       item.MediaSources = [reason, ...item.MediaSources.slice(1)];
       item.MediaStreams = reason.MediaStreams;
       return;
@@ -1816,7 +1820,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const config = await loadConfig(req);
-    if (!config) {
+    if (!config || config.jellyfinLatestRows !== true) {
       res.json([]);
       return;
     }

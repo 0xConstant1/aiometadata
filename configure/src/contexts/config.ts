@@ -29,6 +29,8 @@ export interface JellyfinUser {
   trackerSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
   skipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
   watchlistServices?: string[];
+  /** Overrides the configuration's stream addon for this user. */
+  streamUrl?: string;
 }
 
 export interface CatalogConfig {
@@ -328,7 +330,7 @@ export interface AppConfig {
      * How often the rows are written again. Each rebuild is a large model call
      * that is charged for, so nothing shorter than six hours is offered.
      */
-    refresh_hours?: 6 | 12 | 24;
+    refresh_hours?: number;
     /**
      * How a built row is arranged. Applied when the row is read, so changing it
      * rearranges what exists rather than costing a rebuild.
@@ -404,6 +406,7 @@ export interface AppConfig {
   /** Install URL of a stream addon the Jellyfin server delegates playback to. */
   jellyfinStreamUrl?: string;
   jellyfinResolveOnOpen?: boolean;
+  jellyfinLatestRows?: boolean;
   /** Playback is reported by the client, so the subtitle trigger is not used. */
   playbackReporting?: boolean;
   /** Password a Jellyfin client signs in with, for accounts that have no configuration password. */

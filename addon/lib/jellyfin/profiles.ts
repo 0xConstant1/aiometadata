@@ -18,6 +18,8 @@ export interface Profile {
   trackerSource?: string;
   skipSource?: string;
   watchlistServices?: string[];
+  /** Overrides the configuration's stream addon for this user. */
+  streamUrl?: string;
 }
 
 export function defaultUserName(config: any, userUUID: string): string {
@@ -81,6 +83,7 @@ export function listProfiles(config: any, userUUID: string): Profile[] {
       trackerSource: typeof user.trackerSource === 'string' ? user.trackerSource : undefined,
       skipSource: typeof user.skipSource === 'string' ? user.skipSource : undefined,
       watchlistServices: Array.isArray(user.watchlistServices) ? user.watchlistServices.map(String) : undefined,
+      streamUrl: typeof user.streamUrl === 'string' && user.streamUrl.trim() ? user.streamUrl.trim() : undefined,
     });
   }
 
@@ -120,6 +123,7 @@ export function scopeConfigToProfile(config: any, userUUID: string, id: string |
         ...(profile.trackerSource ? { jellyfinResumeSource: profile.trackerSource } : {}),
         ...(profile.skipSource ? { jellyfinSkipSource: profile.skipSource } : {}),
         ...(profile.watchlistServices ? { jellyfinWatchlistServices: profile.watchlistServices } : {}),
+        ...(profile.streamUrl ? { jellyfinStreamUrl: profile.streamUrl } : {}),
       }
     : { ...config, jellyfinProfileTags: profile.tags };
   if (profile.tags.length) {

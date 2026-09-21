@@ -113,6 +113,7 @@ export function RecommendationsIntegration({ isOpen, onClose }: { isOpen: boolea
   const stalled = draft.stalled_weight || 'note';
   const staleDays = draft.stale_after_days || 180;
   const refreshHours = draft.refresh_hours || 24;
+  const refreshCustom = ![6, 12, 24].includes(refreshHours);
   const order = draft.order || 'balanced';
   const usingOpenRouter = preferred === 'openrouter'
     ? hasOpenRouter
@@ -485,7 +486,27 @@ export function RecommendationsIntegration({ isOpen, onClose }: { isOpen: boolea
                       {label}
                     </button>
                   ))}
+                  <button type="button" onClick={() => patch({ refresh_hours: refreshCustom ? refreshHours : 48 })}
+                    aria-pressed={refreshCustom} className={segment(refreshCustom)}>
+                    Custom
+                  </button>
                 </div>
+                {refreshCustom && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="recommendation-refresh-hours"
+                      type="number"
+                      min={1}
+                      className="w-28"
+                      value={refreshHours}
+                      onChange={(e) => {
+                        const next = Math.round(Number(e.target.value));
+                        if (Number.isFinite(next) && next > 0) patch({ refresh_hours: next });
+                      }}
+                    />
+                    <span className="text-xs text-muted-foreground">hours between rewrites</span>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Each rewrite is a model call you are billed for, across every row you have
                   added. Your taste does not change by the hour, so a shorter setting mostly

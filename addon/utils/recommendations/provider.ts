@@ -49,7 +49,7 @@ export function voteFloor(config: any, catalogId?: string): number {
 
 export function refreshTtl(config: any): number {
   const chosen = Number(config?.recommendations?.refresh_hours);
-  if ((REFRESH_HOURS as readonly number[]).includes(chosen)) return chosen * 60 * 60;
+  if (Number.isFinite(chosen) && chosen > 0) return Math.round(chosen) * 60 * 60;
 
   const fallback = parseInt(process.env.RECOMMENDATION_TTL || '', 10);
   return Number.isFinite(fallback) && fallback > 0 ? fallback : 24 * 60 * 60;
