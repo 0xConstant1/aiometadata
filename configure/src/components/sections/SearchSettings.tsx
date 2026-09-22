@@ -165,7 +165,7 @@ function SortableEngineRow(props: EngineRowProps) {
 }
 
 export function SearchSettings() {
-  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini, traktSearchEnabled, simklSearchEnabled } = useConfig();
+  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini, traktSearchEnabled, simklSearchEnabled, lumiereSearchEnabled } = useConfig();
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState('');
@@ -197,6 +197,9 @@ export function SearchSettings() {
     if (p.value === 'simkl.search' && !isSimklSearchEnabled) {
       return false;
     }
+    if (p.value === 'lumiere.search' && !lumiereSearchEnabled) {
+      return false;
+    }
     return p.mediaType.includes('movie') &&
            !p.value.includes('people.search') &&
            p.value !== 'mal.search.movie' &&
@@ -208,6 +211,9 @@ export function SearchSettings() {
       return false;
     }
     if (p.value === 'simkl.search' && !isSimklSearchEnabled) {
+      return false;
+    }
+    if (p.value === 'lumiere.search' && !lumiereSearchEnabled) {
       return false;
     }
     return p.mediaType.includes('series') &&

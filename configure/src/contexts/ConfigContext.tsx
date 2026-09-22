@@ -32,6 +32,7 @@ interface ConfigContextType {
   hasBuiltInGemini: boolean;
   traktSearchEnabled: boolean;
   simklSearchEnabled: boolean;
+  lumiereSearchEnabled: boolean;
   anilistRequiresAuth: boolean;
   catalogTTL: number;
   /** Instance ceiling on enabled catalogs, null when unset. */
@@ -213,6 +214,7 @@ const initialConfig: AppConfig = {
       'trakt.search': true,
       'mdblist.search': true,
       'imdb.suggestions.search': true,
+      'lumiere.search': true,
       'simkl.search': true,
       'simkl.search.movie': true,
       'simkl.search.series': true,
@@ -405,6 +407,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [anilistRequiresAuth, setAnilistRequiresAuth] = useState(true);
   const [traktSearchEnabled, setTraktSearchEnabled] = useState(true);
   const [simklSearchEnabled, setSimklSearchEnabled] = useState(true);
+  const [lumiereSearchEnabled, setLumiereSearchEnabled] = useState(false);
   const [catalogTTL, setCatalogTTL] = useState(86400); // Default to 24 hours
   const [maxCatalogs, setMaxCatalogs] = useState<number | null>(null);
   const [collectionImportCatalogCap, setCollectionImportCatalogCap] = useState(400);
@@ -447,6 +450,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         setAnilistRequiresAuth(envApiKeys.anilistRequiresAuth ?? true);
         setTraktSearchEnabled(envApiKeys.traktSearchEnabled ?? true);
         setSimklSearchEnabled(envApiKeys.simklSearchEnabled ?? true);
+        setLumiereSearchEnabled(envApiKeys.lumiereSearchEnabled ?? false);
         setCatalogTTL(envApiKeys.catalogTTL || 86400);
         setSimklListMinTTL(envApiKeys.simklListMinTTL);
         setMaxCatalogs(envApiKeys.maxCatalogs ?? null);
@@ -522,7 +526,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
+    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, lumiereSearchEnabled, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
       {children}
     </ConfigContext.Provider>
   );

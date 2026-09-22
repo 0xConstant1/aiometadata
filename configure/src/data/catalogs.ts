@@ -105,6 +105,7 @@ export const allSearchProviders: SearchProviderDefinition[] = [
   { value: 'trakt.search', label: 'Trakt Search (VIP only)', mediaType: ['movie', 'series'] },
   { value: 'mdblist.search', label: 'MDBList Search', mediaType: ['movie', 'series'] },
   { value: 'imdb.suggestions.search', label: 'IMDb Search', mediaType: ['movie', 'series'] },
+  { value: 'lumiere.search', label: 'LumiereDB Search', mediaType: ['movie', 'series'] },
   { value: 'simkl.search', label: 'Simkl Search', mediaType: ['movie', 'series'] },
   // People Search Providers
   { value: 'tmdb.people.search', label: 'TMDB People Search', mediaType: ['movie', 'series'] },

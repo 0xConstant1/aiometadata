@@ -354,8 +354,8 @@ export interface AppConfig {
     ai_enabled: boolean; 
     // This stores the primary keyword engine for each type.
     providers: {
-        movie: 'tmdb.search' | 'tvdb.search' | 'trakt.search' | 'mdblist.search' | 'imdb.suggestions.search' | 'simkl.search';
-        series: 'tmdb.search' | 'tvdb.search' | 'tvmaze.search' | 'trakt.search' | 'mdblist.search' | 'imdb.suggestions.search' | 'simkl.search';
+        movie: 'tmdb.search' | 'tvdb.search' | 'trakt.search' | 'mdblist.search' | 'imdb.suggestions.search' | 'lumiere.search' | 'simkl.search';
+        series: 'tmdb.search' | 'tvdb.search' | 'tvmaze.search' | 'trakt.search' | 'mdblist.search' | 'imdb.suggestions.search' | 'lumiere.search' | 'simkl.search';
         anime_movie: 'mal.search.movie' | 'kitsu.search.movie' | 'simkl.search.movie';
         anime_series: 'mal.search.series' | 'kitsu.search.series' | 'simkl.search.series';
         people_search_movie?: 'tmdb.people.search' | 'tvdb.people.search' | 'trakt.people.search';

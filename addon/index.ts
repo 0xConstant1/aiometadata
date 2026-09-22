@@ -668,6 +668,7 @@ const respond = function (req, res, data, opts?) {
       jellyfinBaseUrl: require('./lib/installUrl').baseUrlFrom(process.env.HOST_NAME, req.get('host')),
       traktSearchEnabled: getSetting('DISABLE_TRAKT_SEARCH') !== 'true',
       simklSearchEnabled: getSetting('DISABLE_SIMKL_SEARCH') !== 'true',
+      lumiereSearchEnabled: !!String(getSetting('LUMIERE_API_BASE') || '').trim(),
     };
     
     // No cache to prevent cross-instance contamination

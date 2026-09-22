@@ -21,6 +21,7 @@ import { hasAgeRatingCap } from '../utils/ageRating';
 const { cacheWrapMetaSmart, cacheWrapGlobal }: any = require('./getCache');
 const { getSetting }: any = require('./settingsService');
 import { fetchImdbSuggestions, type ImdbSuggestion } from '../utils/imdbSuggestions.js';
+import { fetchLumiereSearch, type LumiereResult } from '../utils/lumiereSearch.js';
 import { mapWithLimit } from '../utils/concurrency.js';
 const wikiMappings: any = require('./wiki-mapper');
 
@@ -746,14 +747,21 @@ async function performImdbSuggestionSearch(type: string, query: string, language
   const limited = suggestions.slice(0, limit);
   logger.debug(`IMDb returned ${suggestions.length} suggestions, hydrating ${limited.length}`);
 
-  const hydrated = await mapWithLimit(limited, (suggestion: ImdbSuggestion) =>
-    performTmdbSearch(type, suggestion.imdbId, language, config, false)
+  const metas = await hydrateImdbIds(type, limited, language, config);
+
+  logger.info(`IMDb suggestion search completed in ${Date.now() - startTime}ms, returning ${metas.length} results`);
+  return metas;
+}
+
+// Results keep the provider's order, since its ranking is the reason to use it.
+async function hydrateImdbIds(type: string, results: Array<{ imdbId: string; title: string }>, language: string, config: any): Promise<any[]> {
+  const hydrated = await mapWithLimit(results, (result) =>
+    performTmdbSearch(type, result.imdbId, language, config, false)
       .catch((error: any) => {
-        logger.debug(`Could not hydrate ${suggestion.imdbId} (${suggestion.title}): ${error.message}`);
+        logger.debug(`Could not hydrate ${result.imdbId} (${result.title}): ${error.message}`);
         return [];
       }));
 
-  // IMDb's rank ordering is the reason to use it, so results keep suggestion order.
   const seen = new Set<string>();
   const metas: any[] = [];
   for (const group of hydrated) {
@@ -764,8 +772,44 @@ async function performImdbSuggestionSearch(type: string, query: string, language
       }
     }
   }
+  return metas;
+}
 
-  logger.info(`IMDb suggestion search completed in ${Date.now() - startTime}ms, returning ${metas.length} results`);
+function getLumiereApiBase(): string {
+  return String(getSetting('LUMIERE_API_BASE') || '').trim();
+}
+
+/**
+ * A self-hosted LumiereDB answers with IMDb ids ranked on how the title matched,
+ * so it gets the same TMDB hydration as IMDb suggestions without the bot challenge.
+ */
+async function performLumiereSearch(type: string, query: string, language: string, config: any): Promise<any[]> {
+  const startTime = Date.now();
+  logger.info(`Starting LumiereDB search for type "${type}" with query: "${query}"`);
+
+  const baseUrl = getLumiereApiBase();
+  const timeoutMs = parseInt(getSetting('LUMIERE_SEARCH_TIMEOUT_MS'), 10) || 5000;
+  const ttl = parseInt(getSetting('LUMIERE_SEARCH_TTL_SECONDS'), 10);
+  const limit = parseInt(getSetting('LUMIERE_SEARCH_RESULT_LIMIT'), 10) || 12;
+
+  const cacheKey = `lumiere-search:${type}:${limit}:${query.toLowerCase().trim()}`;
+  let results: LumiereResult[];
+  try {
+    results = ttl > 0
+      ? await cacheWrapGlobal(cacheKey, () => fetchLumiereSearch(baseUrl, type, query, limit, timeoutMs), ttl)
+      : await fetchLumiereSearch(baseUrl, type, query, limit, timeoutMs);
+  } catch (error: any) {
+    logger.error(`LumiereDB search failed for "${query}": ${error.message}`);
+    return [];
+  }
+
+  if (!results || results.length === 0) {
+    logger.info(`No LumiereDB results found for query: "${query}"`);
+    return [];
+  }
+
+  const metas = await hydrateImdbIds(type, results, language, config);
+  logger.info(`LumiereDB search completed in ${Date.now() - startTime}ms, returning ${metas.length} results`);
   return metas;
 }
 
@@ -2409,6 +2453,8 @@ function getProviderFromSearchId(searchId: string): string {
     return 'simkl';
   } else if (searchId.includes('imdb.')) {
     return 'imdb';
+  } else if (searchId.includes('lumiere.')) {
+    return 'lumiere';
   } else if (searchId.includes('gemini.')) {
     return 'ai';
   } else if (searchId === 'people_search') {
@@ -2525,6 +2571,12 @@ async function getSearch(id: string, type: string, language: string, extra: any,
             providerId = fallback;
           }
 
+          if (providerId === 'lumiere.search' && !getLumiereApiBase()) {
+            const fallback = getDefaultProvider(type);
+            logger.info(`LumiereDB is not configured on this instance, falling back to '${fallback}' for "${query}"`);
+            providerId = fallback;
+          }
+
           logger.debug(`Performing direct keyword search for type '${type}' using provider '${providerId}'`);
 
           switch (providerId) {
@@ -2567,6 +2619,9 @@ async function getSearch(id: string, type: string, language: string, extra: any,
               case 'imdb.suggestions.search':
                 metas = await performImdbSuggestionSearch(type, query, language, config);
                 break;
+              case 'lumiere.search':
+                metas = await performLumiereSearch(type, query, language, config);
+                break;
               case 'simkl.search':
                 metas = await performSimklSearch(type, query, language, config, page);
                 break;
@@ -2606,6 +2661,7 @@ async function getSearch(id: string, type: string, language: string, extra: any,
         else if (providerId.includes('mdblist.')) actualProvider = 'mdblist';
         else if (providerId.includes('simkl.')) actualProvider = 'simkl';
         else if (providerId.includes('imdb.')) actualProvider = 'imdb';
+        else if (providerId.includes('lumiere.')) actualProvider = 'lumiere';
       }
     }
 
@@ -2675,6 +2731,7 @@ async function getSearch(id: string, type: string, language: string, extra: any,
         else if (providerId.includes('mdblist.')) actualProvider = 'mdblist';
         else if (providerId.includes('simkl.')) actualProvider = 'simkl';
         else if (providerId.includes('imdb.')) actualProvider = 'imdb';
+        else if (providerId.includes('lumiere.')) actualProvider = 'lumiere';
       }
     }
 
