@@ -299,13 +299,18 @@ interface JellyfinDialogProps {
 export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogProps) {
   const { config, setConfig, auth } = useConfig();
   const { requestSave, isSaving, isDirty, canSave } = useSave();
-  const serverAddress = `${window.location.origin}/jellyfin/${userUUID}`;
   const [resolveMode, setResolveMode] = useState<string>('user');
+  const [baseUrl, setBaseUrl] = useState<string>(window.location.origin);
+  const serverAddress = `${baseUrl.replace(/\/+$/, '')}/jellyfin/${userUUID}`;
   useEffect(() => {
     let cancelled = false;
     fetch('/api/config')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (!cancelled && data?.jellyfinResolveOnOpen) setResolveMode(String(data.jellyfinResolveOnOpen)); })
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.jellyfinResolveOnOpen) setResolveMode(String(data.jellyfinResolveOnOpen));
+        if (typeof data.jellyfinBaseUrl === 'string' && data.jellyfinBaseUrl.trim()) setBaseUrl(data.jellyfinBaseUrl.trim());
+      })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
