@@ -35,6 +35,20 @@ export function isRunning(userUUID: string, catalogId: string): boolean {
   return !!job && job.stage !== 'done' && job.stage !== 'error';
 }
 
+function profileFailure(config: any, rows: any[]): string {
+  const { isWatched }: any = require('./history');
+  const { resolveProvider, reasoningEffort }: any = require('./provider');
+
+  const watched = rows.filter(isWatched).length;
+  if (watched < 10) return `Not enough watch history to build a profile: ${watched} of the 10 watched titles needed`;
+  if (!resolveProvider(config)) return 'No AI provider is configured: set a Gemini or OpenRouter key';
+
+  const effort = reasoningEffort(config);
+  return effort === 'high' || effort === 'medium'
+    ? `The model returned no usable profile. Thinking takes a share of the reply at ${effort}, so try a lower level.`
+    : 'The model returned no usable profile';
+}
+
 /** One catalog end to end, reporting progress: profile, picks, and a pass of art
  *  fetching so the first open is a cache read. */
 export function startJob(config: any, userUUID: string, catalogId: string): Job {
@@ -51,12 +65,12 @@ export function startJob(config: any, userUUID: string, catalogId: string): Job 
     try {
       const { collectWatchedRows }: any = require('./history');
       job.stage = 'reading-history';
-      await collectWatchedRows(config, userUUID);
+      const rows = await collectWatchedRows(config, userUUID);
 
       const { getTasteProfile }: any = require('./profile');
       job.stage = 'building-profile';
       const profile = await getTasteProfile(config, userUUID);
-      if (!profile) throw new Error('Not enough watch history to build a profile');
+      if (!profile) throw new Error(profileFailure(config, rows));
 
       const { recommend }: any = require('./rank');
       job.stage = 'choosing';
