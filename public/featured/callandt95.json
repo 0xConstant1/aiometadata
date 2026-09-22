@@ -1,0 +1,3242 @@
+{
+ "exportType": "fusionWidgets",
+ "exportVersion": 1,
+ "requiredAddons": [
+  "YOUR_AIOMETADATA"
+ ],
+ "widgets": [
+  {
+   "id": "catalog.743b3279-459c-58b4-a179-5162a3ec3137",
+   "title": "Trending Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.88434",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.88434",
+       "type": "series",
+       "name": "Trakt's Trending Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.f7b5bc78-9c56-559e-907f-dabc3d9400c4",
+   "title": "Watchlist: Series",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.watchlist.series",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.watchlist.series",
+       "type": "series",
+       "name": "Watchlist: Series",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.4cb4f695-1c20-5d71-809b-ff6f80e4c748",
+   "title": "Recommended Shows",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.recommended.recommended.series",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.recommended.recommended.series",
+       "type": "series",
+       "name": "Recommended Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.8c88f750-a7ab-5150-b41d-96431e404190",
+   "title": "Latest Netflix Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.86751",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.86751",
+       "type": "series",
+       "name": "Latest Netflix Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.028d751e-d243-5bda-8bfb-ecbacb810943",
+   "title": "Latest Disney+ Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.86758",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.86758",
+       "type": "series",
+       "name": "Latest Disney+ Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.d585b9b9-d7d0-5db6-ae3c-9349b7b4833f",
+   "title": "Latest HBO Max Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.89649",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.89649",
+       "type": "series",
+       "name": "Latest HBO Max Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.a31ff75e-bfcb-523e-81a5-e666cac84d5a",
+   "title": "Latest Apple TV+ Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.86756",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.86756",
+       "type": "series",
+       "name": "Latest Apple TV+ Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.b6daa3aa-cf0e-55bb-8a3a-caf5e0d4bfcf",
+   "title": "Latest Amazon Prime Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.86753",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.86753",
+       "type": "series",
+       "name": "Latest Amazon Prime Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.476cc2f7-b40d-59f9-840e-6b08bbf1e6ff",
+   "title": "Latest Paramount+ Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.86761",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.86761",
+       "type": "series",
+       "name": "Latest Paramount+ Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.11ad9b21-8f38-564c-b996-faec896fcf88",
+   "title": "Latest Hulu Shows",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.127954",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.127954",
+       "type": "series",
+       "name": "Latest Hulu Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.ca466b14-5067-54e1-b0ff-f0f4b6298dcc",
+   "title": "Trending Movies",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.87667",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.87667",
+       "type": "movie",
+       "name": "Trakt's Trending Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.e975fc28-0ab2-5d8c-97be-d10380d16cf7",
+   "title": "Watchlist: Movies",
+   "type": "row.classic",
+   "cacheTTL": 3600,
+   "limit": 50,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.watchlist.movies",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.watchlist.movies",
+       "type": "movie",
+       "name": "Watchlist: Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.ceffc4ff-605c-58e8-97a4-bb0755afd582",
+   "title": "Recommended Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    },
+    "cardStyle": "medium"
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.recommended.recommended.movies",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.recommended.recommended.movies",
+       "type": "movie",
+       "name": "Recommended Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "collection.38696c48-5da4-584e-87be-3b2e85c6dfe1",
+   "title": "Movie Genres",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "e650e464-981b-5cb2-9ca8-4fd9d40ada0c",
+       "title": "Action",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-action.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.action.2f7f15ad",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.action.2f7f15ad",
+            "type": "movie",
+            "name": "Action",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=28&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "28",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Action",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 28,
+                 "label": "Action"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "899afe7c-ad52-5403-acd3-bbe870d8c61b",
+       "title": "Adventure",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-adventure.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.adventure.154289c5",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.adventure.154289c5",
+            "type": "movie",
+            "name": "Adventure",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=12&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "12",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Adventure",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 12,
+                 "label": "Adventure"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "0dd3890a-024b-5304-9492-4cbdde94e342",
+       "title": "Animation",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-animation.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.animation.55868927",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.animation.55868927",
+            "type": "movie",
+            "name": "Animation",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=16&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "16",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Animation",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 16,
+                 "label": "Animation"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "3805dfb7-769d-55c0-97b0-8bc0971c2194",
+       "title": "Comedy",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-comedy.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.comedy.7f25681e",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.comedy.7f25681e",
+            "type": "movie",
+            "name": "Comedy",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=35&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "35",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Comedy",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 35,
+                 "label": "Comedy"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "7db2c395-b69a-50f1-bd3e-e2ddd31f0252",
+       "title": "Crime",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-crime.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.crime.7179905a",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.crime.7179905a",
+            "type": "movie",
+            "name": "Crime",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=80&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "80",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Crime",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 80,
+                 "label": "Crime"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "c99e497e-876a-5dcc-8cf7-4750d8650f61",
+       "title": "Documentary",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-documentary.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.documentary.a37ba879",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.documentary.a37ba879",
+            "type": "movie",
+            "name": "Documentary",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=99&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "99",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Documentary",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 99,
+                 "label": "Documentary"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "aa7222e9-7101-5c8c-a82d-f15fe153644b",
+       "title": "Drama",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-drama.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.drama.91bf52d9",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.drama.91bf52d9",
+            "type": "movie",
+            "name": "Drama",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=18&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "18",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Drama",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 18,
+                 "label": "Drama"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "bf2e448a-8768-5716-b48d-c55f25bde2f2",
+       "title": "Fantasy",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-fantasy.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.fantasy.33eb12ef",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.fantasy.33eb12ef",
+            "type": "movie",
+            "name": "Fantasy",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=14&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "14",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Fantasy",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 14,
+                 "label": "Fantasy"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "bac7c0a1-d1aa-504e-8822-21f303bc9e6b",
+       "title": "Historical",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-historical.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.historical.0dd40401",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.historical.0dd40401",
+            "type": "movie",
+            "name": "Historical",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=36&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "36",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Historical",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 36,
+                 "label": "History"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "f95cad40-a740-5a4c-9318-8bd7faff45ed",
+       "title": "Horror",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-horror.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.horror.9e8e3286",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.horror.9e8e3286",
+            "type": "movie",
+            "name": "Horror",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=27&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "27",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Horror",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 27,
+                 "label": "Horror"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "0ee6621f-3c37-5ee9-867f-c60887cdf817",
+       "title": "Kids",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-kids.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.kids.bbbdf45b",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.kids.bbbdf45b",
+            "type": "movie",
+            "name": "Kids",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=10751&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "10751",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Kids",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 10751,
+                 "label": "Family"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "a430abb7-5ddc-566f-b1a7-e60707a0de14",
+       "title": "Mystery",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-mystery.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.mystery.67f6385c",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.mystery.67f6385c",
+            "type": "movie",
+            "name": "Mystery",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=9648&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "9648",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Mystery",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 9648,
+                 "label": "Mystery"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "56c238b5-52ae-5012-834a-076382b016ce",
+       "title": "Romance",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-romance.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.romance.a38cd691",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.romance.a38cd691",
+            "type": "movie",
+            "name": "Romance",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=10749&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "10749",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Romance",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 10749,
+                 "label": "Romance"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "28149858-5653-5dd8-9b6b-d1264ae51bf0",
+       "title": "Sci-Fi",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-sci-fi.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.sci_fi.4b6e8f17",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.sci_fi.4b6e8f17",
+            "type": "movie",
+            "name": "Sci-Fi",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=878&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "878",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Sci-Fi",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 878,
+                 "label": "Science Fiction"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "34ee7e20-16ab-52de-89d5-a68f41a17441",
+       "title": "Thriller",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-thriller.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.thriller.755a6c2b",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.thriller.755a6c2b",
+            "type": "movie",
+            "name": "Thriller",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=53&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "53",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Thriller",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 53,
+                 "label": "Thriller"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "70631e4c-509e-5da6-a5b4-e72a1b6f8bfc",
+       "title": "War",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-war.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.war.25fb1c72",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.war.25fb1c72",
+            "type": "movie",
+            "name": "War",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=10752&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "10752",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "War",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 10752,
+                 "label": "War"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "a1e36661-db71-5364-86a0-9f073c1a285a",
+       "title": "Western",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/genres/genre-western.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.discover.movie.western.cfa4f744",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.discover.movie.western.cfa4f744",
+            "type": "movie",
+            "name": "Western",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "metadata": {
+             "description": "TMDB Discover (movie)",
+             "url": "https://www.themoviedb.org/discover/movie?sort_by=popularity.desc&include_adult=False&with_genres=37&with_release_type=4&release_date.lte=__tmdb_date__:today:to",
+             "discover": {
+              "version": 2,
+              "source": "tmdb",
+              "mediaType": "movie",
+              "params": {
+               "sort_by": "popularity.desc",
+               "include_adult": false,
+               "with_genres": "37",
+               "with_release_type": "4",
+               "release_date.lte": "__tmdb_date__:today:to"
+              },
+              "formState": {
+               "catalogName": "Western",
+               "discoverSource": "tmdb",
+               "sortBy": "popularity.desc",
+               "cacheTTL": null,
+               "catalogType": "movie",
+               "includeGenres": [
+                {
+                 "id": 37,
+                 "label": "Western"
+                }
+               ],
+               "excludeGenres": [],
+               "genreJoinMode": "or",
+               "originalLanguage": "",
+               "originCountry": "",
+               "certificationCountry": "",
+               "certificationValue": "",
+               "certificationMode": "exact",
+               "includeAdult": false,
+               "releasedOnly": true,
+               "tmdbTvStatuses": [],
+               "tmdbMovieReleaseTypes": [
+                "4"
+               ],
+               "tmdbTvTypes": [],
+               "selectedPeople": [],
+               "peopleJoinMode": "or",
+               "withCompanies": [],
+               "withoutCompanies": [],
+               "companyJoinMode": "or",
+               "withNetworks": [],
+               "withKeywords": [],
+               "withoutKeywords": [],
+               "keywordJoinMode": "or",
+               "watchRegion": "",
+               "watchProviders": [],
+               "providerJoinMode": "or",
+               "voteAverageRange": [
+                0,
+                10
+               ],
+               "voteCountMin": 0,
+               "runtimeRange": [
+                0,
+                400
+               ],
+               "primaryReleaseFrom": "",
+               "primaryReleaseTo": "",
+               "movieDatePreset": "clear",
+               "firstAirFrom": "",
+               "firstAirTo": "",
+               "seriesDatePreset": "clear",
+               "airDateFrom": "",
+               "airDateTo": "",
+               "airDatePreset": "clear",
+               "releaseRegion": ""
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "collection.95741df7-0231-5848-b367-28371dd8224e",
+   "title": "Movie Collections",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "3af90e5f-6c80-5a0b-bde3-0264bb1f591f",
+       "title": "007",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-007.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.645",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.645",
+            "type": "movie",
+            "name": "James Bond Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 645"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "b0367fb8-a625-544e-98dd-584e096155b7",
+       "title": "Alien",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-alien.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.8091",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.8091",
+            "type": "movie",
+            "name": "Alien Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 8091"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "bf88328d-2cff-56c9-84b5-62804701b61b",
+       "title": "Avatar",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-avatar.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.87096",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.87096",
+            "type": "movie",
+            "name": "Avatar Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 87096"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "638115c5-229b-5223-974e-1b3db397d8a6",
+       "title": "Back to the Future",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-back-to-the-future.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.264",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.264",
+            "type": "movie",
+            "name": "Back to the Future Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 264"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "3b8ced45-45a6-5da9-a3b2-4d36df96f608",
+       "title": "Blade Runner",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-blade-runner.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.422837",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.422837",
+            "type": "movie",
+            "name": "Blade Runner Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 422837"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "904f1084-a61a-52b9-b899-861261d02ffc",
+       "title": "Conjuring",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-conjuring.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.313086",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.313086",
+            "type": "movie",
+            "name": "The Conjuring Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 313086"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "374adaf1-cde3-5fbc-95bf-da656854eff7",
+       "title": "Creed",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-creed.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.553717",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.553717",
+            "type": "movie",
+            "name": "Creed Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 553717"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "0fc51a67-01d5-556d-a6e3-d3af7d110031",
+       "title": "DC Comics",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-dc-comics.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.63037",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.63037",
+            "type": "movie",
+            "name": "DC Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default"
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "048c5f13-2382-5dd2-9376-b9d892fe8a1d",
+       "title": "Dune",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-dune.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.726871",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.726871",
+            "type": "movie",
+            "name": "Dune Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 726871"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "b5c693f0-e539-5761-ba18-8494cb44cd3d",
+       "title": "The Expendables",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-expendables.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.126125",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.126125",
+            "type": "movie",
+            "name": "The Expendables Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 126125"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "142fa1d5-9988-54eb-a965-4df623ef4a96",
+       "title": "Fast & Furious",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-fast-furious.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.9485",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.9485",
+            "type": "movie",
+            "name": "The Fast and the Furious Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 9485"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "78277870-f6d6-516c-9feb-8e8a3c5d84e5",
+       "title": "Ghostbusters",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-ghostbusters.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.2980",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.2980",
+            "type": "movie",
+            "name": "Ghostbusters Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 2980"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "25a744c2-8e4f-57df-aada-2ab7fd6d6050",
+       "title": "The Godfather",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-godfather.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.230",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.230",
+            "type": "movie",
+            "name": "The Godfather Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 230"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "27bd5e86-8c1f-582b-b4a9-aa52cd34e477",
+       "title": "Harry Potter",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-harry-potter.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.1241",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.1241",
+            "type": "movie",
+            "name": "Harry Potter Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 1241"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "c4e78a9d-8aec-5987-ba93-a987b6fb13a6",
+       "title": "Indiana Jones",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-indiana-jones.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.84",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.84",
+            "type": "movie",
+            "name": "Indiana Jones Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 84"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "f6946892-2196-5fac-9145-9d0fbacdf7fb",
+       "title": "John Wick",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-john-wick.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.404609",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.404609",
+            "type": "movie",
+            "name": "John Wick Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 404609"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "b604d762-18dc-5598-9808-07b50fa03f4e",
+       "title": "Jurassic Park",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-jurassic-park.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.328",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.328",
+            "type": "movie",
+            "name": "Jurassic Park Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 328"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "336b737d-9ad8-599d-a1cd-fe71fcf9ca55",
+       "title": "Marvel",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-marvel.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.127894",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.127894",
+            "type": "movie",
+            "name": "Marvel Cinematic Universe",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default"
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "9177335c-6448-554e-bba0-6d83f2168c0f",
+       "title": "Matrix",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-matrix.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.2344",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.2344",
+            "type": "movie",
+            "name": "The Matrix Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 2344"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "52622015-1d3e-5577-a736-4f613ad1b709",
+       "title": "Mission Impossible",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-mission-impossible.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.87359",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.87359",
+            "type": "movie",
+            "name": "Mission: Impossible Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 87359"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "daae4ba2-88ed-5348-8d79-7d3c854f36af",
+       "title": "Pirates of the Caribbean",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-pirates-of-the-caribbean.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.295",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.295",
+            "type": "movie",
+            "name": "Pirates of the Caribbean Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 295"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "aa2c24f8-1538-51e7-a7cd-f13133164d18",
+       "title": "Planet of the Apes",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-planet-of-the-apes.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.173710",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.173710",
+            "type": "movie",
+            "name": "Planet of the Apes (Reboot) Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 173710"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "d7bed09c-049b-5c5e-8618-ecc9946ecffe",
+       "title": "Rambo",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-rambo.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.5039",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.5039",
+            "type": "movie",
+            "name": "Rambo Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 5039"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "d0dba010-b95b-5a57-84f2-075818e94114",
+       "title": "Rocky",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-rocky.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.1575",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.1575",
+            "type": "movie",
+            "name": "Rocky Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 1575"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "4713a953-80cd-5a80-bab5-a5a55066e7ca",
+       "title": "Scooby-Doo",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-scooby-doo.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.94132",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.94132",
+            "type": "movie",
+            "name": "Scooby-Doo Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default"
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "dda6728f-6504-555e-928d-0528e9d38eef",
+       "title": "Star Trek",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-star-trek.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.151",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.151",
+            "type": "movie",
+            "name": "Star Trek: The Original Series Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 151"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.115570",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.115570",
+            "type": "movie",
+            "name": "Star Trek: The Next Generation Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 115570"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.115575",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.115575",
+            "type": "movie",
+            "name": "Star Trek: Alternate Reality Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 115575"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "899adf16-2ca3-5627-9f2f-27bd5efdf581",
+       "title": "Star Wars",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-star-wars.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.10",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.10",
+            "type": "movie",
+            "name": "Star Wars Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 10"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "7c77197c-04ba-5941-a3e3-0143edacc028",
+       "title": "The Hunger Games",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-the-hunger-games.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.131635",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.131635",
+            "type": "movie",
+            "name": "The Hunger Games Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 131635"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "4ce78d3a-8e83-5d06-a04b-2e2687f3477c",
+       "title": "The Lord of the Rings",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-the-lord-of-the-rings.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.119",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.119",
+            "type": "movie",
+            "name": "The Lord of the Rings Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 119"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.121938",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.121938",
+            "type": "movie",
+            "name": "The Hobbit Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 121938"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "2668ae3c-0cc8-5dec-8e65-5e0bc5af8853",
+       "title": "Transformers",
+       "hideTitle": true,
+       "imageAspect": "poster",
+       "imageURL": "https://raw.githubusercontent.com/Callandt/Fusion2-Content/main/posters/collections/collection-transformers.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::tmdb.collection.8650",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "tmdb.collection.8650",
+            "type": "movie",
+            "name": "Transformers Collection",
+            "source": "tmdb",
+            "enabled": true,
+            "showInHome": false,
+            "sortDirection": "asc",
+            "metadata": {
+             "description": "TMDB collection 8650"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,2778 @@
+{
+ "exportType": "fusionWidgets",
+ "exportVersion": 1,
+ "requiredAddons": [
+  "YOUR_AIOMETADATA"
+ ],
+ "widgets": [
+  {
+   "id": "catalog.f0faac10-2ba1-48be-9a17-4c211b6ab4c1",
+   "title": "Today’s Most Popular Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.162058",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.162058",
+       "type": "movie",
+       "name": "Today's Most Popular Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "cacheTTL": 4000,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 100,
+        "url": "https://mdblist.com/lists/snoak/most-popular-movies-on-rotten-tomatoes",
+        "mediatype": "movie",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.c4afca77-3f5d-4daa-b441-3a952e182463",
+   "title": "Today’s Most Popular Series",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.162055",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.162055",
+       "type": "series",
+       "name": "Today's Most Popular Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "cacheTTL": 4000,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 100,
+        "url": "https://mdblist.com/lists/snoak/most-popular-shows-on-rotten-tomatoes",
+        "mediatype": "show",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "collection.d0a7ed14-2020-43b3-b95a-84ae863d431e",
+   "title": "Discover",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "9193fb85-a62d-4a52-9b8d-3407a2dae640",
+       "title": "Watchlist",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/vH9k7TLG/watchlist.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "all::mdblist.watchlist",
+          "type": "all",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.watchlist",
+            "type": "all",
+            "name": "Watchlist",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default"
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "7a38fc70-73b6-407e-b973-c4c4c717cde2",
+       "title": "Trending Movies",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/gkHRm77c/trending-movies.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.190242",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.190242",
+            "type": "movie",
+            "name": "Trakt's Trending Movies (Digital)",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 157,
+             "url": "https://mdblist.com/lists/snoak/trakts-trending-movies-digital",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "77efaf7d-5197-4668-b2f1-b1144957c3c7",
+       "title": "Trending Shows",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/nhVmzk8c/trending-shows.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88434",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88434",
+            "type": "series",
+            "name": "Trakt's Trending Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 250,
+             "url": "https://mdblist.com/lists/snoak/trakt-s-trending-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "e955c08c-b2a6-42f8-8349-ca8cd976df55",
+       "title": "Latest Movies",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/sD4SsLLj/latest-movies.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86934",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86934",
+            "type": "movie",
+            "name": "Latest Streaming Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-movies-digital-release",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "8988e063-2e3e-4698-b6cd-90aaa0384c2a",
+       "title": "Latest Shows",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/TYJmfssR/latest-shows.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86710",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86710",
+            "type": "series",
+            "name": "Latest Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "collection.2a67876a-303e-4212-bbd0-9842013b0796",
+   "title": "Streaming Services",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "407c7161-8824-47cd-97f6-051efaccc31c",
+       "title": "Netflix",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/3R9D8yrK/netflix.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86752",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86752",
+            "type": "movie",
+            "name": "Latest Netflix Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-netflix-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86751",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86751",
+            "type": "series",
+            "name": "Latest Netflix Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-netflix-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86628",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86628",
+            "type": "movie",
+            "name": "Popular Netflix Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 52,
+             "url": "https://mdblist.com/lists/snoak/netflix-top-10-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86620",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86620",
+            "type": "series",
+            "name": "Popular Netflix Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 45,
+             "url": "https://mdblist.com/lists/snoak/netflix-top-10-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "a3cd8520-b43b-4d6a-be71-742be68177ac",
+       "title": "Prime Video",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/JzkSVMTy/prime-video.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86755",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86755",
+            "type": "movie",
+            "name": "Latest Amazon Prime Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-amazon-prime-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86753",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86753",
+            "type": "series",
+            "name": "Latest Amazon Prime Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-amazon-prime-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86623",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86623",
+            "type": "movie",
+            "name": "Popular Amazon Prime Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 47,
+             "url": "https://mdblist.com/lists/snoak/amazon-prime-top-10-shows",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86624",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86624",
+            "type": "series",
+            "name": "Popular Amazon Prime Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 40,
+             "url": "https://mdblist.com/lists/snoak/amazon-prime-top-10-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "24b7e4c7-e8b2-4b2f-b3a5-80d836b602e4",
+       "title": "Apple TV",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/j5vJxWqT/apple-tv.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86757",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86757",
+            "type": "movie",
+            "name": "Latest Apple TV+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 95,
+             "url": "https://mdblist.com/lists/snoak/latest-apple-tv-plus-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86756",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86756",
+            "type": "series",
+            "name": "Latest Apple TV+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 155,
+             "url": "https://mdblist.com/lists/snoak/latest-apple-tv-plus-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86626",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86626",
+            "type": "movie",
+            "name": "Popular Apple TV+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 51,
+             "url": "https://mdblist.com/lists/snoak/apple-tv-top-10-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86625",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86625",
+            "type": "series",
+            "name": "Popular Apple TV+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 49,
+             "url": "https://mdblist.com/lists/snoak/apple-tv-top-10-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "a2bbc478-3510-4a8b-8ea1-863a17da9a10",
+       "title": "Disney+",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/pTknW9VP/disney.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86759",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86759",
+            "type": "movie",
+            "name": "Latest Disney+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-disney-plus-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86758",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86758",
+            "type": "series",
+            "name": "Latest Disney+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-disney-plus-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86945",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86945",
+            "type": "movie",
+            "name": "Popular Disney+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 57,
+             "url": "https://mdblist.com/lists/snoak/disney-plus-top-10-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86946",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86946",
+            "type": "series",
+            "name": "Popular Disney+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 40,
+             "url": "https://mdblist.com/lists/snoak/disney-plus-top-10-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "b263a79b-8c10-44a2-8e72-2546924b6982",
+       "title": "Paramount+",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/gJ46zwcm/paramount.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.86762",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86762",
+            "type": "movie",
+            "name": "Latest Paramount+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 172,
+             "url": "https://mdblist.com/lists/snoak/latest-paramount-plus-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.86761",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.86761",
+            "type": "series",
+            "name": "Latest Paramount+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-paramount-plus-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.89366",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.89366",
+            "type": "movie",
+            "name": "Popular Paramount+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 24,
+             "url": "https://mdblist.com/lists/snoak/paramount-plus-top-10-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.89374",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.89374",
+            "type": "series",
+            "name": "Popular Paramount+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 16,
+             "url": "https://mdblist.com/lists/snoak/paramount-plus-top-10-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "6c0d99c9-42f2-48a6-b6e2-9042cbe7f708",
+       "title": "HBO Max",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/XYVDnkYW/HBO-Max.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.89647",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.89647",
+            "type": "movie",
+            "name": "Latest HBO Max Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-max-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.89649",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.89649",
+            "type": "series",
+            "name": "Latest HBO Max Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-max-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.89392",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.89392",
+            "type": "movie",
+            "name": "Popular HBO Max Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/hbo-top-10-movies-2",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.89310",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.89310",
+            "type": "series",
+            "name": "Popular HBO Max Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/hbo-top-10-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "catalog.c7fda5c8-7652-4f65-b079-80f89bc8e117",
+   "title": "Top 10 Netflix Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.215303",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215303",
+       "type": "movie",
+       "name": "Top 10 Netflix Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 10,
+        "url": "https://mdblist.com/lists/snoak/top-10-netflix-movies-in-the-us",
+        "mediatype": "movie",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.a3a203a6-d2fc-47ec-a643-c2fb1d3d23a4",
+   "title": "Top 10 Netflix Shows",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.215212",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215212",
+       "type": "series",
+       "name": "Top 10 Netflix Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 9,
+        "url": "https://mdblist.com/lists/snoak/top-10-netflix-shows-in-the-us",
+        "mediatype": "show",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.b42269ef-2e54-46a3-b2ad-cc4aa16508a8",
+   "title": "Top 10 Prime Video Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.215210",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215210",
+       "type": "movie",
+       "name": "Top 10 Amazon Prime Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 9,
+        "url": "https://mdblist.com/lists/snoak/top-10-amazon-prime-movies-in-the-us",
+        "mediatype": "movie",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.a4e24942-0994-476a-86c6-c812adc7b341",
+   "title": "Top 10 Prime Video Shows",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.215211",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215211",
+       "type": "series",
+       "name": "Top 10 Amazon Prime Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 10,
+        "url": "https://mdblist.com/lists/snoak/top-10-amazon-prime-shows-in-the-us",
+        "mediatype": "show",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.355e788e-4548-415d-8235-0f7ec32a07a0",
+   "title": "Top 10 Apple TV+ Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.215216",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215216",
+       "type": "movie",
+       "name": "Top 10 Apple TV+ Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 10,
+        "url": "https://mdblist.com/lists/snoak/top-10-apple-tv-movies-in-the-us",
+        "mediatype": "movie",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.a6e21a36-9d29-424d-bca0-c43ce939d11f",
+   "title": "Top 10 Apple TV+ Shows",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.215217",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215217",
+       "type": "series",
+       "name": "Top 10 Apple TV+ Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 10,
+        "url": "https://mdblist.com/lists/snoak/top-10-apple-tv-shows-in-the-us",
+        "mediatype": "show",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.39cbe02d-520c-4b84-b356-65a0e6145c4b",
+   "title": "Top 10 Disney+ Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.215218",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215218",
+       "type": "movie",
+       "name": "Top 10 Disney+ Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 9,
+        "url": "https://mdblist.com/lists/snoak/top-10-disney-movies-in-the-us",
+        "mediatype": "movie",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.e0280e9e-eef3-4f99-95f0-ad294f6a7cb7",
+   "title": "Top 10 Disney+ Shows",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.215219",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215219",
+       "type": "series",
+       "name": "Top 10 Disney+ Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 9,
+        "url": "https://mdblist.com/lists/snoak/top-10-disney-shows-in-the-us",
+        "mediatype": "show",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.bf725bf0-08fa-455a-8cc8-3273814316aa",
+   "title": "Top 10 Paramount+ Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.215225",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215225",
+       "type": "movie",
+       "name": "Top 10 Paramount+ Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 9,
+        "url": "https://mdblist.com/lists/snoak/top-10-paramount-movies-in-the-us",
+        "mediatype": "movie",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.e2a09dd3-12d2-421e-8a0b-2411be559f06",
+   "title": "Top 10 Paramount+ Shows",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.215226",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215226",
+       "type": "series",
+       "name": "Top 10 Paramount+ Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 10,
+        "url": "https://mdblist.com/lists/snoak/top-10-paramount-shows-in-the-us",
+        "mediatype": "show",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.c6700e59-4bb4-4bc0-9796-dbec3deff37c",
+   "title": "Top 10 HBO Max Movies",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "movie::mdblist.215242",
+     "type": "movie",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215242",
+       "type": "movie",
+       "name": "Top 10 HBO Max Movies",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 10,
+        "url": "https://mdblist.com/lists/snoak/top-10-hbo-max-movies-in-the-us",
+        "mediatype": "movie",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "catalog.3e2e1c78-4303-4253-b1b9-864a50ec152a",
+   "title": "Top 10 HBO Max Shows",
+   "type": "row.classic",
+   "cacheTTL": 1800,
+   "limit": 20,
+   "presentation": {
+    "aspectRatio": "poster",
+    "cardStyle": "medium",
+    "badges": {
+     "providers": false,
+     "ratings": true
+    }
+   },
+   "dataSource": {
+    "kind": "addonCatalog",
+    "payload": {
+     "addonId": "YOUR_AIOMETADATA",
+     "catalogId": "series::mdblist.215244",
+     "type": "series",
+     "aiometadata": {
+      "version": 1,
+      "catalog": {
+       "id": "mdblist.215244",
+       "type": "series",
+       "name": "Top 10 HBO Max Shows",
+       "source": "mdblist",
+       "enabled": true,
+       "showInHome": true,
+       "sort": "default",
+       "metadata": {
+        "itemCount": 10,
+        "url": "https://mdblist.com/lists/snoak/top-10-hbo-max-shows-in-the-us",
+        "mediatype": "show",
+        "author": "snoak"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "collection.cd59eb58-50ac-4a5d-9c4d-20f4c245b368",
+   "title": "Genres",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "8bb92467-8f87-4418-b37e-2ddb9ec10fe8",
+       "title": "Action",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/D06yHczT/EBR-TVA-WW-ACTION.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128037",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128037",
+            "type": "movie",
+            "name": "Latest Action Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-action-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128029",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128029",
+            "type": "series",
+            "name": "Latest Action Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-action-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91211",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91211",
+            "type": "movie",
+            "name": "Popular Action Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/action-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.91213",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91213",
+            "type": "series",
+            "name": "Popular Action Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/action-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "93faefc2-a43b-4b95-837c-a178c966c7cd",
+       "title": "Animation",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/mkj2JSrf/EBR-TVA-WW-ANIMATION.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128039",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128039",
+            "type": "movie",
+            "name": "Latest Animation/Anime Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-animationanime-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128038",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128038",
+            "type": "series",
+            "name": "Latest Animation/Anime Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-animationanime-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.121922",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.121922",
+            "type": "movie",
+            "name": "Popular Animation/Anime Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/animationanime-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.121921",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.121921",
+            "type": "series",
+            "name": "Popular Animation/Anime Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/animationanime-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "fd3466e2-040e-4e14-af4d-aada20c8f4d9",
+       "title": "Comedy",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/Y0RqZxC5/EBR-TVA-WW-COMEDY.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128040",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128040",
+            "type": "movie",
+            "name": "Latest Comedy Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-comedy-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128041",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128041",
+            "type": "series",
+            "name": "Latest Comedy Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-comedy-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91223",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91223",
+            "type": "movie",
+            "name": "Popular Comedy Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/comedy-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.91224",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91224",
+            "type": "series",
+            "name": "Popular Comedy Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/comedy-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "04355084-19a8-4a0b-8ee3-33ab514c9354",
+       "title": "Documentary",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/Fzps8xKt/EBR-TVA-WW-DOCUMENTARY.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128027",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128027",
+            "type": "movie",
+            "name": "Latest Documentary Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-documentary-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128028",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128028",
+            "type": "series",
+            "name": "Latest Documentary Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-documentary-tv-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128052",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128052",
+            "type": "series",
+            "name": "Popular Documentary Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/popular-documentary-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128051",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128051",
+            "type": "movie",
+            "name": "Popular Documentary Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/popular-documentary-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "1b8ac85e-3334-4498-b058-f3aef9760718",
+       "title": "Drama",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/6qc5ghpF/EBR-TVA-WW-DRAMA-Final.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128043",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128043",
+            "type": "movie",
+            "name": "Latest Drama Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-drama-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128044",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128044",
+            "type": "series",
+            "name": "Latest Drama Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-drama-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91296",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91296",
+            "type": "movie",
+            "name": "Popular Drama Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/drama-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.91297",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91297",
+            "type": "series",
+            "name": "Popular Drama Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/drama-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "364dda8a-0ecd-4133-912e-6cdd30b1e611",
+       "title": "Horror",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/vTbZ0KGy/EBR-TVA-WW-HORROR.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128045",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128045",
+            "type": "movie",
+            "name": "Latest Horror Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-horror-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128046",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128046",
+            "type": "series",
+            "name": "Latest Horror Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 425,
+             "url": "https://mdblist.com/lists/snoak/latest-horror-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91215",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91215",
+            "type": "movie",
+            "name": "Popular Horror Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/horror-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.91217",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91217",
+            "type": "series",
+            "name": "Popular Horror Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 491,
+             "url": "https://mdblist.com/lists/snoak/horror-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "3d0bfc19-905c-4821-a3f1-1b331d5d926f",
+       "title": "Romance",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/d36tp9VS/EBR-TVA-WW-ROMANCE.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128261",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128261",
+            "type": "movie",
+            "name": "Latest Romance Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-romance-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128264",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128264",
+            "type": "series",
+            "name": "Latest Romance Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/latest-romance-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128262",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128262",
+            "type": "movie",
+            "name": "Popular Romance Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/popular-romance-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128265",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128265",
+            "type": "series",
+            "name": "Popular Romance Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/snoak/popular-romance-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "49bcd129-24dc-4618-bbfc-da8a1ebd10d2",
+       "title": "Sci-Fi",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/3NYxtq3T/EBR-TVA-WW-SCIFI.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128047",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128047",
+            "type": "movie",
+            "name": "Latest Sci-Fi Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-sci-fi-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128048",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128048",
+            "type": "series",
+            "name": "Latest Sci-Fi Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-sci-fi-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91220",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91220",
+            "type": "movie",
+            "name": "Popular Sci-Fi Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/science-fiction-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.91221",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91221",
+            "type": "series",
+            "name": "Popular Sci-Fi Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/science-fiction-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "9a65144d-c52d-4129-91b2-d8273dbd4e1b",
+       "title": "Thriller",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/QChdfzjr/EBR-TVA-WW-THRILLER.webp",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.128049",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128049",
+            "type": "movie",
+            "name": "Latest Thriller Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-thriller-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.128050",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.128050",
+            "type": "series",
+            "name": "Latest Thriller Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/latest-thriller-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91893",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91893",
+            "type": "movie",
+            "name": "Popular Thriller Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/thriller-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.91894",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91894",
+            "type": "series",
+            "name": "Popular Thriller Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 500,
+             "url": "https://mdblist.com/lists/snoak/thriller-shows",
+             "mediatype": "show",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "collection.0cfe362b-c243-43d9-8003-c0ab7b842a33",
+   "title": "Decades",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "af39afa7-690f-445a-a895-9c83349e2a3b",
+       "title": "20s Movies",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/bY9xqcDt/EBR-TVA-WW-2020s.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91304",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91304",
+            "type": "movie",
+            "name": "Popular 2020s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 184,
+             "url": "https://mdblist.com/lists/snoak/top-2020s-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "adf393db-b7b9-4990-b6c6-df9cb7f5642e",
+       "title": "10s Movies",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/9FXGM8Zp/EBR-TVA-WW-2010s.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91303",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91303",
+            "type": "movie",
+            "name": "Popular 2010s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 372,
+             "url": "https://mdblist.com/lists/snoak/top-2010s-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "690e9158-61d3-41d5-b46e-5bacb3b16307",
+       "title": "00s Movies",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/c1BRdyg3/EBR-TVA-WW-2000s.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91302",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91302",
+            "type": "movie",
+            "name": "Popular 2000s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 419,
+             "url": "https://mdblist.com/lists/snoak/top-2000s-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "c5f2e80c-aef4-40a2-8764-14745f3d91ff",
+       "title": "90s Movies",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/44Q6Xk7t/EBR-TVA-WW-1990s.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91300",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91300",
+            "type": "movie",
+            "name": "Popular 1990s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 314,
+             "url": "https://mdblist.com/lists/snoak/top-1990s-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "5a977e7f-ebb7-4755-ae6a-3781d426a81a",
+       "title": "80s Movies",
+       "hideTitle": true,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/bNYQJCkS/EBR-TVA-WW-1980s.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.91301",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91301",
+            "type": "movie",
+            "name": "Popular 1980s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 221,
+             "url": "https://mdblist.com/lists/snoak/top-1980s-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "07cc4619-8cf7-4785-a8ab-178cf00da562",
+       "title": "70s Movies",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://i.postimg.cc/RCL7v56q/EBR-TVA-WW-1970s-02.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.127962",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.127962",
+            "type": "movie",
+            "name": "Popular 1970s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 162,
+             "url": "https://mdblist.com/lists/snoak/popular-1970s-movies",
+             "mediatype": "movie",
+             "author": "snoak"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
