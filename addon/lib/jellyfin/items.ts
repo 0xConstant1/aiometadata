@@ -252,7 +252,9 @@ export async function warmCatalogLengths(userUUID: string, catalogs: CatalogRef[
   try {
     const stored: Array<string | null> = await redis.mget(...wanted.map((w) => w.at));
     wanted.forEach((w, i) => {
-      const value = Number(stored[i]);
+      const raw = stored[i];
+      if (raw === null || raw === undefined || raw === '') return;
+      const value = Number(raw);
       if (Number.isFinite(value) && value >= 0) (w.kind === 'catalog' ? catalogLengths : pageLengths).set(w.key, value);
     });
   } catch {
