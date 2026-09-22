@@ -83,7 +83,8 @@ async function describe(userUUID: string, videoId: string): Promise<Named> {
   let out: Named = { keys: [videoId], title: videoId, episode: null, imageUrl: null, posterUrl: null, seriesId: null, season: null, number: null, episodeTitle: null };
   try {
     if (parsed && parsed.episode !== null && parsed.episode !== undefined) {
-      const index = await seriesIndex(userUUID, parsed.base, { held: true });
+      const index = (await seriesIndex(userUUID, parsed.base, { held: true }))
+        ?? (await withDeadline(seriesIndex(userUUID, parsed.base)));
       const video = index?.videos.find((v) => v.id === videoId)
         ?? index?.videos.find((v) => v.episode === parsed.episode && (parsed.season === null ? v.season === null : v.season === parsed.season));
       const number = parsed.season === null || parsed.season === undefined ? `E${parsed.episode}` : `S${parsed.season}E${parsed.episode}`;
