@@ -1833,7 +1833,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const config = await loadConfig(req);
-    if (!config || config.jellyfinLatestRows !== true) {
+    if (!config || config.jellyfinLatestRows === false) {
       res.json([]);
       return;
     }

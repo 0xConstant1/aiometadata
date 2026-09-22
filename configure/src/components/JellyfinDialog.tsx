@@ -563,12 +563,12 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium">Show a Latest row per catalog</Label>
                   <p className="text-[11px] text-muted-foreground">
-                    Off by default. A client asks each catalog for its newest titles to fill a row per catalog on the home screen, which is one catalog read each and slow to draw when many are enabled. There is no date a title entered a catalog here, so the row is its first page rather than what is new.
+                    On by default. A client asks each catalog for its newest titles to fill a row per catalog on the home screen, which is one catalog read each and slow to draw when many are enabled. There is no date a title entered a catalog here, so the row is its first page rather than what is new. Some clients build their whole home screen from these rows, so off leaves them empty.
                   </p>
                 </div>
                 <Switch
-                  checked={config.jellyfinLatestRows ?? false}
-                  onCheckedChange={(next) => setConfig(prev => ({ ...prev, jellyfinLatestRows: next ? true : undefined }))}
+                  checked={config.jellyfinLatestRows !== false}
+                  onCheckedChange={(next) => setConfig(prev => ({ ...prev, jellyfinLatestRows: next ? undefined : false }))}
                   aria-label="Show a Latest row per catalog"
                 />
               </div>
