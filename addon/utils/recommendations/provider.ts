@@ -55,6 +55,13 @@ export function refreshTtl(config: any): number {
   return Number.isFinite(fallback) && fallback > 0 ? fallback : 24 * 60 * 60;
 }
 
+const REASONING_SHARE: Record<string, number> = { high: 0.8, medium: 0.5, low: 0.2, minimal: 0.1 };
+
+export function budgetFor(replyTokens: number, effort: string, ceiling = 16384): number {
+  const share = REASONING_SHARE[effort] ?? 0.2;
+  return Math.min(ceiling, Math.max(2048, Math.ceil(replyTokens / (1 - share))));
+}
+
 /** Thinking is billed and drawn from the reply budget, and some models refuse to
  *  disable it, so it is capped rather than turned off. */
 export function reasoningEffort(config: any): string {
@@ -99,6 +106,6 @@ export function resolveProvider(config: any): ResolvedProvider | null {
 }
 
 module.exports = {
-  resolveProvider, reasoningEffort, REASONING_EFFORTS, RECOMMENDATION_EPOCH,
+  resolveProvider, reasoningEffort, budgetFor, REASONING_EFFORTS, RECOMMENDATION_EPOCH,
   refreshTtl, REFRESH_HOURS, pickOrder, PICK_ORDERS, voteFloor,
 };

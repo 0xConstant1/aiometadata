@@ -2,11 +2,14 @@ import consola from 'consola';
 import { collectWatchedRows, isWatched, type WatchedRow } from './history';
 import { formatHistory, isNegative, tuningFrom, DEFAULT_TUNING, type HistoryStats, type Tuning } from './rows';
 import type { FactMap } from './enrich';
+import { envInt } from '../envNumber';
 
 const logger = consola.withTag('Recommendations');
 
 /** Long, because a taste profile is stable and rebuilding it costs a model call. */
 const PROFILE_TTL = parseInt(process.env.RECOMMENDATION_PROFILE_TTL || String(7 * 24 * 60 * 60), 10);
+
+const profileReplyTokens = (): number => envInt('RECOMMENDATION_PROFILE_REPLY_TOKENS', 1536, 256);
 
 export interface TasteProfile {
   summary: string;
@@ -146,7 +149,7 @@ export async function getTasteProfile(
   options: { force?: boolean; limit?: number } = {}
 ): Promise<TasteProfile | null> {
   const { cacheWrapGlobal }: any = require('../../lib/getCache');
-  const { resolveProvider, reasoningEffort }: any = require('./provider');
+  const { resolveProvider, reasoningEffort, budgetFor }: any = require('./provider');
   const chosen = resolveProvider(config);
   const key = profileCacheKey(config, userUUID);
 
@@ -184,7 +187,7 @@ export async function getTasteProfile(
       prompt,
       systemPrompt: SYSTEM_PROMPT,
       timeout: 60000,
-      maxTokens: 2048,
+      maxTokens: budgetFor(profileReplyTokens(), reasoningEffort(config)),
       reasoningEffort: reasoningEffort(config),
     });
 

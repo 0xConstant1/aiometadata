@@ -2841,6 +2841,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: false,
   },
   {
+    key: 'RECOMMENDATION_PROFILE_REPLY_TOKENS',
+    envVar: 'RECOMMENDATION_PROFILE_REPLY_TOKENS',
+    label: 'Recommendations Profile Reply Budget (tokens)',
+    description: 'How much of a taste profile call is reserved for the reply itself. Thinking takes a share of the budget on top of this (80% at high, 50% at medium), so the call is sized from this figure rather than the other way round; too low and a high thinking level comes back empty.',
+    category: 'Features',
+    type: 'number',
+    default: 1536,
+    min: 256,
+  },
+  {
     key: 'RECOMMENDATION_REFRESH_LEAD',
     envVar: 'RECOMMENDATION_REFRESH_LEAD',
     label: 'Recommendations Refresh Lead (seconds)',

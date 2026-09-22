@@ -17,9 +17,8 @@ const TOKENS_PER_PICK = parseInt(process.env.RECOMMENDATION_TOKENS_PER_PICK || '
 /** OpenRouter reserves the whole window against the balance, and thinking draws
  *  from it too, so it is sized to the reply rather than the model's ceiling. */
 function replyBudget(picks: number, effort: string): number {
-  const thinking = effort === 'high' ? 2 : effort === 'medium' ? 1.5 : 1;
-  const needed = Math.ceil(picks * TOKENS_PER_PICK * thinking) + 512;
-  return Math.min(16384, Math.max(2048, needed));
+  const { budgetFor }: any = require('./provider');
+  return budgetFor(picks * TOKENS_PER_PICK + 512, effort);
 }
 
 /** Models search for a plain question and not for a JSON ranking prompt, so the
