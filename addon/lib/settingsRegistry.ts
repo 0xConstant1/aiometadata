@@ -1155,6 +1155,15 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_STREAM_NOTICES',
+    envVar: 'JELLYFIN_STREAM_NOTICES',
+    label: 'Jellyfin Stream Notices',
+    description: 'List the entries an addon sends with nothing to play after a title\'s versions: its errors, its links and the scrape statistics it was asked to report. They carry only text, so playing one gets nowhere, and they are not counted against Media Sources Per Item.',
+    category: 'Features',
+    type: 'boolean',
+    default: true,
+  },
+  {
     key: 'JELLYFIN_MAX_TRAILERS',
     envVar: 'JELLYFIN_MAX_TRAILERS',
     label: 'Trailers Per Item',

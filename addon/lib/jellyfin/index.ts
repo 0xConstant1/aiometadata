@@ -25,7 +25,7 @@ import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSea
 import { decodeJellyfinId } from './ids';
 import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
@@ -46,6 +46,10 @@ const logger = consola.withTag('Jellyfin');
 
 function maxMediaSources(): number {
   return envInt('JELLYFIN_MAX_MEDIA_SOURCES', 50, 1);
+}
+
+function streamNoticesOffered(): boolean {
+  return String(require('../settingsService').getSetting('JELLYFIN_STREAM_NOTICES') ?? 'true').trim().toLowerCase() !== 'false';
 }
 
 function encodeSeriesId(descriptor: any): string {
@@ -942,16 +946,25 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const seen = new Set<string>();
     const sources: any[] = [];
+    const notices: any[] = [];
     for (const stream of streams) {
       const playable = toPlayable(stream);
-      if (!playable || seen.has(playable.id)) continue;
+      if (!playable) {
+        if (!streamNoticesOffered()) continue;
+        const notice = toNotice(stream);
+        if (!notice || seen.has(notice.id)) continue;
+        seen.add(notice.id);
+        notices.push(placeholderMediaSource(notice.id, notice.name));
+        continue;
+      }
+      if (seen.has(playable.id)) continue;
       seen.add(playable.id);
       sources.push(mediaSourceFor(playable, runtimeTicks));
     }
 
-    logger.debug(`Streams ${stremioType}/${stremioId}: ${streams.length} offered, ${sources.length} playable`);
-    if (streams.length && !sources.length) rememberFailure(cacheKey, 'No playable stream for this title');
-    return sources.slice(0, maxMediaSources());
+    logger.debug(`Streams ${stremioType}/${stremioId}: ${streams.length} offered, ${sources.length} playable, ${notices.length} to read`);
+    if (streams.length && !sources.length && !notices.length) rememberFailure(cacheKey, 'No playable stream for this title');
+    return [...sources.slice(0, maxMediaSources()), ...notices];
   };
 
   // What the picker says when a resolve leaves nothing to list.

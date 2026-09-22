@@ -187,6 +187,30 @@ export async function recallIssued(id: string): Promise<string | undefined> {
   }
 }
 
+export interface StreamNotice {
+  id: string;
+  name: string;
+}
+
+// Sources another client could play, so an entry carrying one is not a notice.
+const PLAYABLE_SOURCES = ['url', 'infoHash', 'ytId', 'nzbUrl', 'rarUrls', 'zipUrls', '7zipUrls', 'tgzUrls', 'tarUrls'];
+
+export function toNotice(stream: any): StreamNotice | null {
+  if (!stream || PLAYABLE_SOURCES.some((key) => {
+    const value = stream[key];
+    return Array.isArray(value) ? value.length > 0 : !!value;
+  })) return null;
+
+  const name = [stream.name, stream.title || stream.description]
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  if (!name) return null;
+
+  const seed = [String(stream.externalUrl || ''), name].join('\u0000');
+  return { id: createHash('md5').update(`notice\u0000${seed}`).digest('hex'), name };
+}
+
 export function toPlayable(stream: any): PlayableStream | null {
   if (!stream || typeof stream.url !== 'string' || !stream.url) return null;
   if (needsHeaders(stream)) return null;
