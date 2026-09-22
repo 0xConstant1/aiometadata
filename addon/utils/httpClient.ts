@@ -25,10 +25,14 @@ export const KEEP_ALIVE = {
 };
 
 const proxyUrl = getProxyUrl();
+
+/** Calls the addon makes to itself, which a proxy can neither see nor reach. */
+export const directDispatcher = new Agent({ allowH2: false, ...KEEP_ALIVE });
+
 if (proxyUrl) {
   setGlobalDispatcher(new ProxyAgent({ uri: proxyUrl, allowH2: false }));
 } else {
-  setGlobalDispatcher(new Agent({ allowH2: false, ...KEEP_ALIVE }));
+  setGlobalDispatcher(directDispatcher);
 }
 
 const DEFAULT_RETRY_ATTEMPTS = 1;

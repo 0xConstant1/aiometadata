@@ -1,6 +1,8 @@
 import consola from 'consola';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
+import { fetch as undiciFetch } from 'undici';
+import { directDispatcher } from '../../utils/httpClient';
 import { encodeJellyfinId, parseStremioId } from './ids';
 import { normaliseJellyfinId } from './idsCodec';
 import { EMPTY_USER_DATA } from './dto';
@@ -135,7 +137,10 @@ async function loopbackFetch(url: string): Promise<Response> {
   if (loopbackActive >= cap) await new Promise<void>((resolve) => loopbackQueue.push(resolve));
   loopbackActive += 1;
   try {
-    return await fetch(url, { headers: { accept: 'application/json', 'accept-encoding': 'identity' } });
+    return await undiciFetch(url, {
+      headers: { accept: 'application/json', 'accept-encoding': 'identity' },
+      dispatcher: directDispatcher,
+    }) as unknown as Response;
   } finally {
     loopbackActive -= 1;
     loopbackQueue.shift()?.();
