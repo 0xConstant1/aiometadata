@@ -10,6 +10,7 @@ const { sleep } = require('../utils/concurrency');
 const { getGenreList } = require('./getGenreList');
 const { parseAnimeCatalogMetaBatch } = require('../utils/parseProps');
 const { envInt } = require('../utils/envNumber');
+const { defaultsToNoneGenre } = require('./genreNoneDefault');
 const jikan = require('./mal');
 const { buildProxyArtUrl } = require('./posterCache/proxyArt.js');
 const movielens = require('./movielens');
@@ -575,32 +576,7 @@ class ComprehensiveCatalogWarmer {
     const catalogId = catalog.id;
     // Determine if manifest will include a "None" genre option for this catalog
     // When showInHome=false and catalog type adds "None", Stremio will send genre=None
-    const shouldIncludeGenreNone = (
-      catalog.showInHome === false && (
-        catalogId.startsWith('mdblist.') ||
-        catalogId.startsWith('trakt.') ||
-        catalogId.startsWith('anilist.') ||
-        catalogId.startsWith('letterboxd.') ||
-        catalogId.startsWith('flixpatrol.') ||
-        catalogId.startsWith('stremthru.') ||
-        catalogId.startsWith('custom.') ||
-        catalogId.startsWith('streaming.') ||
-        catalogId.startsWith('simkl.') ||
-        catalogId.startsWith('movielens.') ||
-        catalogId.startsWith('publicmetadb.') ||
-        catalogId.startsWith('tmdb.discover') ||
-        catalogId.startsWith('tmdb.collection.') ||
-        catalogId.startsWith('tvdb.discover') ||
-        catalogId.startsWith('tvdb.list.') ||
-        catalogId.startsWith('mal.discover')  ||
-        catalogId.startsWith('anilist.discover') ||
-        catalogId === 'tmdb.top' ||
-        catalogId === 'tvmaze.schedule' ||
-        catalogId === 'tmdb.airing_today' ||
-        catalogId === 'tmdb.top_rated' ||
-        (catalogId.startsWith('mal.') && !catalogId.includes(['mal.genres', 'mal.studios', 'mal.schedule', 'mal.seasons']))
-      )
-    );
+    const shouldIncludeGenreNone = catalog.showInHome === false && defaultsToNoneGenre(catalogId);
 
     // Use the genre value that Stremio will actually send
     // For tvdb.genres, when showInHome is false the manifest does not add a 'None' option so the client defaults to the first genre.

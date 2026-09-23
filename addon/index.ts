@@ -13,6 +13,7 @@ const { getCatalog } = require("./lib/getCatalog");
 const { applyCatalogFilters, catalogFiltersActive } = require("./utils/catalogFilters");
 const { cursorKey, resolveStartPage, fillFilteredPage, fillOnce } = require("./lib/catalogPagination");
 const { registerInProcessRoute } = require("./lib/inProcessRoutes");
+const { defaultsToNoneGenre } = require("./lib/genreNoneDefault");
 const anilist = require("./lib/anilist");
 const { getSearch } = require("./lib/getSearch");
 const { getManifest, resolveManifestTags, DEFAULT_LANGUAGE } = require("./lib/getManifest");
@@ -4883,6 +4884,11 @@ const catalogRoute = async function (req, res) {
   const cacheWrapper = cacheWrapCatalog;
 
   extraArgs = extraArgs || {};
+  // A client following the manifest sends the 'None' it leads with; one that
+  // leaves the genre out gets the same page, and the entry the warmer wrote.
+  if (!extraArgs.genre && catalogConfig?.showInHome === false && defaultsToNoneGenre(cleanId)) {
+    extraArgs.genre = 'None';
+  }
   // Ensure sort options are included in cache key
   // Claimed before the provider prefixes; anilist.discover would otherwise match anilist.
   if (isDiscoverCatalogId(cleanId)) {
