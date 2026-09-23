@@ -261,6 +261,22 @@ export async function warmCatalogLengths(userUUID: string, catalogs: CatalogRef[
   }
 }
 
+// Where a client walking a catalog in order stopped: the catalog position after
+// its last item and what it has been shown. Repeats are dropped from a window, so
+// a client's position runs behind the catalog's, and mapping the next StartIndex
+// back by page would show the tail of the last page again and lose a title.
+interface WalkCursor {
+  raw: number;
+  seen: string[];
+}
+
+const walkCursors = new LRUCache<string, WalkCursor>({
+  max: envInt('JELLYFIN_PAGE_LENGTH_CACHE_MAX', 2000, 1),
+  ttl: envInt('JELLYFIN_WALK_CURSOR_TTL', 600, 60) * 1000,
+});
+
+const WALK_CURSOR_MAX_IDS = 5000;
+
 /**
  * `skip` is an absolute offset, but the catalog route rounds it up to a whole
  * page for a stable cache key, so an offset landing mid-page silently loses the
@@ -292,18 +308,24 @@ export async function fetchWindow(
     }
   }
 
-  const alignedSkip = keep ? 0 : pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
-  let offset = startIndex - alignedSkip;
+  const cursor = pageLength && startIndex > 0 ? walkCursors.get(`${lengthKey}@${startIndex}`) : undefined;
+  const minRaw = cursor ? cursor.raw : 0;
+
+  const alignedSkip = cursor ? Math.floor(cursor.raw / pageLength!) * pageLength! : keep ? 0 : pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
+  let offset = cursor ? 0 : startIndex - alignedSkip;
 
   const collected: any[] = [];
-  const seen = new Set<string>();
+  const rawAt: number[] = [];
+  const seen = new Set<string>(cursor?.seen);
   let skip = alignedSkip;
   let pages = 0;
   let exhausted = false;
   let failed = false;
-  const budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength || 0);
+  let budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength || 0);
 
-  const knownLength = keep ? undefined : catalogLengths.get(lengthKey);
+  // A length counts what a client was shown, which runs behind the catalog's own
+  // positions a cursor walks by, so it would end that walk early.
+  const knownLength = keep || cursor ? undefined : catalogLengths.get(lengthKey);
   const minPage = envInt('JELLYFIN_CATALOG_MIN_PAGE', 10, 1);
   let stop = false;
 
@@ -343,14 +365,18 @@ export async function fetchWindow(
       if (first && i === 0 && !pageLength && page.length >= minPage) {
         pageLength = page.length;
         rememberLength('page', pageKey, pageLength);
+        budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength);
       }
 
-      for (const meta of page) {
+      for (let j = 0; j < page.length; j++) {
+        const meta = page[j];
+        if (skips[i] + j < minRaw) continue;
         const key = meta?.id ? String(meta.id) : null;
         if (!key || seen.has(key)) continue;
         seen.add(key);
         if (keep && !keep(meta)) continue;
         collected.push(meta);
+        rawAt.push(skips[i] + j);
       }
 
       skip = skips[i] + page.length;
@@ -362,15 +388,27 @@ export async function fetchWindow(
     }
   }
 
-  if (exhausted && !failed) rememberLength('catalog', lengthKey, alignedSkip + collected.length);
+  if (exhausted && !failed) rememberLength('catalog', lengthKey, startIndex - offset + collected.length);
 
   // Duplicates are dropped above, so trimming by count would cut into the window
   // itself; the offset only ever covers items that came before startIndex.
   if (offset > collected.length) offset = collected.length;
+  const items = collected.slice(offset, offset + limit);
+
+  // Only a window placed exactly may leave a cursor: one mapped from a page number
+  // is off by the repeats before it, and would carry that into every later page.
+  const exact = !!keep || startIndex === 0 || !!cursor;
+  if (exact && items.length > 0) {
+    const shown = [...(cursor?.seen ?? []), ...collected.slice(0, offset + items.length).map((meta) => String(meta.id))];
+    if (shown.length <= WALK_CURSOR_MAX_IDS) {
+      walkCursors.set(`${lengthKey}@${startIndex + items.length}`, { raw: rawAt[offset + items.length - 1] + 1, seen: shown });
+    }
+  }
 
   return {
-    items: collected.slice(offset, offset + limit),
-    hasMore: collected.length > offset + limit || (!exhausted && !failed && collected.length >= offset + limit),
+    items,
+    // A walk cut short by its page budget has more behind it, even if the window is short.
+    hasMore: collected.length > offset + limit || (!exhausted && !failed),
     ...(failed ? { failed: true } : {}),
   };
 }

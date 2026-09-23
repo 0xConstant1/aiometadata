@@ -871,14 +871,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       if (genreExtra) extras.genre = String(genreExtra.default);
     }
 
+    // A grid asking for hundreds at once is answered a folder page at a time, as
+    // collection folders are, and reads on by the count; a row is filled as asked.
+    const pageCap = envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20);
+    const pageLimit = limit > pageCap * 2 ? pageCap : limit;
+
     const window = await fetchWindow(
       userUUID,
       catalog,
       startIndex,
-      limit,
+      pageLimit,
       extras,
       includeTypesFilter(catalog.type, includeItemTypes ? String(includeItemTypes) : undefined),
-      profileTags(config)
+      profileTags(config),
+      includeItemTypes ? String(includeItemTypes) : ''
     );
     const hasMore = window.hasMore;
 
@@ -887,13 +893,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       .map((meta: any) => metaToBaseItem(meta, catalog.type, serverId, String(parentId)));
 
     const filtered = filterByIncludeTypes(items, includeItemTypes ? String(includeItemTypes) : undefined)
-      .slice(0, limit);
+      .slice(0, pageLimit);
 
     // Catalogs report no total, so one page of lookahead keeps the client asking
-    // and collapses to the truth once a window comes back short. This only holds
-    // because fetchWindow always fills a window, making short mean finished.
+    // and collapses to the truth once the catalog runs out.
     const total = hasMore && filtered.length > 0
-      ? startIndex + filtered.length + limit
+      ? startIndex + filtered.length + pageLimit
       : startIndex + filtered.length;
 
     await applyWatchedState(filtered, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
