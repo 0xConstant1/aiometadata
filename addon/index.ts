@@ -4231,6 +4231,7 @@ addon.post("/api/managers/accounts", async (req, res) => {
       accountId, managerId, label, instanceUrl: normalized, apiKey, profileTags, autoSync
     });
     await database.saveUserConfig(userUUID, access.passwordHash, config);
+    configCache.del(userUUID);
     res.json({ success: true, account, managerAccounts: config.managerAccounts });
   } catch (error) {
     consola.error(`[Managers] Failed to save account: ${error.message}`);
@@ -4256,6 +4257,7 @@ addon.delete("/api/managers/accounts", async (req, res) => {
       return res.status(404).json({ error: "No such account" });
     }
     await database.saveUserConfig(userUUID, access.passwordHash, config);
+    configCache.del(userUUID);
     res.json({ success: true, managerAccounts: config.managerAccounts });
   } catch (error) {
     consola.error(`[Managers] Failed to remove account: ${error.message}`);
@@ -4288,6 +4290,7 @@ addon.post("/api/managers/credentials", async (req, res) => {
       label: existing?.label || managerAccounts.hostLabel(normalized),
     });
     await database.saveUserConfig(userUUID, access.passwordHash, config);
+    configCache.del(userUUID);
     res.json({ success: true, managerAccounts: config.managerAccounts });
   } catch (error) {
     consola.error(`[Managers] Failed to save credentials: ${error.message}`);
@@ -4346,6 +4349,7 @@ addon.post("/api/managers/sync", async (req, res) => {
     }));
 
     await database.saveUserConfig(userUUID, access.passwordHash, config);
+    configCache.del(userUUID);
     const synced = results.filter(r => r.ok).length;
     res.json({ success: synced > 0, synced, failed: results.length - synced, results, managerAccounts: config.managerAccounts });
   } catch (error) {
