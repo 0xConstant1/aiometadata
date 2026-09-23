@@ -4,7 +4,6 @@ import { scopeConfigToProfile } from './profiles';
 import { normaliseJellyfinId } from './idsCodec';
 import { LRUCache } from 'lru-cache';
 
-const database: any = require('../database');
 const redis: any = require('../redisClient');
 const { envInt } = require('../../utils/envNumber');
 
@@ -130,10 +129,17 @@ export async function attachJellyfinContext(req: any, _res: any, next: any): Pro
 /** The configuration as the signed-in profile sees it. */
 export async function loadConfig(req: any): Promise<any> {
   if (req.jellyfin?.config) return req.jellyfin.config;
-  const stored = await database.getUserConfig(req.jellyfin.userUUID);
+  let stored: any;
+  try {
+    stored = await require('../configApi').loadSharedConfig(req.jellyfin.userUUID);
+  } catch (error: any) {
+    if (error?.code === 'CONFIG_NOT_FOUND') return null;
+    throw error;
+  }
   if (!stored) return null;
 
-  const config = scopeConfigToProfile(stored, req.jellyfin.userUUID, req.jellyfin.profileId ?? null);
+  // The cached copy is every reader's, so a request changes only its own top level.
+  const config = scopeConfigToProfile({ ...stored }, req.jellyfin.userUUID, req.jellyfin.profileId ?? null);
   config.userUUID = req.jellyfin.userUUID;
   req.jellyfin.config = config;
   return config;

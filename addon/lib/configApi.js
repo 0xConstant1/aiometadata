@@ -1062,7 +1062,11 @@ class ConfigApi {
   }
 
   // Load configuration from database by UUID (for internal use)
-  async loadConfigFromDatabase(userUUID) {
+  /**
+   * The cached configuration itself, shared by every caller, so it is read and
+   * never changed. loadConfigFromDatabase hands out a copy a route may change.
+   */
+  async loadSharedConfig(userUUID) {
     try {
       await this.initialize();
       
@@ -1135,7 +1139,7 @@ class ConfigApi {
         return sanitizedConfig;
       });
 
-      return JSON.parse(JSON.stringify(cachedConfig));
+      return cachedConfig;
     } catch (error) {
       if (error?.code === 'CONFIG_NOT_FOUND') {
         logger.debug(`No configuration for ${String(userUUID).substring(0, 8)}...`);
@@ -1144,6 +1148,10 @@ class ConfigApi {
       }
       throw error;
     }
+  }
+
+  async loadConfigFromDatabase(userUUID) {
+    return JSON.parse(JSON.stringify(await this.loadSharedConfig(userUUID)));
   }
 
   buildApiKeyValidationSummary(details) {
@@ -1558,5 +1566,6 @@ module.exports = {
   getAddonInfo: configApi.getAddonInfo.bind(configApi),
   isTrusted: configApi.isTrusted.bind(configApi),
   loadConfigFromDatabase: configApi.loadConfigFromDatabase.bind(configApi),
+  loadSharedConfig: configApi.loadSharedConfig.bind(configApi),
   testApiKeys: configApi.testApiKeys.bind(configApi)
 };
