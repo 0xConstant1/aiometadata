@@ -179,9 +179,18 @@ async function validateKey(apiKey: string): Promise<boolean> {
   }
 }
 
+// Paged like the watched history; the first page alone dropped every point past 100.
 async function fetchResume(apiKey: string): Promise<any[]> {
-  const data = await makeRequest('/api/external/resume', apiKey);
-  return data.items || [];
+  const { envInt } = require('./envNumber');
+  const maxPages = envInt('PUBLICMETADB_RESUME_MAX_PAGES', 20, 1);
+  const items: any[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const data = await makeRequest(`/api/external/resume?page=${page}&perPage=500`, apiKey);
+    const batch = Array.isArray(data?.items) ? data.items : [];
+    items.push(...batch);
+    if (!batch.length || page >= (Number(data?.totalPages) || 1)) break;
+  }
+  return items;
 }
 
 async function fetchDropped(apiKey: string, page: number = 1, perPage: number = 100): Promise<{ items: any[]; total: number; totalPages: number }> {

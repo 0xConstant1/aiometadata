@@ -405,6 +405,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 1800,
   },
   {
+    key: 'PUBLICMETADB_RESUME_MAX_PAGES',
+    envVar: 'PUBLICMETADB_RESUME_MAX_PAGES',
+    label: 'PublicMetaDB Resume Pages',
+    description: 'The most pages of 500 resume points read from PublicMetaDB at once, for Continue Watching and the Jellyfin sync.',
+    category: 'Features',
+    type: 'number',
+    default: 20,
+    min: 1,
+  },
+  {
     key: 'PUBLICMETADB_LISTS_TTL',
     envVar: 'PUBLICMETADB_LISTS_TTL',
     label: 'PublicMetaDB Lists Cache TTL',
