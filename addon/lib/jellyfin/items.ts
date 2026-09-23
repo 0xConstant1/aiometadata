@@ -626,7 +626,10 @@ export async function fetchMeta(
       }
       const body: any = await response.json();
       const meta = body?.meta ?? null;
-      if (meta) metaMemo.set(key, meta);
+      if (meta) {
+        metaMemo.set(key, meta);
+        if (stremioType === 'series') require('./episodeIndex').rememberSeriesIndex(userUUID, id, meta);
+      }
       return meta;
     } catch (error: any) {
       logger.warn(`Meta ${stremioType}/${id} failed: ${error?.message || error}`);

@@ -1012,23 +1012,15 @@ function airedFrom(videos: any[]): string[] {
     .filter(Boolean);
 }
 
-const indexBuilding = new Set<string>();
-
-/** A show's aired episode ids from the episode index; null while an unindexed show is indexed off the request. */
+/**
+ * A show's aired episode ids from the episode index, or null when it is not held.
+ * A listing never builds one: that is a full meta read per show on the page, all
+ * competing with the page itself. Opening the show stores it.
+ */
 async function airedEpisodeIds(userUUID: string, descriptor: any): Promise<string[] | null> {
   const { seriesIndex } = require('./episodeIndex');
-  const metaId = String(descriptor.i);
-  const indexed = await seriesIndex(userUUID, metaId, { held: true }).catch(() => null);
-  if (indexed) return airedFrom(Array.isArray(indexed.videos) ? indexed.videos : []);
-
-  const key = `${userUUID}:${metaId}`;
-  if (!indexBuilding.has(key)) {
-    indexBuilding.add(key);
-    seriesIndex(userUUID, metaId)
-      .catch(() => undefined)
-      .finally(() => indexBuilding.delete(key));
-  }
-  return null;
+  const indexed = await seriesIndex(userUUID, String(descriptor.i), { held: true }).catch(() => null);
+  return indexed ? airedFrom(Array.isArray(indexed.videos) ? indexed.videos : []) : null;
 }
 
 const ownPlayedMemo = new LRUCache<string, Set<string>>({

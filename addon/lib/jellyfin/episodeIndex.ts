@@ -68,6 +68,17 @@ function trim(meta: any): SeriesIndex {
   };
 }
 
+/** Keeps the index of a series meta read for another reason, so a listing finds it held. */
+export function rememberSeriesIndex(userUUID: string, metaId: string, meta: any): void {
+  const key = keyFor(userUUID, metaId);
+  if (!meta || !Array.isArray(meta.videos) || memory.has(key)) return;
+  const index = trim(meta);
+  memory.set(key, index);
+  if (redis) {
+    redis.set(key, JSON.stringify(index), 'EX', ttlSeconds(), 'NX').catch(() => undefined);
+  }
+}
+
 async function build(userUUID: string, metaId: string): Promise<SeriesIndex | null> {
   const meta = await fetchMeta(userUUID, 'series', metaId);
   if (!meta) return null;
