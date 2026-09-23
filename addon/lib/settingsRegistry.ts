@@ -1941,6 +1941,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 6 * 60 * 60,
   },
   {
+    key: 'CATALOG_CURSOR_WALK_MAX_PAGES',
+    envVar: 'CATALOG_CURSOR_WALK_MAX_PAGES',
+    label: 'Filtered Catalog Catch-up Pages',
+    description: 'How many filtered pages are filled forward to reach a page asked for out of order, so it matches what paging from the top would show. Past this it is placed by its page number, as before, and may overlap its neighbours.',
+    category: 'Catalogs & Search',
+    type: 'number',
+    default: 25,
+    min: 1,
+  },
+  {
     key: 'ENABLE_SELF_HEALING',
     envVar: 'ENABLE_SELF_HEALING',
     label: 'Self-Healing Cache',

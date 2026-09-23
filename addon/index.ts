@@ -11,7 +11,7 @@ const addon = express();
 
 const { getCatalog } = require("./lib/getCatalog");
 const { applyCatalogFilters, catalogFiltersActive } = require("./utils/catalogFilters");
-const { cursorKey, resolveStartPage, writeCursor, fillFilteredPage } = require("./lib/catalogPagination");
+const { cursorKey, resolveStartPage, fillFilteredPage, fillOnce } = require("./lib/catalogPagination");
 const anilist = require("./lib/anilist");
 const { getSearch } = require("./lib/getSearch");
 const { getManifest, resolveManifestTags, DEFAULT_LANGUAGE } = require("./lib/getManifest");
@@ -5078,7 +5078,6 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
     // Set by any branch whose handler already ran applyCatalogFilters internally
     // (external addon catalogs filter before computing their pagination cursor).
     let filtersAlreadyApplied = false;
-    let pendingCursor = null;
 
       if (cleanId === 'search' || cleanId === 'gemini.search' || cleanId === 'people_search') {
       let originalSearchId = null;
@@ -5275,19 +5274,31 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
     if (catalogFiltersActive({ config, catalogConfig, cleanId })) {
       const key = cursorKey(userUUID, cleanId, actualType, genreName);
       const skipValue = legacySkip || 0;
-      const { startPage, startOffset, matched } = await resolveStartPage(key, skipValue, catalogPage);
+      // Deduped here rather than after, so what a page serves, and so where the
+      // next one starts, is the same whether it is filled for this request or on
+      // the way to a later one.
+      const fillChunk = async (start) => {
+        const chunk = await fillFilteredPage({
+          startPage: start.startPage,
+          startOffset: start.startOffset,
+          pageSize: catalogPageSize,
+          fetchPage: async (page) => (await readPage(page, undefined))?.metas || [],
+          filter: (metas) => applyCatalogFilters(metas, { type: actualType, config, catalogConfig, cleanId }),
+        });
+        const seen = new Set();
+        const metas = chunk.metas.filter((meta) => !meta?.id || (!seen.has(meta.id) && seen.add(meta.id)));
+        return { ...chunk, metas };
+      };
+      const { startPage, startOffset, matched } = await resolveStartPage(key, skipValue, catalogPage, fillChunk);
 
-      const filled = await fillFilteredPage({
-        startPage,
-        startOffset,
-        pageSize: catalogPageSize,
-        fetchPage: async (page) => (await readPage(page, undefined))?.metas || [],
-        filter: (metas) => applyCatalogFilters(metas, { type: actualType, config, catalogConfig, cleanId }),
-      });
+      // A page placed by its number is served but leaves no cursor behind, since
+      // one mapped from a guess would carry it into every page after.
+      const filled = matched
+        ? await fillOnce(key, skipValue, { startPage, startOffset }, fillChunk)
+        : await fillChunk({ startPage, startOffset });
 
       responseData = { metas: filled.metas };
       filtersAlreadyApplied = true;
-      pendingCursor = { key, skip: skipValue, page: filled.nextPage, offset: filled.nextOffset };
 
       consola.debug(
         `[Catalog] ${cleanId}: filled ${filled.metas.length}/${catalogPageSize} from ${filled.pagesRead} page(s) ` +
@@ -5323,13 +5334,6 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
       }
     }
 
-    if (pendingCursor) {
-      await writeCursor(pendingCursor.key, {
-        served: pendingCursor.skip + (responseData?.metas?.length || 0),
-        upstreamPage: pendingCursor.page,
-        pageOffset: pendingCursor.offset,
-      });
-    }
 
 
     if (catalogConfig?.randomizePerPage && Array.isArray(responseData?.metas) && responseData.metas.length > 1) {
