@@ -19,10 +19,11 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
 
   const resume = await trackerSnapshot(userUUID, config);
   for (const row of resume) {
-    // A finished row with no position can still take one, a rewatch, but only
-    // from activity newer than the row: an older point is what the mark replaced.
+    // The most recent action wins: a point the tracker set after this row's last
+    // change replaces it, whether the row is a point, a mark or a rewatch; an
+    // older one is what the row already replaced.
     const existing = await database.getPlaystate(userUUID, row.videoId);
-    if (existing && (Number(existing.position_ms) > 0 || !existing.played || (row.updatedAt || 0) <= Number(existing.updated_at))) {
+    if (existing && !((row.updatedAt || 0) > Number(existing.updated_at))) {
       skipped += 1;
       continue;
     }
@@ -60,7 +61,9 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
       skipped += 1;
       continue;
     }
-    if (row && Number(row.position_ms) > 0 && !((watched.at.get(videoId) ?? 0) > Number(row.updated_at))) {
+    // An unplayed row, part-played or marked so here, keeps its state unless
+    // the tracker dates the watch after it; an undated watch cannot outrank it.
+    if (row && !((watched.at.get(videoId) ?? 0) > Number(row.updated_at))) {
       skipped += 1;
       continue;
     }

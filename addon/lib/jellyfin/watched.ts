@@ -1131,6 +1131,20 @@ export async function applyWatchedState(
       if (!stremioId) return;
 
       const record = own.get(stremioId);
+      // The most recent action wins: a watch the tracker dates after this row's
+      // last change was made elsewhere since, so it answers instead of the row.
+      const trackerAt = isWatched(snapshot, stremioId) ? snapshot.at.get(stremioId) ?? 0 : 0;
+      if (record && trackerAt > (Number(record.updated_at) || 0)) {
+        item.UserData = {
+          ...item.UserData,
+          Played: true,
+          PlayCount: Math.max(1, Number(record.play_count) || 0),
+          PlaybackPositionTicks: 0,
+          PlayedPercentage: 100,
+          LastPlayedDate: new Date(trackerAt).toISOString(),
+        };
+        return;
+      }
       if (record) {
         const runtime = Number(record.runtime_ms) || Number(item.RunTimeTicks || 0) / 10000;
         const position = Number(record.position_ms) || 0;
