@@ -1,8 +1,6 @@
 import consola from 'consola';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
-import { fetch as undiciFetch } from 'undici';
-import { directDispatcher } from '../../utils/httpClient';
 import { encodeJellyfinId, parseStremioId } from './ids';
 import { normaliseJellyfinId } from './idsCodec';
 import { EMPTY_USER_DATA } from './dto';
@@ -125,33 +123,24 @@ export async function recallImages(scope: string, itemId: string): Promise<ItemI
   }
 }
 
-function localBase(): string {
-  return `http://127.0.0.1:${process.env.PORT || '3232'}`;
+// A hung read gives the client its answer without it rather than holding it.
+function routeTimeout(): number {
+  return envInt('JELLYFIN_ROUTE_TIMEOUT_MS', 30000, 1000);
 }
 
-// Past the cap, loopback calls queue rather than fail on the socket.
-let loopbackActive = 0;
-const loopbackQueue: Array<() => void> = [];
-async function loopbackFetch(url: string): Promise<Response> {
-  const cap = envInt('JELLYFIN_LOOPBACK_CONCURRENCY', 16, 1);
-  if (loopbackActive >= cap) await new Promise<void>((resolve) => loopbackQueue.push(resolve));
-  loopbackActive += 1;
+function decodeParam(value: string): string {
   try {
-    return await undiciFetch(url, {
-      headers: { accept: 'application/json', 'accept-encoding': 'identity' },
-      dispatcher: directDispatcher,
-    }) as unknown as Response;
-  } finally {
-    loopbackActive -= 1;
-    loopbackQueue.shift()?.();
+    return decodeURIComponent(value);
+  } catch {
+    return value;
   }
 }
 
 /**
  * The catalog route owns id normalisation, per-source dispatch, cursors and
- * poster resolution. Going through it over loopback keeps the Jellyfin surface
+ * poster resolution. Calling its handler in process keeps the Jellyfin surface
  * and the Stremio surface on identical data instead of a second copy of that
- * dispatch drifting out of step.
+ * dispatch drifting out of step, without a request to itself for every page.
  */
 export async function fetchCatalogPage(
   userUUID: string,
@@ -165,17 +154,19 @@ export async function fetchCatalogPage(
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
   const extraSegment = parts.length ? `/${parts.join('&')}` : '';
   const profile = tags.length ? `?${tags.map((t) => `tag=${encodeURIComponent(t)}`).join('&')}` : '';
-  const url = `${localBase()}/stremio/${encodeURIComponent(userUUID)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraSegment}.json${profile}`;
+  const url = `/stremio/${encodeURIComponent(userUUID)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraSegment}.json${profile}`;
 
   if (failedPages.has(url)) return null;
   try {
-    const response = await loopbackFetch(url);
-    if (!response.ok) {
+    const { invokeRoute } = require('../inProcessRoutes');
+    const params = { userUUID, type, id: catalogId, ...(parts.length ? { extra: decodeParam(parts.join('&')) } : {}) };
+    const reply = await invokeRoute('catalog', url, params, routeTimeout());
+    if (reply.status < 200 || reply.status >= 300) {
       failedPages.set(url, true);
-      logger.debug(`Catalog ${type}/${catalogId} returned ${response.status}`);
+      logger.debug(`Catalog ${type}/${catalogId} returned ${reply.status}`);
       return null;
     }
-    const body: any = await response.json();
+    const body: any = reply.body;
     return Array.isArray(body?.metas) ? body.metas : [];
   } catch (error: any) {
     failedPages.set(url, true);
@@ -654,15 +645,16 @@ export async function fetchMeta(
   const running = metaInFlight.get(key);
   if (running) return running;
 
-  const url = `${localBase()}/stremio/${encodeURIComponent(userUUID)}/meta/${encodeURIComponent(stremioType)}/${encodeURIComponent(id)}.json`;
+  const url = `/stremio/${encodeURIComponent(userUUID)}/meta/${encodeURIComponent(stremioType)}/${encodeURIComponent(id)}.json`;
   const work = (async () => {
     try {
-      const response = await loopbackFetch(url);
-      if (!response.ok) {
-        logger.debug(`Meta ${stremioType}/${id} returned ${response.status}`);
+      const { invokeRoute } = require('../inProcessRoutes');
+      const reply = await invokeRoute('meta', url, { userUUID, type: stremioType, id }, routeTimeout());
+      if (reply.status < 200 || reply.status >= 300) {
+        logger.debug(`Meta ${stremioType}/${id} returned ${reply.status}`);
         return null;
       }
-      const body: any = await response.json();
+      const body: any = reply.body;
       const meta = body?.meta ?? null;
       if (meta) {
         metaMemo.set(key, meta);

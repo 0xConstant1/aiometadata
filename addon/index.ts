@@ -12,6 +12,7 @@ const addon = express();
 const { getCatalog } = require("./lib/getCatalog");
 const { applyCatalogFilters, catalogFiltersActive } = require("./utils/catalogFilters");
 const { cursorKey, resolveStartPage, fillFilteredPage, fillOnce } = require("./lib/catalogPagination");
+const { registerInProcessRoute } = require("./lib/inProcessRoutes");
 const anilist = require("./lib/anilist");
 const { getSearch } = require("./lib/getSearch");
 const { getManifest, resolveManifestTags, DEFAULT_LANGUAGE } = require("./lib/getManifest");
@@ -4716,7 +4717,7 @@ addon.get("/stremio/:userUUID/manifest.json", async function (req, res) {
 
 
 // --- Catalog Route under /stremio/:userUUID prefix ---
-addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (req, res) {
+const catalogRoute = async function (req, res) {
   const { userUUID, type, id, extra } = req.params;
   const storedConfig = await loadConfigFromDatabase(userUUID);
   
@@ -5443,9 +5444,11 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
     consola.error(`Error in catalog route for id "${id}" and type "${actualType}":`, e);
     return res.status(500).send("Internal Server Error");
   }
-});
+};
+addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", catalogRoute);
+registerInProcessRoute('catalog', "/stremio/:userUUID/catalog/:type/:id{/:extra}.json", catalogRoute);
 // --- Meta Route (with enhanced caching) ---
-addon.get("/stremio/:userUUID/meta/:type/:id.json", async function (req, res) {
+const metaRoute = async function (req, res) {
   const { userUUID, type, id: stremioId } = req.params;
 
   {
@@ -5713,7 +5716,9 @@ addon.get("/stremio/:userUUID/meta/:type/:id.json", async function (req, res) {
     
     res.status(500).send("Internal Server Error");
   }
-});
+};
+addon.get("/stremio/:userUUID/meta/:type/:id.json", metaRoute);
+registerInProcessRoute('meta', "/stremio/:userUUID/meta/:type/:id.json", metaRoute);
 
 // --- Stream route for rating page ---
 addon.get("/stremio/:userUUID/stream/:type/:id.json", async function (req, res) {
