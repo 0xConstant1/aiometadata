@@ -221,7 +221,7 @@ async function simklFingerprint(config: any): Promise<string> {
     if (!token?.access_token) return '';
 
     const parts = await Promise.all((['movies', 'shows', 'anime'] as const)
-      .map(type => getSimklActivityFingerprint(token.access_token, type, 'completed')));
+      .map(type => getSimklActivityFingerprint(token.access_token, type, 'completed', config)));
     if (!parts.some(Boolean)) return '';
 
     const { createHash } = require('crypto');

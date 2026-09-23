@@ -481,7 +481,7 @@ async function readWatchedSnapshot(userUUID: string, config: any, force = false)
     const accessToken = token.access_token;
     const parts = await Promise.all(
       (['movies', 'shows', 'anime'] as const).map((type) =>
-        getSimklActivityFingerprint(accessToken, type, 'completed')
+        getSimklActivityFingerprint(accessToken, type, 'completed', config)
       )
     );
     const tokenHash = createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
