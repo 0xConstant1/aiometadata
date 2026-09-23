@@ -743,6 +743,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_NEXTUP_DEADLINE_MS',
+    envVar: 'JELLYFIN_NEXTUP_DEADLINE_MS',
+    label: 'Jellyfin Next Up Deadline (ms)',
+    description: 'How long a client waits for its Next Up list to be built. Past this it gets the list that shelf last showed, or none, and the build finishes for its next ask.',
+    category: 'Features',
+    type: 'number',
+    default: 10000,
+    min: 1000,
+  },
+  {
     key: 'JELLYFIN_ACTIVE_DAYS',
     envVar: 'JELLYFIN_ACTIVE_DAYS',
     label: 'Jellyfin Active Window (days)',

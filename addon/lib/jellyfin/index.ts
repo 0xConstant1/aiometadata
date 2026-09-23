@@ -2033,8 +2033,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     // Built once per shelf shape; every page is cut from it.
     const q = (name: string) => String(req.query[name] ?? req.query[name.charAt(0).toLowerCase() + name.slice(1)] ?? '');
     const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
+    const shelfKey = `${userUUID}:${profileKey(config)}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
     const memoKey = `${userUUID}:${profileKey(config)}:${digest}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
-    const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config));
+    const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config), undefined, {
+      ms: envInt('JELLYFIN_NEXTUP_DEADLINE_MS', 10000, 1000),
+      shelfKey,
+    });
     const page = found.slice(startIndex, startIndex + limit);
     res.json(itemList(page, found.length, startIndex));
     warmSeriesMetas(req, userUUID, page);

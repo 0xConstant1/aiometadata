@@ -381,8 +381,10 @@ export function invalidateResume(userUUID: string): void {
   for (const key of [...snapshots.keys()]) {
     if (String(key).startsWith(`${userUUID}:`)) snapshots.delete(key);
   }
-  for (const key of [...nextUpPages.keys()]) {
-    if (String(key).startsWith(`${userUUID}:`)) nextUpPages.delete(key);
+  for (const cache of [nextUpPages, lastNextUp]) {
+    for (const key of [...cache.keys()]) {
+      if (String(key).startsWith(`${userUUID}:`)) cache.delete(key);
+    }
   }
 }
 
@@ -392,33 +394,63 @@ const nextUpPages = new LRUCache<string, any[]>({
 });
 const nextUpInFlight = new Map<string, Promise<any[]>>();
 
+// What a shelf last showed, answered while a slower rebuild finishes behind it.
+const lastNextUp = new LRUCache<string, any[]>({
+  max: envInt('JELLYFIN_NEXTUP_CACHE_MAX', 500, 1),
+  ttl: 24 * 60 * 60 * 1000,
+});
+
+export interface NextUpDeadline {
+  ms: number;
+  shelfKey: string;
+}
+
 /** One Next Up list per shelf shape, shared by concurrent asks and kept briefly; a play drops it. */
 export async function memoNextUp(
   userUUID: string,
   key: string,
   build: () => Promise<any[]>,
-  validUntil?: (result: any[]) => number | null
+  validUntil?: (result: any[]) => number | null,
+  deadline?: NextUpDeadline
 ): Promise<any[]> {
   const held = nextUpPages.get(key);
   if (held) return held;
   const generation = generationOf(userUUID);
   const flightKey = `${generation}:${key}`;
-  const running = nextUpInFlight.get(flightKey);
-  if (running) return running;
-  const work = build()
-    .then((result) => {
-      if (generationOf(userUUID) === generation) {
-        const until = validUntil?.(result);
-        const left = until ? until - Date.now() : null;
-        nextUpPages.set(key, result, left && left > 0 && left < nextUpPages.ttl! ? { ttl: left } : undefined);
-      }
-      return result;
-    })
-    .finally(() => {
-      if (nextUpInFlight.get(flightKey) === work) nextUpInFlight.delete(flightKey);
-    });
-  nextUpInFlight.set(flightKey, work);
-  return work;
+  let work = nextUpInFlight.get(flightKey);
+  if (!work) {
+    const started: Promise<any[]> = build()
+      .then((result) => {
+        if (generationOf(userUUID) === generation) {
+          const until = validUntil?.(result);
+          const left = until ? until - Date.now() : null;
+          nextUpPages.set(key, result, left && left > 0 && left < nextUpPages.ttl! ? { ttl: left } : undefined);
+          if (deadline) lastNextUp.set(deadline.shelfKey, result);
+        }
+        return result;
+      })
+      .finally(() => {
+        if (nextUpInFlight.get(flightKey) === started) nextUpInFlight.delete(flightKey);
+      });
+    nextUpInFlight.set(flightKey, started);
+    work = started;
+  }
+  if (!deadline) return work;
+
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), deadline.ms);
+    timer.unref?.();
+  });
+  try {
+    const result = await Promise.race([work, late]);
+    if (result) return result;
+    const previous = lastNextUp.get(deadline.shelfKey);
+    logger.debug(`Next Up for ${userUUID} still building after ${deadline.ms}ms; answering with ${previous ? `the last ${previous.length}` : 'nothing'} meanwhile`);
+    return previous ?? [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function resumeUserData(
