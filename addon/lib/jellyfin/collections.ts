@@ -130,16 +130,14 @@ function boxSetsOf(catalogs: CatalogRef[], serverId: string, collection: Collect
   const out: any[] = [];
   for (const folder of folders) {
     if (!folder?.id || typeof folder.title !== 'string') continue;
-    const count = visibleDeep(catalogs, folder);
-    if (!count) continue;
-    const set = boxSetItem(serverId, collection, folder, count, parentId);
+    const set = boxSetItem(serverId, collection, folder, visibleDeep(catalogs, folder), parentId);
     out.push(set);
     if (deep) out.push(...boxSetsOf(catalogs, serverId, collection, subFolders(folder), set.Id, true));
   }
   return out;
 }
 
-/** The folders of a collection this user can see anything in. */
+/** The folders of a collection, including those with nothing this user can see. */
 export async function boxSetsFor(userUUID: string, config: any, serverId: string, collection: CollectionDraft): Promise<any[]> {
   const catalogs = await getCatalogs(userUUID, config);
   return boxSetsOf(catalogs, serverId, collection, Array.isArray(collection.folders) ? collection.folders : [], collectionViewId(collection), false);
