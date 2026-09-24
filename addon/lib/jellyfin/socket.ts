@@ -92,7 +92,8 @@ export function attachJellyfinSocket(server: any): void {
     try {
       userUUID = await readToken(token ?? undefined);
     } catch {
-      userUUID = null;
+      reject(socket, 503, 'Service Unavailable');
+      return;
     }
 
     if (!userUUID || userUUID !== decodeURIComponent(match[1])) {

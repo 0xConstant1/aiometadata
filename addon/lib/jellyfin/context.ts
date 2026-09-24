@@ -120,7 +120,8 @@ export async function attachJellyfinContext(req: any, _res: any, next: any): Pro
       markSeen(userUUID);
     }
   } catch (error: any) {
-    logger.debug(`Token resolution failed: ${error.message}`);
+    logger.warn(`Token resolution failed: ${error.message}`);
+    req.jellyfin.authUnavailable = true;
   }
 
   next();
@@ -153,6 +154,11 @@ const ANONYMOUS_PATH = /\/(Items|Users)\/[^/]+\/Images\//i;
 export function requireAuth(req: any, res: any, next: any): void {
   if (req.jellyfin?.authenticated || ANONYMOUS_PATH.test(String(req.path || ''))) {
     next();
+    return;
+  }
+  // A 401 makes a client drop its sign-in, which a store it could not reach is no reason for.
+  if (req.jellyfin?.authUnavailable) {
+    res.status(503).json({ Message: 'Service Unavailable' });
     return;
   }
   res.status(401).json({ Message: 'Unauthorized' });

@@ -33,7 +33,7 @@ Treat the address like the install URL: anyone holding it and a password can bro
 
 **Quick Connect.** The client shows a code, you enter it in the dialog, and the client is signed in without any password, as the user picked in the dialog. Codes expire after ten minutes. Clients that lack Quick Connect use the client password.
 
-Sign-ins last thirty days (`JELLYFIN_TOKEN_TTL`, seconds); after that the client asks for the password again.
+A sign-in lasts until the client goes thirty days without using it (`JELLYFIN_TOKEN_TTL`, seconds); every use starts the thirty days again. Sign-ins are kept in the database, so a restart or an update never signs a client out.
 
 ## Users
 
@@ -232,7 +232,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 |---|---|---|
 | `JELLYFIN_API_ENABLED` | `false` | Serve the Jellyfin API at `/jellyfin/<configuration>`. |
 | `JELLYFIN_CUSTOM_CSS` | | CSS served to web clients. |
-| `JELLYFIN_TOKEN_TTL` (env) | `2592000` | How long a sign-in lasts, in seconds. |
+| `JELLYFIN_TOKEN_TTL` (env) | `2592000` | How long a sign-in lasts unused, in seconds. |
 | `JELLYFIN_QUICK_CONNECT_TTL` (env) | `600` | How long a Quick Connect code is valid. |
 | `JELLYFIN_CATALOG_MIN_PAGE` | `10` | A catalog page shorter than this is the last one, so short lists are not asked for pages they do not have. |
 | `JELLYFIN_SHELF_META_CONCURRENCY` | `4` | Titles the Continue Watching and Next Up shelves fetch metadata for at once. A cold anime title costs several requests, and MyAnimeList blocks a burst. |

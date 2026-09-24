@@ -303,6 +303,15 @@ class Database {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_tokens (
+        token_hash TEXT PRIMARY KEY,
+        user_uuid TEXT NOT NULL,
+        profile_id TEXT,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_tokens_user ON jellyfin_tokens(user_uuid)`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_tokens_used ON jellyfin_tokens(last_used_at)`,
       `CREATE TABLE IF NOT EXISTS trusted_uuids (
         user_uuid TEXT UNIQUE NOT NULL,
         trusted_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -432,6 +441,15 @@ class Database {
         updated_at BIGINT NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_tokens (
+        token_hash VARCHAR(64) PRIMARY KEY,
+        user_uuid VARCHAR(64) NOT NULL,
+        profile_id TEXT,
+        created_at BIGINT NOT NULL,
+        last_used_at BIGINT NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_tokens_user ON jellyfin_tokens(user_uuid)`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_tokens_used ON jellyfin_tokens(last_used_at)`,
       `CREATE TABLE IF NOT EXISTS trusted_uuids (
         user_uuid VARCHAR(255) UNIQUE NOT NULL,
         trusted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -551,6 +569,11 @@ class Database {
       }
     }
 
+    const newAppPassword = typeof normalizedConfig?.jellyfinAppPassword === 'string' ? normalizedConfig.jellyfinAppPassword : '';
+    const previousAppPassword = newAppPassword
+      ? (await this.getUserConfig(userUUID).catch(() => null))?.jellyfinAppPassword
+      : undefined;
+
     let configJson: string;
     if (normalizedConfig && typeof normalizedConfig === 'object' && !Array.isArray(normalizedConfig)) {
       const configForHash = { ...normalizedConfig };
@@ -593,6 +616,11 @@ class Database {
     }
 
     await require('./configCache').del(userUUID).catch(() => undefined);
+
+    // A replaced client password signs every client out.
+    if (previousAppPassword && previousAppPassword !== newAppPassword) {
+      await require('./jellyfin/tokens').revokeUserTokens(userUUID).catch((error: any) => logger.warn(`Signing out clients for ${userUUID} failed: ${error.message}`));
+    }
 
     try {
       return JSON.parse(configJson);
@@ -786,6 +814,7 @@ class Database {
         ? 'DELETE FROM trusted_uuids WHERE user_uuid = ?'
         : 'DELETE FROM trusted_uuids WHERE user_uuid = $1';
       await this.runQuery(deleteTrustedQuery, [userUUID]);
+      await require('./jellyfin/tokens').revokeUserTokens(userUUID).catch(() => undefined);
 
       const deleteAliasQuery = this.type === 'sqlite'
         ? 'DELETE FROM user_aliases WHERE user_uuid = ?'
@@ -1138,6 +1167,53 @@ class Database {
         await this.runQuery(query, [userUUID, profile, metaId]);
       }
     }
+  }
+
+  async insertJellyfinToken(tokenHash: string, userUUID: string, profileId: string | null, now: number): Promise<void> {
+    const query = this.type === 'sqlite'
+      ? 'INSERT INTO jellyfin_tokens (token_hash, user_uuid, profile_id, created_at, last_used_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (token_hash) DO NOTHING'
+      : 'INSERT INTO jellyfin_tokens (token_hash, user_uuid, profile_id, created_at, last_used_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (token_hash) DO NOTHING';
+    await this.runQuery(query, [tokenHash, userUUID, profileId, now, now]);
+  }
+
+  // Read from the primary: a replica behind it would reject a token minted a moment ago.
+  async findJellyfinToken(tokenHash: string): Promise<{ user_uuid: string; profile_id: string | null; last_used_at: number } | null> {
+    if (!this.initialized) await this.initialize();
+    if (this.type === 'sqlite') {
+      return this.getQuery('SELECT user_uuid, profile_id, last_used_at FROM jellyfin_tokens WHERE token_hash = ?', [tokenHash]);
+    }
+    const result = await this.db.query('SELECT user_uuid, profile_id, last_used_at FROM jellyfin_tokens WHERE token_hash = $1', [tokenHash]);
+    const row = result.rows[0];
+    return row ? { ...row, last_used_at: Number(row.last_used_at) } : null;
+  }
+
+  async touchJellyfinToken(tokenHash: string, now: number): Promise<void> {
+    const query = this.type === 'sqlite'
+      ? 'UPDATE jellyfin_tokens SET last_used_at = ? WHERE token_hash = ?'
+      : 'UPDATE jellyfin_tokens SET last_used_at = $1 WHERE token_hash = $2';
+    await this.runQuery(query, [now, tokenHash]);
+  }
+
+  async deleteJellyfinToken(tokenHash: string): Promise<void> {
+    const query = this.type === 'sqlite'
+      ? 'DELETE FROM jellyfin_tokens WHERE token_hash = ?'
+      : 'DELETE FROM jellyfin_tokens WHERE token_hash = $1';
+    await this.runQuery(query, [tokenHash]);
+  }
+
+  async deleteJellyfinTokensForUser(userUUID: string): Promise<void> {
+    const query = this.type === 'sqlite'
+      ? 'DELETE FROM jellyfin_tokens WHERE user_uuid = ?'
+      : 'DELETE FROM jellyfin_tokens WHERE user_uuid = $1';
+    await this.runQuery(query, [userUUID]);
+  }
+
+  async deleteIdleJellyfinTokens(usedBefore: number): Promise<number> {
+    const query = this.type === 'sqlite'
+      ? 'DELETE FROM jellyfin_tokens WHERE last_used_at < ?'
+      : 'DELETE FROM jellyfin_tokens WHERE last_used_at < $1';
+    const result = await this.runQuery(query, [usedBefore]);
+    return Number(this.type === 'sqlite' ? result?.changes : result?.rowCount) || 0;
   }
 
   async deletePlaystate(userUUID: string, videoId: string, profile = ''): Promise<void> {
