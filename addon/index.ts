@@ -3315,6 +3315,46 @@ addon.post("/api/simkl/lists", async (req, res) => {
   }
 });
 
+// Any list the connected account can see, by its id or its simkl.com link.
+addon.post("/api/simkl/list", async (req, res) => {
+  try {
+    const { tokenId, list } = req.body || {};
+    const listId = String(list || '').trim().match(/^(\d+)$|\/lists?\/(\d+)/)?.slice(1).find(Boolean);
+    if (!tokenId || !listId) {
+      return res.status(400).json({ error: "A Simkl list link or numeric id is required" });
+    }
+    const { getSimklToken, fetchSimklListPage } = require('./utils/simklUtils');
+    const token = await getSimklToken(tokenId);
+    if (!token?.access_token) {
+      return res.status(404).json({ error: "Token not found" });
+    }
+    let result;
+    try {
+      result = await fetchSimklListPage(token.access_token, listId, 1, 1);
+    } catch (error) {
+      if (error?.response?.status === 404) return res.json({ error: 'not_found' });
+      throw error;
+    }
+    if (result.error) return res.json({ error: result.error });
+    const found = result.list;
+    if (!found?.id) return res.json({ error: 'not_found' });
+    res.json({
+      list: {
+        id: String(found.id),
+        name: found.name,
+        description: typeof found.description === 'string' ? found.description : (found.description?.full || found.description?.short || ''),
+        mediaType: found.media_type,
+        privacy: found.privacy,
+        itemCount: found.counts?.items ?? 0,
+        owner: found.user?.name || '',
+      },
+    });
+  } catch (error) {
+    consola.error("[Simkl] Error fetching a custom list:", error.message);
+    res.status(500).json({ error: "Failed to fetch that Simkl list" });
+  }
+});
+
 // Proxy: Get user's lists
 addon.get("/api/trakt/users/:username/lists", async (req, res) => {
   try {

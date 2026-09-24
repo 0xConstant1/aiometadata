@@ -185,12 +185,9 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
     setSelectedCustomLists(next);
   };
 
-  const importSelectedCustomLists = () => {
-    if (selectedCustomLists.size === 0) {
-      toast.error("Please select at least one list to import.");
-      return;
-    }
-    const toAdd = customLists.filter(list => selectedCustomLists.has(list.id) && !config.catalogs.some(c => c.id === `simkl.list.${list.id}`));
+  /** Returns how many were new: a list already in the catalogs is left as it is. */
+  const addListCatalogs = (lists: SimklCustomList[]): number => {
+    const toAdd = lists.filter(list => !config.catalogs.some(c => c.id === `simkl.list.${list.id}`));
     setConfig(prev => {
       const catalogs = [...prev.catalogs];
       for (const list of toAdd) {
@@ -219,8 +216,69 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
       }
       return { ...prev, catalogs };
     });
+    return toAdd.length;
+  };
+
+  const importSelectedCustomLists = () => {
+    if (selectedCustomLists.size === 0) {
+      toast.error("Please select at least one list to import.");
+      return;
+    }
+    const added = addListCatalogs(customLists.filter(list => selectedCustomLists.has(list.id)));
     setSelectedCustomLists(new Set());
-    toast.success(toAdd.length ? `Imported ${toAdd.length} list(s)` : "Those lists are already in your catalogs");
+    toast.success(added ? `Imported ${added} list(s)` : "Those lists are already in your catalogs");
+  };
+
+  const [listLink, setListLink] = useState('');
+  const [isAddingList, setIsAddingList] = useState(false);
+
+  const addListByLink = async () => {
+    const tokenId = config.apiKeys?.simklTokenId;
+    if (!tokenId) {
+      toast.error("Connect your Simkl account first.");
+      return;
+    }
+    setIsAddingList(true);
+    try {
+      const response = await fetch("/api/simkl/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId, list: listLink }),
+      });
+      const data = await response.json().catch(() => null);
+      if (response.status === 400) {
+        toast.error("That is not a Simkl list", { description: "Paste a simkl.com/lists link or the list's numeric id." });
+        return;
+      }
+      if (!response.ok) throw new Error(data?.error || `Status ${response.status}`);
+      if (data?.error === 'needs_v2') {
+        toast.error("Reconnect Simkl to add custom lists", {
+          description: "Custom lists need the newer Simkl connection. Disconnect Simkl above and connect it again."
+        });
+        return;
+      }
+      if (data?.error === 'premium_only') {
+        toast.error("Custom lists need Simkl PRO or VIP", {
+          description: "Simkl only shares custom lists with PRO and VIP accounts."
+        });
+        return;
+      }
+      if (data?.error === 'not_found' || !data?.list) {
+        toast.error("No such list", { description: "It may be private, or the id may be wrong." });
+        return;
+      }
+      const added = addListCatalogs([data.list]);
+      setListLink('');
+      toast.success(added ? `Added ${data.list.name}` : `${data.list.name} is already in your catalogs`, {
+        ...(added && data.list.owner ? { description: `A list by ${data.list.owner}, ${data.list.itemCount} items` } : {}),
+      });
+    } catch (error) {
+      toast.error("Could not add that list", {
+        description: error instanceof Error ? error.message : "Unknown error occurred"
+      });
+    } finally {
+      setIsAddingList(false);
+    }
   };
 
   // Fetch Simkl user stats when connected
@@ -1020,11 +1078,27 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
                         <Download className="h-5 w-5" />
                       </div>
                       <div className="flex-1 min-w-0 space-y-1.5">
-                        <CardTitle>Import My Custom Lists</CardTitle>
-                        <CardDescription>Import the custom lists you made on Simkl. Needs a Simkl PRO or VIP account.</CardDescription>
+                        <CardTitle>Custom Lists</CardTitle>
+                        <CardDescription>Import the lists you made on Simkl, or add anyone's list by its link or id. Needs a Simkl PRO or VIP account.</CardDescription>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="simkl-list-link">Add a list by link or ID</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="simkl-list-link"
+                            value={listLink}
+                            onChange={(event) => setListLink(event.target.value)}
+                            onKeyDown={(event) => { if (event.key === 'Enter' && listLink.trim() && !isAddingList) void addListByLink(); }}
+                            placeholder="https://simkl.com/lists/137494"
+                            disabled={!isConnected}
+                          />
+                          <Button onClick={addListByLink} disabled={!isConnected || isAddingList || !listLink.trim()}>
+                            {isAddingList ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
+                          </Button>
+                        </div>
+                      </div>
                       <Button
                         onClick={fetchCustomLists}
                         disabled={isLoadingCustomLists || !isConnected}
