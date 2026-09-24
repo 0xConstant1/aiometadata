@@ -984,6 +984,7 @@ export async function invalidateWatched(config: any): Promise<void> {
     for (const key of [...hydrated.keys()]) {
       if (String(key).startsWith(`${keyHash}:`)) hydrated.delete(key);
     }
+    lastGood.delete(keyHash);
 
     // An upstream key is stored as global:<key>, so it is deleted by name; a
     // pattern with a leading wildcard walked the whole keyspace per watch.
