@@ -517,7 +517,9 @@ async function fetchPlaybackSessions(accessToken: string): Promise<any[]> {
   }
 }
 
-async function makeRateLimitedSimklRequest(url: string, context: string = 'Simkl Proxy'): Promise<any> {
+// With a user's token it goes as that user, which a V2 app requires of every request.
+async function makeRateLimitedSimklRequest(url: string, context: string = 'Simkl Proxy', accessToken?: string | null): Promise<any> {
+  if (accessToken) return makeAuthenticatedSimklRequest(url, accessToken, context);
   const headers = {
     'Content-Type': 'application/json',
     'simkl-api-key': simklClientIdFor()
@@ -537,14 +539,15 @@ async function fetchSimklSearchItems(
   type: 'movie' | 'tv' | 'anime',
   query: string,
   limit: number = 20,
-  page: number = 1
+  page: number = 1,
+  accessToken?: string | null
 ): Promise<any[]> {
   try {
     // Simkl clamps rather than rejecting: limit tops out at 50 and page at 20.
     const safeLimit = Math.min(Math.max(limit, 1), 50);
     const safePage = Math.min(Math.max(page, 1), 20);
     const url = `${SIMKL_BASE_URL}/search/${type}?q=${encodeURIComponent(query)}&limit=${safeLimit}&page=${safePage}&extended=full&${simklDataParams()}`;
-    const response: any = await makeRateLimitedSimklRequest(url, `Simkl search (${type}, query: "${query}")`);
+    const response: any = await makeRateLimitedSimklRequest(url, `Simkl search (${type}, query: "${query}")`, accessToken);
 
     if (!response?.data || !Array.isArray(response.data)) {
       logger.info(`No Simkl search results found for query: "${query}"`);
@@ -568,7 +571,7 @@ async function fetchSimklSearchItems(
  * has to come from here. This is also the only place a simkl id turns into an imdb
  * or tvdb one, which search omits.
  */
-async function fetchSimklItemDetail(type: 'movie' | 'tv', simklId: string | number): Promise<any> {
+async function fetchSimklItemDetail(type: 'movie' | 'tv', simklId: string | number, accessToken?: string | null): Promise<any> {
   if (!simklId) return null;
   const segment = type === 'movie' ? 'movies' : 'tv';
   return cacheWrapGlobal(
@@ -576,7 +579,7 @@ async function fetchSimklItemDetail(type: 'movie' | 'tv', simklId: string | numb
     async () => {
       try {
         const url = `${SIMKL_BASE_URL}/${segment}/${simklId}?extended=full&${simklDataParams()}`;
-        const response: any = await makeRateLimitedSimklRequest(url, `Simkl detail (${segment}/${simklId})`);
+        const response: any = await makeRateLimitedSimklRequest(url, `Simkl detail (${segment}/${simklId})`, accessToken);
         return response?.data ?? null;
       } catch (err: any) {
         logger.debug(`Simkl detail lookup failed for ${segment}/${simklId}: ${err.message}`);
@@ -586,6 +589,20 @@ async function fetchSimklItemDetail(type: 'movie' | 'tv', simklId: string | numb
     24 * 60 * 60,
     { resultClassifier: classifyResultAllowEmpty }
   );
+}
+
+/**
+ * The token a public read has to carry. A V1 app answers on its client id alone,
+ * so none is needed (undefined) and none is billed to the user; a V2 app refuses
+ * anything without a user's token, so it is the connected account's, or null
+ * when there is none and the read cannot be made.
+ */
+async function simklUserTokenIfRequired(config: any): Promise<string | null | undefined> {
+  if (String(process.env.SIMKL_CLIENT_ID || '').trim()) return undefined;
+  const tokenId = config?.apiKeys?.simklTokenId;
+  if (!tokenId) return null;
+  const token = await getSimklToken(tokenId);
+  return token?.access_token || null;
 }
 
 async function fetchSimklUserStats(tokenId: string): Promise<any> {
@@ -2352,6 +2369,7 @@ export {
   getSimklWatchedIds,
   fetchSimklUserLists,
   fetchSimklListPage,
+  simklUserTokenIfRequired,
   fetchSimklWatchedItems,
   getSimklActivityFingerprint,
   fetchSimklTrendingItems,

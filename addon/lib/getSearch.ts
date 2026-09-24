@@ -848,10 +848,11 @@ async function performSimklAnimeSearch(type: string, query: string, language: st
   const startTime = Date.now();
   logger.info(`Starting Simkl anime search for type "${type}" with query: "${query}"`);
 
-  const { fetchSimklSearchItems, parseSimklItems }: any = require('../utils/simklUtils.js');
+  const { fetchSimklSearchItems, parseSimklItems, simklUserTokenIfRequired }: any = require('../utils/simklUtils.js');
   const limit = parseInt(getSetting('SIMKL_ANIME_SEARCH_RESULT_LIMIT'), 10) || 20;
 
-  const results = await fetchSimklSearchItems('anime', query, limit, page);
+  const accessToken = await simklUserTokenIfRequired(config);
+  const results = await fetchSimklSearchItems('anime', query, limit, page, accessToken);
   if (!results || results.length === 0) {
     logger.info(`No Simkl anime results found for query: "${query}"`);
     return [];
@@ -964,11 +965,12 @@ async function performSimklSearch(type: string, query: string, language: string,
   const startTime = Date.now();
   logger.info(`Starting Simkl search for type "${type}" with query: "${query}"`);
 
-  const { fetchSimklSearchItems, fetchSimklItemDetail }: any = require('../utils/simklUtils.js');
+  const { fetchSimklSearchItems, fetchSimklItemDetail, simklUserTokenIfRequired }: any = require('../utils/simklUtils.js');
   const limit = parseInt(getSetting('SIMKL_SEARCH_RESULT_LIMIT'), 10) || 20;
   const searchType = type === 'movie' ? 'movie' : 'tv';
 
-  const results = await fetchSimklSearchItems(searchType, query, limit, page);
+  const accessToken = await simklUserTokenIfRequired(config);
+  const results = await fetchSimklSearchItems(searchType, query, limit, page, accessToken);
   if (!results || results.length === 0) {
     logger.info(`No Simkl results found for query: "${query}"`);
     return [];
@@ -982,7 +984,7 @@ async function performSimklSearch(type: string, query: string, language: string,
       const mapped = item?.ids?.tmdb ? null : simklIdsFromMapper(simklId);
       let detail: any = null;
       if (!item?.ids?.tmdb && !mapped?.imdb && !mapped?.tmdb && !mapped?.tvdb) {
-        detail = await fetchSimklItemDetail(searchType, simklId);
+        detail = await fetchSimklItemDetail(searchType, simklId, accessToken);
         detailLookups++;
       }
 
@@ -2569,6 +2571,16 @@ async function getSearch(id: string, type: string, language: string, extra: any,
             const fallback = getDefaultProvider(type);
             logger.info(`Simkl search is off on this instance, falling back to '${fallback}' for "${query}"`);
             providerId = fallback;
+          }
+
+          // A V2-only Simkl app answers nobody without a connected account.
+          if (SIMKL_SEARCH_PROVIDERS.has(providerId)) {
+            const { simklUserTokenIfRequired }: any = require('../utils/simklUtils.js');
+            if ((await simklUserTokenIfRequired(config)) === null) {
+              const fallback = getDefaultProvider(type);
+              logger.info(`Simkl search needs a connected Simkl account on this instance, falling back to '${fallback}' for "${query}"`);
+              providerId = fallback;
+            }
           }
 
           if (providerId === 'lumiere.search' && !getLumiereApiBase()) {
