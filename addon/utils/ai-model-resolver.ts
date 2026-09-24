@@ -7,7 +7,7 @@ type AiProvider = 'gemini' | 'openrouter';
 // Model IDs are interpolated into the Gemini request path, so anything that
 // reaches a client must be charset-checked first.
 const GEMINI_MODEL_PATTERN = /^[a-z0-9][a-z0-9.-]*$/i;
-const OPENROUTER_MODEL_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+(:[a-z0-9._-]+)?$/i;
+const OPENROUTER_MODEL_PATTERN = /^~?[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+(:[a-z0-9._-]+)?$/i;
 
 function isValidModelId(provider: AiProvider, model: unknown): model is string {
   if (typeof model !== 'string') return false;
