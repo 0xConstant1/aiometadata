@@ -1,7 +1,8 @@
 import { httpGet, httpPost, httpRequest } from "./httpClient.js";
 import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { getMeta } from "../lib/getMeta.js";
-import { cacheWrapMetaSmart, cacheWrapGlobal, classifyResultAllowEmpty } from "../lib/getCache.js";
+import { cacheWrapMetaSmart, cacheWrapGlobal, cacheWrapJikanApi, classifyResultAllowEmpty } from "../lib/getCache.js";
+import { mapWithLimit } from "./concurrency";
 import { UserConfig } from "../types/index.js";
 import * as Utils from "./parseProps.js";
 import { progress } from "framer-motion";
@@ -1539,8 +1540,9 @@ async function getSimklWatchedIds(config: any): Promise<SimklWatchedIds | null> 
 
 /** Resolves mal_id only from native anime IDs (mal, anilist, kitsu, anidb). Does NOT resolve from imdb/tmdb/tvdb - those go through getMeta. */
 function resolveMalIdFromIds(ids: any): number | null {
-  const malId = ids.mal;
-  if (malId && typeof malId === 'number' && malId > 0) return malId;
+  // Simkl sends its ids as strings.
+  const malId = Number(ids.mal);
+  if (Number.isInteger(malId) && malId > 0) return malId;
   const anilistId = ids.anilist;
   if (anilistId) {
     const m = idMapper.getMappingByAnilistId(anilistId);
@@ -1573,7 +1575,7 @@ async function parseSimklItems(
 
   if (isAnimeCatalog) {
     // Split: items with mal/kitsu/anidb/anilist -> parseAnimeCatalogMetaBatch; items with only tmdb/imdb/tvdb -> getMeta
-    const animeItems: any[] = [];
+    const animeItems: { index: number; malId: number; stub: any }[] = [];
     const getMetaItems: { item: any; itemType: string; stremioId: string; index: number }[] = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -1610,7 +1612,7 @@ async function parseSimklItems(
 
           const secondYear = years?.[1];
           const airedTo = secondYear ? `${secondYear}-12-31` : null;
-          animeItems.push({
+          animeItems.push({ index: i, malId, stub: {
             mal_id: malId,
             type: itemType,
             title: (item.title || '').replace(/\\'/g, "'"),
@@ -1620,7 +1622,7 @@ async function parseSimklItems(
             images: { jpg: { large_image_url: posterUrl } },
             aired: { from: airedFrom, to: airedTo },
             status: item.status
-          });
+          } });
         } else {
           const imdbId = ids.imdb;
           const tmdbId = ids.tmdb;
@@ -1657,13 +1659,43 @@ async function parseSimklItems(
     const result: (any | null)[] = new Array(items.length).fill(null);
 
     if (animeItems.length > 0) {
-      const batchMetas = await Utils.parseAnimeCatalogMetaBatch(animeItems, config, config.language, includeVideos);
-      let batchIdx = 0;
-      for (let i = 0; i < items.length && batchIdx < batchMetas.length; i++) {
-        const malId = resolveMalIdFromIds(items[i].ids || {});
-        if (malId) {
-          result[i] = batchMetas[batchIdx++] ?? null;
-        }
+      // Simkl carries no synopsis or genres, so the batch reads MAL's own record,
+      // through the cache the meta page fills. Kitsu builds from its own records,
+      // and an IMDb-id catalog from getMeta, so those titles need none.
+      const provider = config.providers?.anime || 'mal';
+      const imdbIds = (config as any).mal?.useImdbIdForCatalogAndSearch === true;
+      const needsRecord = ({ malId, stub }: { malId: number; stub: any }): boolean => {
+        const mapping = idMapper.getMappingByMalId(malId);
+        if (provider === 'kitsu') return !mapping?.kitsu_id;
+        if (!imdbIds) return true;
+        const imdbId = stub.type === 'movie' ? idMapper.getTraktAnimeMovieByMalId(malId)?.externals?.imdb : mapping?.imdb_id;
+        return !imdbId;
+      };
+      const { getAnimeDetails } = require('../lib/mal');
+      const records = await mapWithLimit(animeItems, async (entry) => {
+        if (!needsRecord(entry)) return entry.stub;
+        const details = await cacheWrapJikanApi(`anime-details-${entry.malId}`, () => getAnimeDetails(entry.malId), null).catch(() => null);
+        return details?.mal_id ? { ...details, mal_id: entry.malId } : entry.stub;
+      });
+      const batchMetas = await Utils.parseAnimeCatalogMetaBatch(records, config, config.language, includeVideos);
+
+      // The batch leaves out a title it cannot build or the age rating hides, so
+      // its metas go back to their items by MAL id; one that does not name it
+      // takes the next empty slot.
+      const slotsByMal = new Map<string, number[]>();
+      for (const { index, malId } of animeItems) {
+        const slots = slotsByMal.get(String(malId)) ?? [];
+        slots.push(index);
+        slotsByMal.set(String(malId), slots);
+      }
+      const unplaced: any[] = [];
+      for (const meta of batchMetas) {
+        const at = slotsByMal.get(String(meta?._malId ?? ''))?.shift();
+        if (at !== undefined) result[at] = meta;
+        else if (meta) unplaced.push(meta);
+      }
+      for (const { index } of animeItems) {
+        if (result[index] === null && unplaced.length) result[index] = unplaced.shift();
       }
     }
 
