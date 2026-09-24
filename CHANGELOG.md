@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.1.0](https://github.com/cedya77/aiometadata/compare/v3.0.0...v3.1.0) (2026-09-24)
+
+
+### Features
+
+* **collections:** choose which rows of a featured collection to import ([26523cf](https://github.com/cedya77/aiometadata/commit/26523cf4e0be9a0b0fd513b4ec8530d346e87e18))
+* **collections:** feature Renoria's Starter Kit first ([e2b1e68](https://github.com/cedya77/aiometadata/commit/e2b1e68bd4285ad051c13f5328e589c1ecedf08b))
+* **collections:** feature the TVGenie collection ([f45cc2d](https://github.com/cedya77/aiometadata/commit/f45cc2da119a46f138fcfd48110b446d224069bd))
+* **collections:** feature two more community designs ([65090e7](https://github.com/cedya77/aiometadata/commit/65090e76e2719eea49089a2ff22f915f2fe8b223))
+* **jellyfin:** list an addon's text-only stream entries after the playable ones ([c0d44e8](https://github.com/cedya77/aiometadata/commit/c0d44e873d2f877f8679a958d28237ec1b465862))
+* **search:** offer a self-hosted LumiereDB as a movie and series search provider ([77c84cb](https://github.com/cedya77/aiometadata/commit/77c84cbfef1e5535d4e3758ff772d736e5ba3650))
+* **simkl:** add any custom list by its link or id ([066fb5b](https://github.com/cedya77/aiometadata/commit/066fb5bb3b8a9115683fcae76ad881bee4afab52))
+* **watch-tracking:** exchange favourites, drops and pauses through watch_state ([086b135](https://github.com/cedya77/aiometadata/commit/086b13521cac6106f76680f6f9f06ef824fd6919))
+
+
+### Bug Fixes
+
+* **catalog:** serve a hidden catalog asked without a genre from the entry the warmer wrote ([7ef886c](https://github.com/cedya77/aiometadata/commit/7ef886c6c4bb3a5d665411051637aa375edeba37)), closes [#739](https://github.com/cedya77/aiometadata/issues/739)
+* **catalog:** serve the same filtered page to every reader, in any order ([0858b6f](https://github.com/cedya77/aiometadata/commit/0858b6f42edce2f200617e7c83a7ba4c340b15cc))
+* **http:** send the addon's calls to itself past the outbound proxy ([d7baa46](https://github.com/cedya77/aiometadata/commit/d7baa46fd153b3117dafbadc27666a291d6205ae))
+* **jellyfin:** answer Next Up within a deadline ([56fc3b7](https://github.com/cedya77/aiometadata/commit/56fc3b74d5f6b3877059ddd067c06ecaa2a0f7b2))
+* **jellyfin:** give the server address from the instance's public host ([5c3b7bf](https://github.com/cedya77/aiometadata/commit/5c3b7bfcafec4bcb905037f5e834b4355e7a1662))
+* **jellyfin:** keep sign-ins in the database and extend them on use ([af08b30](https://github.com/cedya77/aiometadata/commit/af08b30d3bf4b6499b05232c514c754b93daded7))
+* **jellyfin:** let the most recent watch or position win between Jellyfin and the tracker ([02fa8d4](https://github.com/cedya77/aiometadata/commit/02fa8d4ac7544f971fa0725a78b8406f0ec71efa))
+* **jellyfin:** name an episode on the dashboard when its series index is not held ([4de2c18](https://github.com/cedya77/aiometadata/commit/4de2c18d8d15ccea8fbba140aab8dd3ed4f4f5f9))
+* **jellyfin:** page large library requests and carry on where the last page stopped ([a70ae01](https://github.com/cedya77/aiometadata/commit/a70ae018de1563b203be42702fae8b179dca7e7a))
+* **jellyfin:** show the Latest rows unless a configuration turns them off ([24b4fca](https://github.com/cedya77/aiometadata/commit/24b4fca7b3cef53719b87c7d3413693b83416b5f))
+* **jellyfin:** treat an unrecorded catalog length as unknown rather than empty ([5fdae77](https://github.com/cedya77/aiometadata/commit/5fdae77eb26d6c00987fae613beeb23fe1ffae3f))
+* **managers:** refresh the cached configuration when a manager account changes ([d681a81](https://github.com/cedya77/aiometadata/commit/d681a81bd8372925ecbd905d5ef9a78eafc315be))
+* **publicmetadb:** read every page of resume points ([b047010](https://github.com/cedya77/aiometadata/commit/b0470101e7802396644058d78b6dc45ae4741ce0))
+* **recommendations:** say why a taste profile could not be built ([039e622](https://github.com/cedya77/aiometadata/commit/039e6229384d34c4e0bc573c26bdf7e0b412266f))
+* **recommendations:** size reply budgets from the share thinking takes ([d383922](https://github.com/cedya77/aiometadata/commit/d383922c8ee1716c02d65e74fbb32333b897a941))
+* **settings:** register the recommendation and connection tunables the code reads ([0cd254a](https://github.com/cedya77/aiometadata/commit/0cd254a0480e08273b8d8fd1240a9952157ab131))
+* **simkl:** build anime catalog metas from MAL's own record, in the list's order ([6308c8a](https://github.com/cedya77/aiometadata/commit/6308c8abc9092d7f479f07745a395433daa04492))
+* **simkl:** check a V2 connection for changes at the interval its user chose everywhere ([7490e6a](https://github.com/cedya77/aiometadata/commit/7490e6a9f6374cb2a7c912f4c20dec948d2f9400))
+* **simkl:** search on a V2 app as the connected account ([6b9cd26](https://github.com/cedya77/aiometadata/commit/6b9cd26375faa0f0f1a75b54b6352ade36d56fb7))
+
+
+### Performance Improvements
+
+* **jellyfin:** fill a library without reading every show's meta ([e551879](https://github.com/cedya77/aiometadata/commit/e551879bd6e4551eb5b534cee06d7410b802fa61))
+* **jellyfin:** read catalogs and metas in process instead of over loopback ([5f81ab7](https://github.com/cedya77/aiometadata/commit/5f81ab75b5dab1a99422a31947a5d734e975d22e))
+* **jellyfin:** read the configuration from the cache rather than the database on every request ([9c0f3ab](https://github.com/cedya77/aiometadata/commit/9c0f3aba249dfe86fd258250c68c118fa8eddde2))
+
 ## [3.0.0](https://github.com/cedya77/aiometadata/compare/v2.17.2...v3.0.0) (2026-09-21)
 
 
