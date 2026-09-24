@@ -11,7 +11,7 @@ import { findFolder, subFolders, type CollectionDraft, type FolderDraft, type So
 
 const IMAGE_URL = /^https?:\/\//i;
 
-function imageOf(value: unknown): string | undefined {
+export function imageOf(value: unknown): string | undefined {
   return typeof value === 'string' && IMAGE_URL.test(value.trim()) ? value.trim() : undefined;
 }
 
@@ -55,7 +55,7 @@ function catalogFor(catalogs: CatalogRef[], source: SourceDraft): CatalogRef | n
   return catalogs.find((c) => c.id === id && c.type.toLowerCase() === type) ?? null;
 }
 
-function visibleSources(catalogs: CatalogRef[], folder: FolderDraft): Array<{ source: SourceDraft; catalog: CatalogRef }> {
+export function visibleSources(catalogs: CatalogRef[], folder: FolderDraft): Array<{ source: SourceDraft; catalog: CatalogRef }> {
   const out: Array<{ source: SourceDraft; catalog: CatalogRef }> = [];
   for (const source of Array.isArray(folder?.sources) ? folder.sources : []) {
     const catalog = catalogFor(catalogs, source);

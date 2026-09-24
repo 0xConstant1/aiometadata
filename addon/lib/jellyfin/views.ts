@@ -5,6 +5,7 @@ import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId } from './ids';
 import { collectionFolder } from './dto';
 import { profileTags } from './profiles';
+import { isCollectionCatalogId } from '../collectionBuilder/aiostreamsCollections';
 
 const { getManifest } = require('../getManifest');
 
@@ -52,7 +53,9 @@ export async function getCatalogs(userUUID: string, config: any): Promise<Catalo
 
   try {
     const manifest = await getManifest(config, { tags });
-    const catalogs: CatalogRef[] = Array.isArray(manifest?.catalogs) ? manifest.catalogs : [];
+    // Builder collections are served here as box sets already, not as their AIOStreams catalogs.
+    const catalogs: CatalogRef[] = (Array.isArray(manifest?.catalogs) ? manifest.catalogs : [])
+      .filter((c: CatalogRef) => !isCollectionCatalogId(c.id));
     catalogCache.set(key, catalogs);
     return catalogs;
   } catch (error: any) {

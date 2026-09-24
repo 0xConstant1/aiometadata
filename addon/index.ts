@@ -4772,6 +4772,18 @@ const catalogRoute = async function (req, res) {
   const config = applyRatingOverrides(storedConfig, req, userUUID);
   config.userUUID = userUUID;
 
+  {
+    const { collectionCatalogMetas, isCollectionCatalogId } = require('./lib/collectionBuilder/aiostreamsCollections');
+    if (isCollectionCatalogId(id)) {
+      const skip = parseInt(new URLSearchParams(extra || '').get('skip') || '0', 10) || 0;
+      const { tags } = resolveManifestTags(storedConfig, req.query.tag);
+      const metas = await collectionCatalogMetas(userUUID, config, tags, id, skip);
+      if (!metas) return res.status(404).send({ error: "Collection not found" });
+      req.userConfig = config;
+      return respond(req, res, { metas });
+    }
+  }
+
   // Handle calendar-videos catalog
   if (id === 'calendar-videos' && type === 'series' && extra) {
     const logger = consola.withTag('Calendar');
@@ -5516,6 +5528,17 @@ const metaRoute = async function (req, res) {
   // Add userUUID to config for per-user token caching
   config.userUUID = userUUID;
   config.addonIdentifier = req.addonIdentifier || userUUID;
+
+  {
+    const { collectionMeta, COLLECTION_META_PREFIX } = require('./lib/collectionBuilder/aiostreamsCollections');
+    if (stremioId.startsWith(COLLECTION_META_PREFIX)) {
+      const { tags } = resolveManifestTags(config, req.query.tag);
+      const meta = await collectionMeta(userUUID, config, tags, stremioId);
+      if (!meta) return res.status(404).send({ error: "Collection not found" });
+      req.userConfig = config;
+      return respond(req, res, { meta });
+    }
+  }
 
   const language = config.language || DEFAULT_LANGUAGE;
   const fullConfig = config;
