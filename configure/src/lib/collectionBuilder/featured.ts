@@ -65,4 +65,15 @@ export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
     detail: '4 collections and 14 classic rows, 26 tiles with artwork.',
     classicRows: 14,
   },
+  {
+    id: 'tvgenie',
+    name: 'TVGenie',
+    author: 'tvgeniekodi',
+    authorUrl: 'https://mdblist.com/lists/tvgeniekodi',
+    url: '/featured/tvgenie.json',
+    summary: 'Daily picks, latest and trending, the top of each decade from the 1980s and a few genres for movies and shows, and seven streaming networks.',
+    note: 'Every tile is the curator\'s own MDBList list.',
+    catalogs: 30,
+    detail: '3 collections, 23 tiles with artwork.',
+  },
 ];

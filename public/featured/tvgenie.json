@@ -1,0 +1,1087 @@
+{
+ "exportType": "fusionWidgets",
+ "exportVersion": 1,
+ "requiredAddons": [
+  "YOUR_AIOMETADATA"
+ ],
+ "widgets": [
+  {
+   "id": "collection.52872d2a-b427-4284-adbe-b5efa10784de",
+   "title": "Movie Categories",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "c54bbf7f-b661-407e-86be-d3367217d83e",
+       "title": "Daily Picks",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/BJsVOe.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.210234",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.210234",
+            "type": "movie",
+            "name": "Daily Picks",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 21600,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 39,
+             "url": "https://mdblist.com/lists/tvgeniekodi/daily-picks",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "5c3e25be-b47f-40c5-a2bd-5bf8c4fbfefb",
+       "title": "Latest Movies",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/EOayKQ.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88306",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88306",
+            "type": "movie",
+            "name": "Latest Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": true,
+            "cacheTTL": 10800,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/latest-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "2f4e00e0-ff0d-48a7-be31-5acecee7b3a7",
+       "title": "Trending Movies",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/GHXkd2.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88302",
+          "type": "movie",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88302",
+            "type": "movie",
+            "name": "Trending Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": true,
+            "cacheTTL": 10800,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 119,
+             "url": "https://mdblist.com/lists/tvgeniekodi/trending-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "cf017b32-5fbb-4f98-828f-0719710ba68a",
+       "title": "Top 1980s",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/0xLS45.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88337",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88337",
+            "type": "movie",
+            "name": "Top 1980s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-1980s-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "c8bb3b69-a247-4938-adfa-c862ca7394ea",
+       "title": "Top 1990s",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/5qB9jC.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88335",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88335",
+            "type": "movie",
+            "name": "Top 1990s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-1990s-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "ccc9d49f-6af1-4456-b857-26921c72b44a",
+       "title": "Top 2000s",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/14cqaI.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88336",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88336",
+            "type": "movie",
+            "name": "Top 2000s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-2000s-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "d4be2711-c704-4398-8351-935dd3fcb48c",
+       "title": "Top 2010s",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/Ci5KHe.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88338",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88338",
+            "type": "movie",
+            "name": "Top 2010s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-2010s-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "cecca580-79b7-463d-bfe9-ac9f7cc6f54c",
+       "title": "Top 2020s",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/4DJSFe.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.83492",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.83492",
+            "type": "movie",
+            "name": "Top 2020s Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-2020s-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "6712bf1a-6323-416c-9c4a-7be2a735af6b",
+       "title": "Top Documentaries",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/pVmwhk.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.84677",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.84677",
+            "type": "movie",
+            "name": "Top Documentaries",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-documentary-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "11de5c93-16fc-46c7-9929-3eb8403cb430",
+       "title": "Top Westerns",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/NU32Xe.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.84520",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.84520",
+            "type": "movie",
+            "name": "Top Westerns",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-westerns",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "collection.4eae44af-dabb-4dbc-9644-bf3152580932",
+   "title": "Show Categories",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "1a0f23fa-2eed-4b99-8c19-a8c853025ba1",
+       "title": "Latest Shows",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/d76lj3.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.91048",
+          "type": "series",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.91048",
+            "type": "series",
+            "name": "Latest Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": true,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 94,
+             "url": "https://mdblist.com/lists/tvgeniekodi/latest-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "6b1f9e0d-76c8-4104-a474-51cd220cbf75",
+       "title": "Trending Shows",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/8BqCt3.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88303",
+          "type": "series",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88303",
+            "type": "series",
+            "name": "Trending Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": true,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/trending-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "61e2752a-2f34-40f1-9f04-cda26aea94c3",
+       "title": "Top Animation",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/1PbcT9.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.84402",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.84402",
+            "type": "series",
+            "name": "Top Adult Animation",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-adult-animation",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "4219609b-a95e-44ad-8693-6419e894f648",
+       "title": "Top Documentaries",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/Mgcl1z.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.84403",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.84403",
+            "type": "series",
+            "name": "Top Documentaries",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-documentaries",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "d1ddbfe5-ba75-4b08-9755-08f90f8794b3",
+       "title": "Top Nature",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/hYUqTL.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.84487",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.84487",
+            "type": "series",
+            "name": "Top Nature Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/popular-nature-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "a7de5fdb-055e-4e21-9e78-46fc81cfdbe1",
+       "title": "Top Reality",
+       "hideTitle": false,
+       "imageAspect": "wide",
+       "imageURL": "https://snipboard.io/SMb715.jpg",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.84401",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.84401",
+            "type": "series",
+            "name": "Top Reality TV",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/top-reality-tv",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "collection.47db5697-42ae-4866-95d6-4573ad26955a",
+   "title": "Networks",
+   "type": "collection.row",
+   "dataSource": {
+    "kind": "collection",
+    "payload": {
+     "items": [
+      {
+       "id": "2c2c145e-1131-4bb4-9d8b-5aeb18bc59cd",
+       "title": "Apple+",
+       "hideTitle": false,
+       "imageAspect": "square",
+       "imageURL": "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/refs/heads/main/resources/widgets/streaming/square/orangebyte/original/appletv-square.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88317",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88317",
+            "type": "movie",
+            "name": "Apple+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 107,
+             "url": "https://mdblist.com/lists/tvgeniekodi/apple-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88319",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88319",
+            "type": "series",
+            "name": "Apple+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 194,
+             "url": "https://mdblist.com/lists/tvgeniekodi/apple-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "f4422d81-c73b-49ff-8af2-3a68cced2c04",
+       "title": "Disney+",
+       "hideTitle": false,
+       "imageAspect": "square",
+       "imageURL": "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/refs/heads/main/resources/widgets/streaming/square/orangebyte/original/disney-square.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88322",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88322",
+            "type": "movie",
+            "name": "Disney+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/disney-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88323",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88323",
+            "type": "series",
+            "name": "Disney+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/disney-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "e51ab626-ebd3-484b-9241-9bfc9e2fd130",
+       "title": "HBO Max",
+       "hideTitle": false,
+       "imageAspect": "square",
+       "imageURL": "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/refs/heads/main/resources/widgets/streaming/square/orangebyte/original/hbomax-square.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88324",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88324",
+            "type": "movie",
+            "name": "Max Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/hbo-max-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88325",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88325",
+            "type": "series",
+            "name": "Max Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/hbo-max-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "779828a5-4b0d-4fb8-a981-46151d4a70fc",
+       "title": "Hulu",
+       "hideTitle": false,
+       "imageAspect": "square",
+       "imageURL": "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/refs/heads/main/resources/widgets/streaming/square/orangebyte/original/hulu-square.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88326",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88326",
+            "type": "movie",
+            "name": "Hulu Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/hulu-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88327",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88327",
+            "type": "series",
+            "name": "Hulu Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/hulu-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "a339a312-0b3c-4ac7-b8bf-7ce1febb2fe9",
+       "title": "Netflix",
+       "hideTitle": false,
+       "imageAspect": "square",
+       "imageURL": "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/refs/heads/main/resources/widgets/streaming/square/orangebyte/original/netflix-square.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88328",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88328",
+            "type": "movie",
+            "name": "Netflix Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/netflix-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88329",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88329",
+            "type": "series",
+            "name": "Netflix Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/netflix-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "88c23750-173a-4cb2-8614-393e41607ad2",
+       "title": "Paramount+",
+       "hideTitle": false,
+       "imageAspect": "square",
+       "imageURL": "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/refs/heads/main/resources/widgets/streaming/square/orangebyte/original/paramount-square.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88330",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88330",
+            "type": "movie",
+            "name": "Paramount+ Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/paramount-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88331",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88331",
+            "type": "series",
+            "name": "Paramount+ Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 123,
+             "url": "https://mdblist.com/lists/tvgeniekodi/paramount-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "id": "0a9b69e6-5bb7-4286-8551-7463bc5bafc1",
+       "title": "Prime",
+       "hideTitle": false,
+       "imageAspect": "square",
+       "imageURL": "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/refs/heads/main/resources/widgets/streaming/square/orangebyte/original/primevideo-square.png",
+       "dataSources": [
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "movie::mdblist.88332",
+          "type": "movie",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88332",
+            "type": "movie",
+            "name": "Prime Movies",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/prime-movies",
+             "mediatype": "movie",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        },
+        {
+         "kind": "addonCatalog",
+         "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "series::mdblist.88333",
+          "type": "series",
+          "genre": "None",
+          "aiometadata": {
+           "version": 1,
+           "catalog": {
+            "id": "mdblist.88333",
+            "type": "series",
+            "name": "Prime Shows",
+            "source": "mdblist",
+            "enabled": true,
+            "showInHome": false,
+            "cacheTTL": 43200,
+            "sort": "default",
+            "metadata": {
+             "itemCount": 200,
+             "url": "https://mdblist.com/lists/tvgeniekodi/prime-tv-shows",
+             "mediatype": "show",
+             "author": "tvgeniekodi"
+            }
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
