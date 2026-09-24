@@ -2609,6 +2609,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     res.status(404).json({ Message: 'Item not found' });
   }
+  // Ahead of the item route, which would take /Items/Suggestions for an item id.
+  registerStubs(router);
   router.get(['/Items/:itemId', '/Users/:userId/Items/:itemId'], singleItemHandler);
 
   router.get('/Sessions', async (req: any, res: any) => {
@@ -2793,8 +2795,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   router.post(['/Users/:userId/FavoriteItems/:itemId', '/UserFavoriteItems/:itemId'], favouriteHandler(true));
   router.delete(['/Users/:userId/FavoriteItems/:itemId', '/UserFavoriteItems/:itemId'], favouriteHandler(false));
-
-  registerStubs(router);
 
   router.use((req: any, res: any) => {
     logger.debug(`Unsupported endpoint: ${req.method} ${req.path}`);
