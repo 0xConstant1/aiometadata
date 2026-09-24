@@ -11,6 +11,7 @@ const idMapper: any = require('../id-mapper');
 interface HeldWatchlist {
   rows: WatchlistEntry[];
   exhausted: boolean;
+  complete: boolean;
 }
 
 const trackerMemo = new LRUCache<string, HeldWatchlist>({
@@ -34,7 +35,7 @@ function trackerWatchlistShared(config: any, userUUID: string, need: number): Pr
   if (running) return running;
   const work = trackerWatchlist(config, userUUID, need)
     .then((built) => {
-      const held = { rows: built.rows, exhausted: built.exhausted };
+      const held = { rows: built.rows, exhausted: built.exhausted, complete: built.complete };
       if (built.complete) trackerMemo.set(key, held);
       return held;
     })
@@ -52,7 +53,7 @@ export function invalidateWatchlist(userUUID: string): void {
 }
 
 // Picked shelves are the favourites; a change made here stands only until their caches catch up.
-export async function watchlistEntries(userUUID: string, config: any, need = Number.MAX_SAFE_INTEGER): Promise<{ entries: WatchlistEntry[]; exhausted: boolean }> {
+export async function watchlistEntries(userUUID: string, config: any, need = Number.MAX_SAFE_INTEGER): Promise<{ entries: WatchlistEntry[]; exhausted: boolean; complete: boolean }> {
   const profile = profileKey(config);
   const rows: any[] = await database.listWatchlist(userUUID, profile).catch(() => []);
   const held = await trackerWatchlistShared(config, userUUID, need);
@@ -72,7 +73,7 @@ export async function watchlistEntries(userUUID: string, config: any, need = Num
       out.delete(metaId);
     }
   }
-  return { entries: [...out.values()].sort((a, b) => b.addedAt - a.addedAt), exhausted: held.exhausted };
+  return { entries: [...out.values()].sort((a, b) => b.addedAt - a.addedAt), exhausted: held.exhausted, complete: held.complete };
 }
 
 export async function watchlistItems(userUUID: string, config: any, serverId: string, entries: WatchlistEntry[], concurrency: number): Promise<any[]> {

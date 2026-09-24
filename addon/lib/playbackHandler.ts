@@ -10,8 +10,11 @@ export type PlaybackEvent = (typeof PLAYBACK_EVENTS)[number];
 /** Contract version of the `watch_state` resource this addon answers. */
 export const WATCH_STATE_VERSION = 2;
 
-/** The events acted on; a pause carries nothing a tracker stores beyond the stop's position. */
-export const PLAYBACK_MANIFEST_EVENTS = ['start', 'stop', 'played', 'unplayed'];
+export const PLAYBACK_MANIFEST_EVENTS = ['start', 'pause', 'stop', 'played', 'unplayed'];
+
+/** Changes to a title rather than a video, sent only to an addon that lists them. */
+export const TITLE_EVENTS = ['watchlisted', 'unwatchlisted', 'dropped', 'undropped'] as const;
+export const WATCH_STATE_PUSH_EVENTS = [...PLAYBACK_MANIFEST_EVENTS, ...TITLE_EVENTS];
 
 export interface PlaybackReport {
   id: string | null;
@@ -28,9 +31,9 @@ export interface PlaybackReport {
 }
 
 /**
- * The sender derives its idempotency key from the item, the event kind and a
- * one-minute bucket, and repeats it across retries. Some clients also report a
- * single stop twice in two shapes, so a repeat is expected rather than a fault.
+ * The sender derives its idempotency key from the item, the event kind and the
+ * position or timestamp, and repeats it across retries. Some clients also report
+ * a single stop twice in two shapes, so a repeat is expected rather than a fault.
  */
 const seen = new LRUCache<string, true>({
   max: envInt('PLAYBACK_DEDUPE_MAX', 10000, 1),
@@ -75,9 +78,9 @@ function markRepeatMs(): number {
   return envInt('PLAYBACK_MARK_REPEAT_WINDOW', 300, 0) * 1000;
 }
 
-export function isDuplicate(userUUID: string, report: PlaybackReport): boolean {
-  if (!report.id) return false;
-  const key = `${userUUID}:${report.id}`;
+export function isDuplicate(userUUID: string, id: string | null): boolean {
+  if (!id) return false;
+  const key = `${userUUID}:${id}`;
   if (seen.has(key)) return true;
   seen.set(key, true);
   return false;
@@ -130,11 +133,7 @@ export async function handleBulkPlaybackReport(
     .filter((v: string | null): v is string => !!v);
   if (!videos.length) return { status: 400, reason: 'no videos' };
 
-  if (typeof body?.id === 'string' && body.id) {
-    const key = `${userUUID}:${body.id}`;
-    if (seen.has(key)) return { status: 204 };
-    seen.set(key, true);
-  }
+  if (isDuplicate(userUUID, typeof body?.id === 'string' && body.id ? body.id : null)) return { status: 204 };
 
   const idMapper = require('./id-mapper');
   const base = String(body?.metaId || id).split(':')[0];
@@ -169,6 +168,36 @@ export async function handleBulkPlaybackReport(
   return { status: 204 };
 }
 
+/** A favourite or a rating on a movie or show, written to the trackers the Jellyfin server writes. */
+async function handleTitleReport(
+  type: string,
+  id: string,
+  body: any,
+  config: any,
+  userUUID: string
+): Promise<PlaybackOutcome> {
+  const event = String(body.event);
+  const metaId = typeof body.metaId === 'string' && body.metaId ? body.metaId : id;
+  if (type !== 'movie' && type !== 'series') return { status: 400, reason: 'unsupported type' };
+  if ((event === 'dropped' || event === 'undropped') && type !== 'series') return { status: 400, reason: 'not a series' };
+  if (isDuplicate(userUUID, typeof body.id === 'string' && body.id ? body.id : null)) return { status: 204 };
+
+  const ids = body.ids && typeof body.ids === 'object' ? body.ids : {};
+  const anime = Boolean(ids.kitsu || ids.mal || ids.anilist || ids.anidb) || /^(kitsu|mal|anilist|anidb):/.test(metaId);
+  const descriptor = { k: type, t: anime ? 'anime' : type, i: metaId };
+  logger.info(`${event} ${type}/${metaId}`);
+
+  if (event === 'watchlisted' || event === 'unwatchlisted') {
+    const { setWatchlisted } = require('./jellyfin/watchlist');
+    if (!(await setWatchlisted(userUUID, config, descriptor, event === 'watchlisted'))) return { status: 400, reason: 'unknown title' };
+    return { status: 204 };
+  }
+
+  const { rateSeries } = require('./jellyfin/dropped');
+  await rateSeries(userUUID, config, descriptor, event === 'dropped' ? false : true);
+  return { status: 204 };
+}
+
 function episodeOrder(videoId: string): number {
   const parts = videoId.split(':').map(Number);
   const episode = parts.pop() ?? 0;
@@ -183,6 +212,7 @@ export async function handlePlaybackReport(
   config: any,
   userUUID: string
 ): Promise<PlaybackOutcome> {
+  if ((TITLE_EVENTS as readonly string[]).includes(String(body?.event || ''))) return handleTitleReport(type, id, body, config, userUUID);
   const scope = String(body?.scope || '');
   if (scope === 'season' || scope === 'series') return handleBulkPlaybackReport(type, id, body, config, userUUID);
 
@@ -192,7 +222,7 @@ export async function handlePlaybackReport(
     return { status: 400, reason: 'unrecognised event' };
   }
 
-  if (isDuplicate(userUUID, report)) {
+  if (isDuplicate(userUUID, report.id)) {
     logger.debug(`Duplicate ${report.event} for ${type}/${id} (${report.id})`);
     return { status: 204 };
   }
@@ -227,6 +257,17 @@ export async function handlePlaybackReport(
   if ((intent === 'watched' || intent === 'unwatched') && isRepeatWatched(userUUID, report)) {
     logger.debug(`Already recorded as ${intent}: ${type}/${id}`);
     return { status: 204 };
+  }
+
+  // An unknown progress is not zero: a pause reported at 0% would move the resume point to the start.
+  if (intent === 'paused' && progress === null) {
+    logger.debug(`Pause without a duration for ${type}/${id}, nothing to save`);
+    return { status: 204 };
+  }
+
+  if (report.event === 'start' && type === 'series' && report.metaId) {
+    const { undropOnWatch } = require('./jellyfin/dropped');
+    undropOnWatch(userUUID, config, [report.metaId]);
   }
 
   await Promise.all([
@@ -336,7 +377,7 @@ const TRAKT_MIN_PROGRESS = 1;
  */
 /**
  * PublicMetaDB has no session, so a start means nothing to it: its own docs say
- * to report on pause, stop or close and never during playback. A stop saves the
+ * to report on pause, stop or close and never during playback. A pause or a stop saves the
  * position, and only a played one is also written to history.
  */
 // Only Trakt and Simkl can unmark a watch; the rest are add-only here.
@@ -384,10 +425,10 @@ async function reportPublicMetaDB(
   config: any
 ): Promise<void> {
   const intent = intentOf(report);
-  if (intent !== 'partial' && intent !== 'watched') return;
-  // Only a stop has a position to save. A bare mark-watched is credited through
-  // history, and going through here as well would report it twice.
-  if (report.event !== 'stop') return;
+  if (intent !== 'partial' && intent !== 'watched' && intent !== 'paused') return;
+  // Only a stop or a pause has a position to save. A bare mark-watched is
+  // credited through history, and going through here as well would report it twice.
+  if (report.event !== 'stop' && report.event !== 'pause') return;
 
   const { parseMediaId, checkinPublicMetaDB } = require('./subtitleHandler');
   const { shouldTrackServiceMediaType, normalizeWatchTrackingMediaType } = require('./watchTracking');

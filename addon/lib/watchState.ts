@@ -27,7 +27,9 @@ export interface WatchStatePull {
     episodes: string[];
     counts: Record<string, { watched: number; total: number; at?: number }>;
     nextUp: Array<{ type: 'series'; metaId: string; videoId: string; season: number | null; episode: number; at: number }>;
+    dropped?: string[];
   };
+  watchlist?: Array<{ type: 'movie' | 'series'; metaId: string; at?: number }>;
 }
 
 function seconds(ms: number): number {
@@ -36,10 +38,12 @@ function seconds(ms: number): number {
 
 /**
  * What this addon knows about the user's viewing, in the shape the reader
- * expects: in-progress rows from the trackers and this server's own table, and
- * the watched library from the tracker the shelves read. `watched` is left out
- * when the reader already holds this version, or when the source could not be
- * read, since an empty block would be taken as nothing ever watched.
+ * expects: in-progress rows from the trackers and this server's own table, the
+ * watched library from the tracker the shelves read, and the watchlist the
+ * favourites come from. `watched` is left out when the reader already holds
+ * this version, or when the source could not be read, since an empty block
+ * would be taken as nothing ever watched. The watchlist and the drops are left
+ * out the same way when any service behind them failed.
  */
 export async function buildWatchStatePull(userUUID: string, config: any, since: string | null): Promise<WatchStatePull> {
   const { resumeSnapshot } = require('./jellyfin/resume');
@@ -47,6 +51,10 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
   const { sourceFor } = require('./jellyfin/trackerSource');
   const { parseStremioId } = require('./jellyfin/ids');
   const { runtimeFromMeta } = require('./jellyfin/playstateSync');
+  const { watchlistEntries } = require('./jellyfin/watchlist');
+  const { dropsKeptHere, localDrops } = require('./jellyfin/dropped');
+
+  const listed = watchlistEntries(userUUID, config).catch(() => null);
 
   const rows = await resumeSnapshot(userUUID, config);
   const items: WatchStateItem[] = [];
@@ -71,13 +79,24 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
     });
   }
 
+  const held = await listed;
+  const watchlist = held?.complete
+    ? held.entries.map((entry: any) => ({
+        type: entry.mediaType === 'movie' ? ('movie' as const) : ('series' as const),
+        metaId: entry.metaId,
+        ...(entry.addedAt > 0 ? { at: seconds(entry.addedAt) } : {}),
+      }))
+    : undefined;
+
   const service = sourceFor(config) ?? 'none';
   const snapshot = await watchedSnapshot(userUUID, config);
+  // Drops kept here move no tracker's fingerprint, so they are folded in or a new one would never be sent.
+  const kept = dropsKeptHere(config) ? [...(await localDrops(userUUID, config))].sort().join(',') : '';
   const version = snapshot.fingerprint
-    ? createHash('sha256').update(`${service}|${snapshot.fingerprint}`).digest('hex').slice(0, 16)
+    ? createHash('sha256').update(`${service}|${snapshot.fingerprint}${kept ? `|${kept}` : ''}`).digest('hex').slice(0, 16)
     : '';
 
-  if (!version || since === version) return { version, items };
+  if (!version || since === version) return { version, items, ...(watchlist ? { watchlist } : {}) };
 
   const counts: Record<string, { watched: number; total: number; at?: number }> = {};
   for (const [id, value] of snapshot.series) {
@@ -99,6 +118,8 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
         episode: row.episode,
         at: seconds(row.lastWatchedAt),
       })),
+      ...(snapshot.droppedUnread ? {} : { dropped: [...snapshot.dropped] }),
     },
+    ...(watchlist ? { watchlist } : {}),
   };
 }

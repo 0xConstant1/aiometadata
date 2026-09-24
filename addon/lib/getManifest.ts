@@ -8,7 +8,7 @@ import { getGenresBySelection } from "../static/genres";
 import buildInfo from "./buildInfo";
 import catalogsTranslationsJson from "../static/translations.json";
 import catalogTypesJson from "../static/catalog-types.json";
-import { PLAYBACK_MANIFEST_EVENTS, WATCH_STATE_VERSION } from "./playbackHandler";
+import { PLAYBACK_MANIFEST_EVENTS, WATCH_STATE_PUSH_EVENTS, WATCH_STATE_VERSION } from "./playbackHandler";
 import { watchStatePullTtl } from "./watchState";
 const jikan: any = require('./mal');
 const DEFAULT_LANGUAGE = "en-US";
@@ -1700,8 +1700,8 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       ? {
           watchState: {
             version: WATCH_STATE_VERSION,
-            push: { events: PLAYBACK_MANIFEST_EVENTS, bulk: true },
-            pull: { items: true, watched: true, ttlSeconds: watchStatePullTtl() },
+            push: { events: WATCH_STATE_PUSH_EVENTS, bulk: true },
+            pull: { items: true, watched: true, watchlist: true, ttlSeconds: watchStatePullTtl() },
           },
           playback: { version: 1, events: PLAYBACK_MANIFEST_EVENTS },
         }

@@ -77,6 +77,8 @@ export interface WatchedSnapshot {
   at: Map<string, number>;
   /** Shows the tracker lists as dropped, under every id they answer to. */
   dropped: Set<string>;
+  /** The drops could not be read, so `dropped` is not the whole list. */
+  droppedUnread?: boolean;
   fingerprint: string;
 }
 
@@ -259,6 +261,7 @@ interface RawSnapshot {
   nextUp: NextUpRow[];
   following?: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
   dropped?: string[];
+  droppedUnread?: boolean;
 }
 
 async function build(accessToken: string): Promise<RawSnapshot> {
@@ -429,6 +432,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
   }
 
   const dropped = new Set<string>();
+  let droppedUnread = false;
   try {
     for (let offset = 0; offset < maxPages * pageSize; offset += pageSize) {
       const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/dropped?limit=${pageSize}&offset=${offset}&apikey=${apiKey}`, apiKey, 'MDBList dropped');
@@ -438,6 +442,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
     }
   } catch (error: any) {
     logger.warn(`MDBList dropped shows failed: ${error?.message || error}`);
+    droppedUnread = true;
   }
 
   return {
@@ -447,6 +452,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
     series: [...series],
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
     dropped: [...dropped],
+    droppedUnread,
   };
 }
 
@@ -642,6 +648,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
   }
 
   const dropped = new Set<string>();
+  let droppedUnread = false;
   try {
     for (let page = 1; page <= maxPages; page += 1) {
       const result = await fetchDropped(apiKey, page, 100);
@@ -652,6 +659,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     }
   } catch (error: any) {
     logger.warn(`PublicMetaDB dropped shows failed: ${error?.message || error}`);
+    droppedUnread = true;
   }
 
   return {
@@ -662,6 +670,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
     following,
     dropped: [...dropped],
+    droppedUnread,
   };
 }
 
@@ -700,6 +709,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any, force
       nextUp: raw?.nextUp ?? [],
       following: raw?.following ?? [],
       dropped: new Set(raw?.dropped ?? []),
+      droppedUnread: raw?.droppedUnread === true,
       fingerprint: key,
     };
     hold(keyHash, key, snapshot);
@@ -778,6 +788,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any, fo
       nextUp: raw?.nextUp ?? [],
       following: [],
       dropped: new Set(raw?.dropped ?? []),
+      droppedUnread: raw?.droppedUnread === true,
       fingerprint: key,
     };
     hold(keyHash, key, snapshot);
