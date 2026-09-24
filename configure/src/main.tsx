@@ -6,6 +6,9 @@ import App from './App.tsx'
 import './index.css'
 import { ConfigProvider } from './contexts/ConfigContext'
 import { ThemeProvider } from './components/ThemeProvider'
+import { installSigninRedirect } from './lib/signinRedirect'
+
+installSigninRedirect()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
