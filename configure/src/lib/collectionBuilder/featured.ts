@@ -20,6 +20,17 @@ export interface FeaturedCollection {
 
 export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
   {
+    id: 'starter-kit',
+    name: 'Starter Kit',
+    author: 'Renoria',
+    authorUrl: 'https://kit.betterer.cc/',
+    url: '/featured/starter-kit.json',
+    summary: 'Awards, decades back to the 1930s, directors, genres in four styles and streaming services in five, every tile a folder.',
+    note: 'Rebuilt on our own sources: each Trakt list is its curator\'s MDBList list or a close stand-in, a few come from Letterboxd, and the oldest decades and four services are TMDB Discover catalogs.',
+    catalogs: 140,
+    detail: '18 collections, 253 tiles with artwork.',
+  },
+  {
     id: 'ninja-streams',
     name: 'Ninja Streams',
     author: 'RandomNinjaAtk',
@@ -29,17 +40,6 @@ export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
     catalogs: 114,
     detail: '12 designs, 7 collections and 5 classic rows.',
     classicRows: 5,
-  },
-  {
-    id: 'ume-nobnobz',
-    name: 'Unified Media Experience',
-    author: 'nobnobz',
-    authorUrl: 'https://nobnobz.github.io/fusion-widget-manager/',
-    url: '/featured/ume-nobnobz.json',
-    summary: 'Discover, streaming services, genres, decades, directors, actors, studios, awards, collections and lists.',
-    catalogs: 371,
-    detail: '24 designs, 10 collections and 14 classic rows, 271 folders with artwork.',
-    classicRows: 14,
   },
   {
     id: 'callandt95',
@@ -75,5 +75,16 @@ export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
     note: 'Every tile is the curator\'s own MDBList list.',
     catalogs: 30,
     detail: '3 collections, 23 tiles with artwork.',
+  },
+  {
+    id: 'ume-nobnobz',
+    name: 'Unified Media Experience',
+    author: 'nobnobz',
+    authorUrl: 'https://nobnobz.github.io/fusion-widget-manager/',
+    url: '/featured/ume-nobnobz.json',
+    summary: 'Discover, streaming services, genres, decades, directors, actors, studios, awards, collections and lists.',
+    catalogs: 371,
+    detail: '24 designs, 10 collections and 14 classic rows, 271 folders with artwork.',
+    classicRows: 14,
   },
 ];
