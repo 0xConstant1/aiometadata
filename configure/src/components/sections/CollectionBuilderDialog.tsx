@@ -99,6 +99,7 @@ import { buildProblemTargets, withStagedCatalogs } from '@/lib/collectionBuilder
 import { FEATURED_COLLECTIONS, type FeaturedCollection } from '@/lib/collectionBuilder/featured';
 import { FeaturedDetail } from './collectionBuilder/FeaturedDetail';
 import { FeaturedGallery } from './collectionBuilder/FeaturedGallery';
+import { entryKey, withoutEntries } from '@/lib/collectionBuilder/importSelection';
 import {
   blockingIssues,
   buildIssueCenter,
@@ -241,7 +242,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const [featuredError, setFeaturedError] = useState('');
   const [importPreviewIndex, setImportPreviewIndex] = useState(0);
   const [featuredPreview, setFeaturedPreview] = useState<
-    { featured: FeaturedCollection; text: string; entries: BuilderEntry[]; index: number } | null
+    { featured: FeaturedCollection; text: string; entries: BuilderEntry[]; index: number; skipped: Set<string> } | null
   >(null);
   const [railQuery, setRailQuery] = useState('');
   const [showManifestField, setShowManifestField] = useState(false);
@@ -959,15 +960,19 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     return `${base}/${file}${query}`;
   }, [manifestUrl, target]);
 
-  const previewImport = (text: string, convert = convertNative) => {
+  // What a featured design was trimmed to survives a re-read of the same text.
+  const [importSkip, setImportSkip] = useState<Set<string>>(() => new Set());
+
+  const previewImport = (text: string, convert = convertNative, skip: Set<string> = new Set()) => {
     setImportText(text);
+    setImportSkip(skip);
     setImportPreviewIndex(0);
-    setImportPreview(text.trim() ? parseImport(text, { convertNative: convert }) : null);
+    setImportPreview(text.trim() ? withoutEntries(parseImport(text, { convertNative: convert }), skip) : null);
   };
 
   const toggleConvertNative = (next: boolean) => {
     setConvertNative(next);
-    if (importText.trim()) previewImport(importText, next);
+    if (importText.trim()) previewImport(importText, next, importSkip);
   };
 
   const handleImportFile = async (file: File | undefined) => {
@@ -1036,7 +1041,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
       const text = await response.text();
       const parsed = parseImport(text, { convertNative: false });
       if (!parsed.entries.length) throw new Error('Nothing importable in that file.');
-      setFeaturedPreview({ featured, text, entries: parsed.entries, index: 0 });
+      setFeaturedPreview({ featured, text, entries: parsed.entries, index: 0, skipped: new Set() });
     } catch (error) {
       setFeaturedError(error instanceof Error ? error.message : 'Could not read that collection.');
     } finally {
@@ -1047,7 +1052,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const importFeaturedPreview = () => {
     if (!featuredPreview) return;
     setImportOpen(true);
-    previewImport(featuredPreview.text);
+    previewImport(featuredPreview.text, convertNative, featuredPreview.skipped);
   };
 
   const handleImportPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1761,7 +1766,18 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                 entries={featuredPreview.entries}
                 index={featuredPreview.index}
                 busy={importFetching}
+                skipped={featuredPreview.skipped}
                 onSelect={at => setFeaturedPreview(p => (p ? { ...p, index: at } : p))}
+                onToggle={key => setFeaturedPreview(p => {
+                  if (!p) return p;
+                  const skipped = new Set(p.skipped);
+                  if (skipped.has(key)) skipped.delete(key);
+                  else skipped.add(key);
+                  return { ...p, skipped };
+                })}
+                onSetAll={included => setFeaturedPreview(p => (p
+                  ? { ...p, skipped: included ? new Set() : new Set(p.entries.map((entry, at) => entryKey(entry, at))) }
+                  : p))}
                 onBack={() => setFeaturedPreview(null)}
                 onImport={importFeaturedPreview}
               >
