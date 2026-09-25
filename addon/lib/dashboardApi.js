@@ -50,7 +50,6 @@ const PRESERVED_CACHE_KEYS = [
   'anime_list:last_update', 'addon:start_time', 'system:app_version',
   // Clearing this would make the next boot re-sweep the whole keyspace.
   EPOCH_STATE_KEY,
-  'imdb:ratings', 'imdb-ratings-etag',
   // Sessions live here. Clearing them signs out whoever pressed the button, and
   // their next request 401s before it can report what the clear actually did.
   'auth:',
