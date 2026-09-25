@@ -52,9 +52,20 @@ export class SimklClient {
       data = response.data;
     } catch (error: any) {
       const status = error?.response?.status;
-      if (status === 401 || status === 403) {
+      let body = error?.response?.data;
+      if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch { body = null; }
+      }
+      if (status === 401 || status === 403 || body?.error === 'client_id_failed') {
         logger.error(`Simkl rejected the client credentials (HTTP ${status})`);
-        throw new Error('Simkl rejected this instance\'s client id');
+        throw Object.assign(new Error('Simkl rejected this instance\'s client id'), { expose: true });
+      }
+      if (body?.error === 'unauthorized_client') {
+        logger.error(`Simkl rejected the PIN request: ${body.message || 'unauthorized_client'}`);
+        throw Object.assign(
+          new Error('This Simkl client ID belongs to an AUTH V2 app. Set it as Simkl V2 Client ID (SIMKL_V2_CLIENT_ID) instead of Simkl Client ID (SIMKL_CLIENT_ID).'),
+          { expose: true }
+        );
       }
       throw error;
     }

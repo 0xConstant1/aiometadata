@@ -1441,7 +1441,7 @@ addon.post("/api/auth/simkl/pin", deviceAuthPollRateLimitMiddleware, async (req,
     });
   } catch (error) {
     consola.error("[Simkl PIN] Failed to request a PIN:", error);
-    res.status(500).json({ error: "Failed to request a Simkl PIN" });
+    res.status(500).json({ error: error?.expose ? error.message : "Failed to request a Simkl PIN" });
   }
 });
 
