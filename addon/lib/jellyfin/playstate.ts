@@ -180,8 +180,16 @@ export interface ResolvedSession {
   aliases: string[];
 }
 
+const resolvedSessions = new LRUCache<string, ResolvedSession>({
+  max: envInt('JELLYFIN_SESSION_CACHE_MAX', 5000, 1),
+});
+
 // The runtime is not in any playstate payload, so it comes from the meta.
 async function resolveSession(userUUID: string, itemId: string, known?: any): Promise<ResolvedSession | null> {
+  const cacheKey = `${userUUID}:${itemId}`;
+  const held = known ? undefined : resolvedSessions.get(cacheKey);
+  if (held) return held;
+
   const descriptor = await decodeJellyfinId(itemId);
   if (!descriptor) return null;
   if (descriptor.k !== 'movie' && descriptor.k !== 'episode') return null;
@@ -208,7 +216,9 @@ async function resolveSession(userUUID: string, itemId: string, known?: any): Pr
     }
   }
 
-  return { stremioType, videoId, descriptor, runtimeMs, aliases: aliases.filter((id) => id !== videoId) };
+  const session: ResolvedSession = { stremioType, videoId, descriptor, runtimeMs, aliases: aliases.filter((id) => id !== videoId) };
+  if (meta) resolvedSessions.set(cacheKey, session, { ttl: envInt('JELLYFIN_SESSION_CACHE_TTL', 12 * 60 * 60, 60) * 1000 });
+  return session;
 }
 
 // The percentage is over the file's own length: the player's if the client
