@@ -663,6 +663,7 @@ const respond = function (req, res, data, opts?) {
       catalogTTL: parseInt(getSetting('CATALOG_TTL') || String(24 * 60 * 60), 10),
       maxCatalogs: parseInt(getSetting('MAX_CATALOGS') || '', 10) || null,
       collectionImportCatalogCap: parseInt(getSetting('COLLECTION_IMPORT_CATALOG_CAP') || '', 10) || 400,
+      aiCatalogMaxPerRequest: Math.max(1, parseInt(getSetting('AI_CATALOG_MAX_PER_REQUEST') || '', 10) || 20),
       simklTrendingPageSizeOptions: resolvedOptions,
       anilistRequiresAuth: require('./utils/anilistAccess').anilistRequiresAuth(),
       jellyfinEnabled: String(getSetting('JELLYFIN_API_ENABLED') || '').trim().toLowerCase() === 'true',
@@ -2621,9 +2622,15 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
     if (generationMode === 'tvdb' && !hasTvdb) {
       return res.status(400).json({ error: 'TVDB catalog generation requires a TVDB API key.' });
     }
+    const maxCatalogs = Math.max(1, parseInt(getSetting('AI_CATALOG_MAX_PER_REQUEST'), 10) || 20);
+    const viewerLanguage = String(config.language || 'en-US');
+    const viewerRegion = (viewerLanguage.split('-')[1] || 'US').toUpperCase();
     const { systemPrompt, userPrompt } = buildCatalogCreationPrompt(query.trim(), {
       mode: generationMode,
       keys: { tmdb: hasTmdb, tvdb: hasTvdb, simkl: hasSimkl },
+      maxCatalogs,
+      region: viewerRegion,
+      language: viewerLanguage,
     });
 
     let rawText = null;
@@ -2639,7 +2646,7 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
         model,
         prompt: userPrompt,
         systemPrompt,
-        timeout: 45000,
+        timeout: 90000,
       });
       rawText = result.text;
     } else {
@@ -2649,7 +2656,7 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
         model,
         prompt: userPrompt,
         systemPrompt,
-        timeout: 45000,
+        timeout: 90000,
       });
       rawText = result.text;
     }
@@ -2660,7 +2667,7 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
 
     aiCatalogLogger.debug(`Raw response: ${rawText.substring(0, 500)}`);
 
-    const parsed = parseCatalogAIResponse(rawText);
+    const parsed = parseCatalogAIResponse(rawText, maxCatalogs);
     if (!parsed || !parsed.catalogs.length) {
       return res.status(422).json({ error: 'AI returned an invalid response. Try again or rephrase your request.' });
     }
@@ -2701,7 +2708,10 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
     }
 
     for (const catalog of parsed.catalogs) {
-      const normalizeDiagnostics = normalizeCatalog(catalog, { originalQuery: query.trim() });
+      const normalizeDiagnostics = normalizeCatalog(catalog, {
+        originalQuery: parsed.catalogs.length === 1 ? query.trim() : undefined,
+        region: viewerRegion,
+      });
       if (normalizeDiagnostics?.length) {
         aiCatalogLogger.debug(`Normalized "${catalog.name || 'unnamed'}": ${normalizeDiagnostics.join('; ')}`);
       }
@@ -2737,23 +2747,21 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
     const resolveCtx = { tmdbApiKey, tvdbApiKey, userUUID };
     aiCatalogLogger.info(`Resolving entities. TMDB key: ${tmdbApiKey ? '...' + tmdbApiKey.slice(-4) : 'NONE'}, TVDB key: ${tvdbApiKey ? '...' + tvdbApiKey.slice(-4) : 'NONE'}, Simkl client ID: ${hasSimkl ? 'SET' : 'NONE'}, Generation mode: ${generationMode}, Prompt sources: TMDB=${hasTmdb}, TVDB=${hasTvdb}, Simkl=${hasSimkl}`);
 
-    const resolvedParams = [];
     const perCatalogWarnings = [];
-    for (const catalog of validCatalogs) {
+    const resolvedParams = await Promise.all(validCatalogs.map(async (catalog) => {
       try {
         const { resolved, warnings: resolveWarnings } = await resolveEntities(catalog, resolveCtx);
         aiCatalogLogger.info(`Resolved for "${catalog.name}": ${JSON.stringify(resolved)}`);
-        resolvedParams.push(resolved);
         if (resolveWarnings.length) {
           aiCatalogLogger.debug(`Resolve warnings for "${catalog.name}": ${resolveWarnings.join('; ')}`);
           addUserWarning('Some requested filters could not be resolved and were omitted');
         }
+        return resolved;
       } catch (e) {
         aiCatalogLogger.error(`Entity resolution error: ${e.message}`);
-        resolvedParams.push({});
-        perCatalogWarnings.push([]);
+        return {};
       }
-    }
+    }));
 
     // Build final catalog configs
     const catalogConfigs = buildCatalogConfigs(validCatalogs, resolvedParams, query.trim(), config.catalogTTL, perCatalogWarnings);

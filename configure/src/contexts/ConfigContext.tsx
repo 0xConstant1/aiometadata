@@ -33,6 +33,7 @@ interface ConfigContextType {
   traktSearchEnabled: boolean;
   simklSearchEnabled: boolean;
   lumiereSearchEnabled: boolean;
+  aiCatalogMaxPerRequest: number;
   anilistRequiresAuth: boolean;
   catalogTTL: number;
   /** Instance ceiling on enabled catalogs, null when unset. */
@@ -408,6 +409,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [traktSearchEnabled, setTraktSearchEnabled] = useState(true);
   const [simklSearchEnabled, setSimklSearchEnabled] = useState(true);
   const [lumiereSearchEnabled, setLumiereSearchEnabled] = useState(false);
+  const [aiCatalogMaxPerRequest, setAiCatalogMaxPerRequest] = useState(20);
   const [catalogTTL, setCatalogTTL] = useState(86400); // Default to 24 hours
   const [maxCatalogs, setMaxCatalogs] = useState<number | null>(null);
   const [collectionImportCatalogCap, setCollectionImportCatalogCap] = useState(400);
@@ -451,6 +453,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         setTraktSearchEnabled(envApiKeys.traktSearchEnabled ?? true);
         setSimklSearchEnabled(envApiKeys.simklSearchEnabled ?? true);
         setLumiereSearchEnabled(envApiKeys.lumiereSearchEnabled ?? false);
+        setAiCatalogMaxPerRequest(envApiKeys.aiCatalogMaxPerRequest || 20);
         setCatalogTTL(envApiKeys.catalogTTL || 86400);
         setSimklListMinTTL(envApiKeys.simklListMinTTL);
         setMaxCatalogs(envApiKeys.maxCatalogs ?? null);
@@ -526,7 +529,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, lumiereSearchEnabled, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
+    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, lumiereSearchEnabled, aiCatalogMaxPerRequest, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
       {children}
     </ConfigContext.Provider>
   );

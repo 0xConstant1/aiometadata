@@ -77,7 +77,7 @@ const EXAMPLE_PROMPTS: Record<AICatalogGenerationMode, string[]> = {
 type DialogState = 'idle' | 'generating' | 'resolving' | 'success' | 'error';
 
 export function AICatalogDialog({ isOpen, onClose, embedded, onCatalogsCreated }: AICatalogDialogProps) {
-  const { config, setConfig, auth } = useConfig();
+  const { config, setConfig, auth, aiCatalogMaxPerRequest } = useConfig();
   const [query, setQuery] = useState('');
   const [state, setState] = useState<DialogState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -409,7 +409,7 @@ export function AICatalogDialog({ isOpen, onClose, embedded, onCatalogsCreated }
           </DialogTitle>
           <DialogDescription>
             Describe what you want to watch and AI will create the perfect catalog for you.
-            You can request up to 5 catalogs at once.
+            You can request up to {aiCatalogMaxPerRequest} catalogs at once.
           </DialogDescription>
         </DialogHeader>
         {formContent}

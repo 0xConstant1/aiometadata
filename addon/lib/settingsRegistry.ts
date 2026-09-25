@@ -1948,6 +1948,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 400,
   },
   {
+    key: 'AI_CATALOG_MAX_PER_REQUEST',
+    envVar: 'AI_CATALOG_MAX_PER_REQUEST',
+    label: 'AI Catalogs Per Request',
+    description: 'Most catalogs the AI catalog builder may create from one prompt. It makes as many as the user asks for, up to this number.',
+    category: 'Catalogs & Search',
+    type: 'number',
+    default: 20,
+    min: 1,
+  },
+  {
     key: 'CATALOG_LIST_ITEMS_SIZE',
     envVar: 'CATALOG_LIST_ITEMS_SIZE',
     label: 'Catalog List Page Size',

@@ -536,6 +536,15 @@ function addUniqueItem(current: SelectionItem[], item: SelectionItem): Selection
   return [...current, item];
 }
 
+function splitCodes(value: string): string[] {
+  return value.split('|').map(code => code.trim()).filter(Boolean);
+}
+
+function toggleCode(value: string, code: string): string {
+  const codes = splitCodes(value);
+  return (codes.includes(code) ? codes.filter(item => item !== code) : [...codes, code]).join('|');
+}
+
 function removeItemById(current: SelectionItem[], id: number): SelectionItem[] {
   return current.filter(item => item.id !== id);
 }
@@ -837,6 +846,8 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
 
   const [watchRegion, setWatchRegion] = useState('');
   const [watchProviders, setWatchProviders] = useState<SelectionItem[]>([]);
+  const [withoutWatchProviders, setWithoutWatchProviders] = useState<SelectionItem[]>([]);
+  const [providerPickMode, setProviderPickMode] = useState<'include' | 'exclude'>('include');
   const [providerJoinMode, setProviderJoinMode] = useState<JoinMode>('or');
   const [providerFilter, setProviderFilter] = useState('');
   const [availableProviders, setAvailableProviders] = useState<TmdbProvider[]>([]);
@@ -1129,6 +1140,7 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
     keywordJoinMode,
     watchRegion,
     watchProviders,
+    withoutWatchProviders,
     providerJoinMode,
     voteAverageRange,
     voteCountMin,
@@ -1241,6 +1253,8 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
 
     setWatchRegion('');
     setWatchProviders([]);
+    setWithoutWatchProviders([]);
+    setProviderPickMode('include');
     setProviderJoinMode('or');
     setProviderFilter('');
     setAvailableProviders([]);
@@ -1388,6 +1402,7 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
     if (fs.keywordJoinMode) setKeywordJoinMode(fs.keywordJoinMode);
     if (fs.watchRegion) setWatchRegion(fs.watchRegion);
     if (fs.watchProviders) setWatchProviders(fs.watchProviders);
+    if (fs.withoutWatchProviders) setWithoutWatchProviders(fs.withoutWatchProviders);
     if (fs.providerJoinMode) setProviderJoinMode(fs.providerJoinMode);
     if (fs.voteAverageRange) setVoteAverageRange(fs.voteAverageRange);
     if (typeof fs.voteCountMin === 'number') setVoteCountMin(fs.voteCountMin);
@@ -1606,6 +1621,7 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
     setKeywordJoinMode('or');
     setActiveSearchDropdown(null);
     setWatchProviders([]);
+    setWithoutWatchProviders([]);
     setAvailableProviders([]);
     setTvdbStatus('');
     setTvdbYear('');
@@ -1821,6 +1837,7 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
         setCertificationValue('');
         setWatchRegion('');
         setWatchProviders([]);
+        setWithoutWatchProviders([]);
         setAvailableProviders([]);
       } catch (error) {
         if (cancelled) return;
@@ -2254,8 +2271,8 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
     if (discoverSource === 'tvdb') {
       const tvdbParams: Record<string, string | number | boolean> = {
         sort: sortBy,
-        country: (originCountry || 'usa' || references?.defaultCountry || 'usa').toLowerCase(),
-        lang: (originalLanguage || references?.defaultLanguage || 'eng').toLowerCase(),
+        country: (splitCodes(originCountry)[0] || 'usa').toLowerCase(),
+        lang: (splitCodes(originalLanguage)[0] || references?.defaultLanguage || 'eng').toLowerCase(),
       };
 
       if (catalogType === 'series') {
@@ -2348,6 +2365,9 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
     if (watchProviders.length > 0) {
       params.with_watch_providers = joinSelectionValues(watchProviders, providerJoinMode);
       params.with_watch_monetization_types = 'flatrate|free|ads|rent|buy';
+    }
+    if (withoutWatchProviders.length > 0) {
+      params.without_watch_providers = joinSelectionValues(withoutWatchProviders, 'or');
     }
 
     const usesReleaseType = catalogType === 'movie' && (tmdbMovieReleaseTypes.length > 0 || releasedOnly);
@@ -2466,6 +2486,7 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
         keywordJoinMode,
         watchRegion,
         watchProviders,
+        withoutWatchProviders,
         providerJoinMode,
         voteAverageRange,
         voteCountMin,
@@ -2629,12 +2650,16 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
 
   const handleToggleProvider = (provider: TmdbProvider) => {
     const selection: SelectionItem = { id: provider.provider_id, label: provider.provider_name };
-    setWatchProviders(prev => {
+    const [setTarget, setOther] = providerPickMode === 'include'
+      ? [setWatchProviders, setWithoutWatchProviders]
+      : [setWithoutWatchProviders, setWatchProviders];
+    setTarget(prev => {
       if (prev.some(item => item.id === provider.provider_id)) {
         return prev.filter(item => item.id !== provider.provider_id);
       }
       return [...prev, selection];
     });
+    setOther(prev => removeItemById(prev, provider.provider_id));
   };
 
   const handleCreateCatalog = () => {
@@ -2788,6 +2813,28 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
   const handleClose = () => {
     resetState();
     onClose();
+  };
+
+  const renderCodeBadges = (value: string, labelFor: (code: string) => string, onChange: (next: string) => void) => {
+    const codes = splitCodes(value);
+    if (codes.length === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-2">
+        {codes.map(code => (
+          <Badge key={code} variant="secondary" className="gap-1 pl-2 pr-1 py-1">
+            <span className="max-w-[180px] truncate">{labelFor(code)}</span>
+            <button
+              type="button"
+              onClick={() => onChange(toggleCode(value, code))}
+              className="rounded-sm p-0.5 hover:bg-background/50"
+              aria-label={`Remove ${labelFor(code)}`}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+    );
   };
 
   const renderSelectedItems = (
@@ -4014,38 +4061,89 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
                           </Select>
                         </div>
                       )}
-                      <div className="space-y-2">
-                        <Label>Original Language</Label>
-                        <Select value={originalLanguage || NONE_VALUE} onValueChange={(value) => setOriginalLanguage(value === NONE_VALUE ? '' : value)}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE_VALUE}>Any</SelectItem>
-                            {sortedLanguages.map(languageItem => (
-                              <SelectItem key={languageItem.iso_639_1} value={languageItem.iso_639_1}>
-                                {(languageItem.english_name || languageItem.name || languageItem.iso_639_1)} ({languageItem.iso_639_1})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>{discoverSource === 'tmdb' ? 'Origin Country' : 'Country of Origin'}</Label>
-                        <Select value={originCountry || NONE_VALUE} onValueChange={(value) => setOriginCountry(value === NONE_VALUE ? '' : value)}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE_VALUE}>Any</SelectItem>
-                            {sortedCountries.map(country => (
-                              <SelectItem key={country.iso_3166_1} value={country.iso_3166_1}>
-                                {(country.english_name || country.iso_3166_1)} ({country.iso_3166_1.toUpperCase()})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      {discoverSource === 'tmdb' ? (
+                        <>
+                          <div className="space-y-2">
+                            <LabelWithTooltip tooltip="Titles originally in any of the selected languages.">
+                              Original Languages
+                            </LabelWithTooltip>
+                            <Select value={NONE_VALUE} onValueChange={(value) => { if (value !== NONE_VALUE) setOriginalLanguage(prev => toggleCode(prev, value)); }}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE_VALUE}>{originalLanguage ? 'Add a language' : 'Any'}</SelectItem>
+                                {sortedLanguages.filter(languageItem => !splitCodes(originalLanguage).includes(languageItem.iso_639_1)).map(languageItem => (
+                                  <SelectItem key={languageItem.iso_639_1} value={languageItem.iso_639_1}>
+                                    {(languageItem.english_name || languageItem.name || languageItem.iso_639_1)} ({languageItem.iso_639_1})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {renderCodeBadges(originalLanguage, (code) => {
+                              const match = sortedLanguages.find(languageItem => languageItem.iso_639_1 === code);
+                              return match ? (match.english_name || match.name || code) : code;
+                            }, setOriginalLanguage)}
+                          </div>
+                          <div className="space-y-2">
+                            <LabelWithTooltip tooltip="Titles from any of the selected countries.">
+                              Origin Countries
+                            </LabelWithTooltip>
+                            <Select value={NONE_VALUE} onValueChange={(value) => { if (value !== NONE_VALUE) setOriginCountry(prev => toggleCode(prev, value)); }}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE_VALUE}>{originCountry ? 'Add a country' : 'Any'}</SelectItem>
+                                {sortedCountries.filter(country => !splitCodes(originCountry).includes(country.iso_3166_1)).map(country => (
+                                  <SelectItem key={country.iso_3166_1} value={country.iso_3166_1}>
+                                    {(country.english_name || country.iso_3166_1)} ({country.iso_3166_1.toUpperCase()})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {renderCodeBadges(originCountry, (code) => {
+                              const match = sortedCountries.find(country => country.iso_3166_1 === code);
+                              return match ? (match.english_name || code) : code;
+                            }, setOriginCountry)}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                        <div className="space-y-2">
+                          <Label>Original Language</Label>
+                          <Select value={originalLanguage || NONE_VALUE} onValueChange={(value) => setOriginalLanguage(value === NONE_VALUE ? '' : value)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NONE_VALUE}>Any</SelectItem>
+                              {sortedLanguages.map(languageItem => (
+                                <SelectItem key={languageItem.iso_639_1} value={languageItem.iso_639_1}>
+                                  {(languageItem.english_name || languageItem.name || languageItem.iso_639_1)} ({languageItem.iso_639_1})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Country of Origin</Label>
+                          <Select value={originCountry || NONE_VALUE} onValueChange={(value) => setOriginCountry(value === NONE_VALUE ? '' : value)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NONE_VALUE}>Any</SelectItem>
+                              {sortedCountries.map(country => (
+                                <SelectItem key={country.iso_3166_1} value={country.iso_3166_1}>
+                                  {(country.english_name || country.iso_3166_1)} ({country.iso_3166_1.toUpperCase()})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        </>
+                      )}
                       {catalogType === 'movie' && discoverSource === 'tmdb' && (
                         <div className="space-y-2">
                           <Label>Release Region (Movies)</Label>
@@ -5155,13 +5253,14 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label>Watch Region</Label>
                     <Select value={watchRegion || NONE_VALUE} onValueChange={(value) => {
                       const regionValue = value === NONE_VALUE ? '' : value;
                       setWatchRegion(regionValue);
                       setWatchProviders([]);
+                      setWithoutWatchProviders([]);
                     }}>
                       <SelectTrigger>
                         <SelectValue />
@@ -5194,6 +5293,20 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
                     </Select>
                   </div>
                   <div className="space-y-2">
+                    <LabelWithTooltip tooltip="Include shows titles on the providers you click. Exclude hides titles available on any of them.">
+                      Clicking a Provider
+                    </LabelWithTooltip>
+                    <Select value={providerPickMode} onValueChange={(value: 'include' | 'exclude') => setProviderPickMode(value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="include">Includes it</SelectItem>
+                        <SelectItem value="exclude">Excludes it</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="tmdb-provider-filter">Provider Search</Label>
                     <Input
                       id="tmdb-provider-filter"
@@ -5215,11 +5328,12 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-52 overflow-y-auto border rounded-md p-2">
                     {filteredProviders.map(provider => {
                       const selected = watchProviders.some(item => item.id === provider.provider_id);
+                      const excluded = withoutWatchProviders.some(item => item.id === provider.provider_id);
                       return (
                         <Button
                           key={provider.provider_id}
                           type="button"
-                          variant={selected ? 'default' : 'outline'}
+                          variant={selected ? 'default' : excluded ? 'destructive' : 'outline'}
                           size="sm"
                           className="justify-start"
                           onClick={() => handleToggleProvider(provider)}
@@ -5235,6 +5349,8 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Selected providers</p>
                     {renderSelectedItems(watchProviders, (id) => setWatchProviders(prev => removeItemById(prev, id)), 'No providers selected')}
+                    <p className="text-xs text-muted-foreground mt-3 mb-1">Excluded providers</p>
+                    {renderSelectedItems(withoutWatchProviders, (id) => setWithoutWatchProviders(prev => removeItemById(prev, id)), 'No providers excluded')}
                   </div>
                 )}
               </CardContent>

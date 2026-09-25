@@ -71,19 +71,36 @@ export async function resolveEntities(catalog: AICatalogOutput, ctx: ResolveCont
     }
     const config = { apiKeys: { tmdb: ctx.tmdbApiKey } };
 
+    const joinMode = (value?: string[]): 'and' | 'or' => String(value?.[0] || '').trim().toLowerCase() === 'and' ? 'and' : 'or';
+    const joinIds = (items: Array<{ id: number }>, mode: 'and' | 'or') => items.map(i => i.id).join(mode === 'and' ? ',' : '|');
+    const companyMode = joinMode(resolve.companyMode);
+    const keywordMode = joinMode(resolve.keywordMode);
+    const peopleMode = joinMode(resolve.peopleMode);
+
+    const resolveTmdbCompanies = (names: string[]) => resolveNamedEntities(names, 'TMDB company', async (name) => {
+      const data = await moviedb.makeTmdbRequest('/search/company', ctx.tmdbApiKey, { query: name, page: 1 }, 'GET', null, config);
+      const results = (data?.results || []).filter((r: any) => r?.id);
+      const best = pickBestMatch(results, name);
+      if (!best) return null;
+      logger.debug(`[AICatalog] Company "${name}" -> ID ${best.id} (${best.name})`);
+      return { id: best.id, label: best.name || name };
+    });
+
     if (resolve.companies?.length) {
       logger.info(`[AICatalog] Resolving TMDB companies: ${resolve.companies.join(', ')}`);
-      const items = await resolveNamedEntities(resolve.companies, 'TMDB company', async (name) => {
-        const data = await moviedb.makeTmdbRequest('/search/company', ctx.tmdbApiKey, { query: name, page: 1 }, 'GET', null, config);
-        const results = (data?.results || []).filter((r: any) => r?.id);
-        const best = pickBestMatch(results, name);
-        if (!best) return null;
-        logger.debug(`[AICatalog] Company "${name}" -> ID ${best.id} (${best.name})`);
-        return { id: best.id, label: best.name || name };
-      });
-      if (items.length) resolved.with_companies = items.map(i => i.id).join('|');
+      const items = await resolveTmdbCompanies(resolve.companies);
+      if (items.length) resolved.with_companies = joinIds(items, companyMode);
       if (items.length) resolved._formState_withCompanies = JSON.stringify(items);
     }
+
+    if (resolve.excludeCompanies?.length) {
+      logger.info(`[AICatalog] Resolving excluded TMDB companies: ${resolve.excludeCompanies.join(', ')}`);
+      const items = await resolveTmdbCompanies(resolve.excludeCompanies);
+      if (items.length) resolved.without_companies = joinIds(items, companyMode);
+      if (items.length) resolved._formState_withoutCompanies = JSON.stringify(items);
+    }
+
+    if (resolved.with_companies || resolved.without_companies) resolved._formState_companyJoinMode = companyMode;
 
     const keywordIndex = require('../lib/tmdb-keyword-index');
     const includeKeywordNames = parseTmdbKeywordNames(resolve.keywords || []);
@@ -104,13 +121,14 @@ export async function resolveEntities(catalog: AICatalogOutput, ctx: ResolveCont
       const includeItems = items.filter((i: any) => !i._exclude);
       const excludeItems = items.filter((i: any) => i._exclude);
       if (includeItems.length) {
-        resolved.with_keywords = includeItems.map(i => i.id).join('|');
+        resolved.with_keywords = joinIds(includeItems, keywordMode);
         resolved._formState_withKeywords = JSON.stringify(includeItems.map(i => ({ id: i.id, label: i.label })));
       }
       if (excludeItems.length) {
-        resolved.without_keywords = excludeItems.map(i => i.id).join('|');
+        resolved.without_keywords = joinIds(excludeItems, keywordMode);
         resolved._formState_withoutKeywords = JSON.stringify(excludeItems.map(i => ({ id: i.id, label: i.label })));
       }
+      if (includeItems.length || excludeItems.length) resolved._formState_keywordJoinMode = keywordMode;
     }
 
     const resolveTmdbPeople = async (names: string[], label: string, singularLabel: string) => {
@@ -125,16 +143,22 @@ export async function resolveEntities(catalog: AICatalogOutput, ctx: ResolveCont
       });
     };
 
+    const selectedPeople: Array<{ id: number; label: string }> = [];
     if (resolve.cast?.length) {
       const items = await resolveTmdbPeople(resolve.cast, 'cast', 'cast member');
-      if (items.length) resolved.with_cast = items.map(i => i.id).join('|');
-      if (items.length) resolved._formState_selectedPeople = JSON.stringify(items);
+      if (items.length) resolved.with_cast = joinIds(items, peopleMode);
+      selectedPeople.push(...items);
     }
 
     if (resolve.people?.length) {
       const items = await resolveTmdbPeople(resolve.people, 'people', 'person');
-      if (items.length) resolved.with_people = items.map(i => i.id).join('|');
-      if (items.length) resolved._formState_selectedPeople = JSON.stringify(items);
+      if (items.length) resolved.with_people = joinIds(items, peopleMode);
+      selectedPeople.push(...items);
+    }
+
+    if (selectedPeople.length) {
+      resolved._formState_selectedPeople = JSON.stringify(selectedPeople);
+      resolved._formState_peopleJoinMode = peopleMode;
     }
 
     if (catalog.catalogType === 'series' && resolve.networks?.length) {
@@ -152,28 +176,37 @@ export async function resolveEntities(catalog: AICatalogOutput, ctx: ResolveCont
       }
     }
 
-    if (resolve.watchProviders?.length) {
+    if (resolve.watchProviders?.length || resolve.excludeWatchProviders?.length) {
       const mediaType = catalog.mediaType === 'tv' ? 'tv' : 'movie';
       const region = String(catalog.params.watch_region || 'US').toUpperCase();
       if (!catalog.params.watch_region) catalog.params.watch_region = region;
       const providersData = await moviedb.getTmdbWatchProvidersForRegion(mediaType, region, config);
       const allProviders = providersData?.providers || [];
-      const items: Array<{ id: number; label: string }> = [];
-      for (const name of resolve.watchProviders) {
-        const match = pickWatchProviderMatch(allProviders, name);
-        if (match?.provider_id) {
-          logger.debug(`[AICatalog] Watch provider "${name}" -> ID ${match.provider_id} (${match.provider_name})`);
-          items.push({ id: match.provider_id, label: match.provider_name || name });
-        } else {
-          const warning = `Could not resolve TMDB watch provider "${name}" for ${mediaType} in ${region}`;
-          logger.warn(`[AICatalog] ${warning}`);
-          warnings.push(warning);
+      const matchProviders = (names: string[]) => {
+        const items: Array<{ id: number; label: string }> = [];
+        for (const name of names) {
+          const match = pickWatchProviderMatch(allProviders, name);
+          if (match?.provider_id) {
+            logger.debug(`[AICatalog] Watch provider "${name}" -> ID ${match.provider_id} (${match.provider_name})`);
+            items.push({ id: match.provider_id, label: match.provider_name || name });
+          } else {
+            const warning = `Could not resolve TMDB watch provider "${name}" for ${mediaType} in ${region}`;
+            logger.warn(`[AICatalog] ${warning}`);
+            warnings.push(warning);
+          }
         }
-      }
-      if (items.length) {
-        resolved.with_watch_providers = items.map(i => i.id).join('|');
+        return items;
+      };
+      const included = matchProviders(resolve.watchProviders || []);
+      if (included.length) {
+        resolved.with_watch_providers = included.map(i => i.id).join('|');
         resolved.with_watch_monetization_types = 'flatrate|free|ads|rent|buy';
-        resolved._formState_watchProviders = JSON.stringify(items);
+        resolved._formState_watchProviders = JSON.stringify(included);
+      }
+      const excluded = matchProviders(resolve.excludeWatchProviders || []);
+      if (excluded.length) {
+        resolved.without_watch_providers = excluded.map(i => i.id).join('|');
+        resolved._formState_withoutWatchProviders = JSON.stringify(excluded);
       }
     }
   }

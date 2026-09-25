@@ -101,6 +101,7 @@ const FILTER_PARAMS: Record<string, string> = {
   withOriginalLanguage: 'with_original_language',
   withOriginCountry: 'with_origin_country',
   withWatchProviders: 'with_watch_providers',
+  withoutWatchProviders: 'without_watch_providers',
   watchRegion: 'watch_region',
   withPeople: 'with_people',
   voteCountGte: 'vote_count.gte',
@@ -233,6 +234,7 @@ function discoverFormState(
     ['without_keywords', 'withoutKeywords', ''],
     ['with_people', 'selectedPeople', 'peopleJoinMode'],
     ['with_watch_providers', 'watchProviders', 'providerJoinMode'],
+    ['without_watch_providers', 'withoutWatchProviders', ''],
   ] as const) {
     const picked = selection(params[param]);
     if (picked.items.length === 0) continue;

@@ -1,5 +1,16 @@
 import type { AICatalogOutput, CatalogConfig } from './ai-catalog-schema';
 import { getSourceSchema } from './ai-catalog-schema';
+import { parseDateToken } from '../lib/tmdbDiscoverDateTokens';
+
+function tmdbDateRange(params: Record<string, any>, prefix: string): { preset?: string; from?: string; to?: string } {
+  const fromToken = parseDateToken(params[`${prefix}.gte`]);
+  const toToken = parseDateToken(params[`${prefix}.lte`]);
+  if (fromToken && toToken && fromToken.preset === toToken.preset) return { preset: fromToken.preset };
+  return {
+    from: fromToken ? undefined : params[`${prefix}.gte`],
+    to: toToken ? undefined : params[`${prefix}.lte`],
+  };
+}
 
 function deriveFormState(source: string, catalogType: string, params: Record<string, any>): Record<string, any> {
   const fs: Record<string, any> = {};
@@ -26,18 +37,28 @@ function deriveFormState(source: string, catalogType: string, params: Record<str
     if (params.with_status && params.with_status !== '0|3|4|5') {
       fs.tmdbTvStatuses = String(params.with_status).split('|');
     }
+    if (params.with_release_type && params.with_release_type !== '4|5|6') {
+      fs.tmdbMovieReleaseTypes = String(params.with_release_type).split('|');
+    }
+    if (params.with_type) fs.tmdbTvTypes = String(params.with_type).split('|');
     if (params.with_networks) {
       fs.withNetworks = String(params.with_networks).split(/[|,]/).map((id: string) => ({ id: Number(id), label: `Network ${id}` }));
     }
 
     if (catalogType === 'movie') {
-      if (params['primary_release_date.gte']) fs.primaryReleaseFrom = params['primary_release_date.gte'];
-      if (params['primary_release_date.lte']) fs.primaryReleaseTo = params['primary_release_date.lte'];
+      const release = tmdbDateRange(params, 'primary_release_date');
+      if (release.preset) fs.movieDatePreset = release.preset;
+      if (release.from) fs.primaryReleaseFrom = release.from;
+      if (release.to) fs.primaryReleaseTo = release.to;
     } else {
-      if (params['first_air_date.gte']) fs.firstAirFrom = params['first_air_date.gte'];
-      if (params['first_air_date.lte']) fs.firstAirTo = params['first_air_date.lte'];
-      if (params['air_date.gte']) fs.airDateFrom = params['air_date.gte'];
-      if (params['air_date.lte']) fs.airDateTo = params['air_date.lte'];
+      const firstAir = tmdbDateRange(params, 'first_air_date');
+      if (firstAir.preset) fs.seriesDatePreset = firstAir.preset;
+      if (firstAir.from) fs.firstAirFrom = firstAir.from;
+      if (firstAir.to) fs.firstAirTo = firstAir.to;
+      const airDate = tmdbDateRange(params, 'air_date');
+      if (airDate.preset) fs.airDatePreset = airDate.preset;
+      if (airDate.from) fs.airDateFrom = airDate.from;
+      if (airDate.to) fs.airDateTo = airDate.to;
     }
 
     if (params.with_genres) {
@@ -48,6 +69,7 @@ function deriveFormState(source: string, catalogType: string, params: Record<str
     if (params.without_genres) {
       const ids = String(params.without_genres).split(/[|,]/).map(Number);
       fs.excludeGenres = ids.map(id => ({ id, label: schema.genreNames[id] || `Genre ${id}` }));
+      if (!params.with_genres) fs.genreJoinMode = String(params.without_genres).includes(',') ? 'and' : 'or';
     }
   }
 

@@ -16,12 +16,13 @@ const PROMPT_HEADER = `You generate Stremio catalog discovery configs from natur
 
 === HARD RULES ===
 - Return valid JSON only: { "catalogs": [...] }.
-- Return exactly 1 catalog unless the user explicitly asks for multiple. Max 5.
+- Return exactly 1 catalog unless the user asks for several. When they do, return as many as they ask for, up to {{MAX_CATALOGS}}.
 - Always include the source sort field: sort_by, sort, or order_by.
 - Use the fewest hard filters needed. Extra keywords/entities/providers can easily produce empty catalogs.
 - Put dynamic names in resolve; put only scalar/static filters in params.
 - Current date: {{CURRENT_DATE}}.
-- Use only the source schemas documented in this prompt.
+- Viewer region: {{REGION}}. Viewer language: {{LANGUAGE}}. They describe the viewer, not the content: use the region for streaming services and release dates when the user names no country, and never turn them into origin country or original language filters.
+- Use only the source schemas documented in this prompt. When the user asks for something no documented field can express, leave that part out instead of inventing a field.
 
 === DECISION POLICY ===
 - Genres beat keywords for broad categories, but use keywords alongside genres when the user describes specific themes, topics, or subgenres. Countries beat country keywords. Provider/network/company filters beat keyword guesses.
@@ -37,8 +38,13 @@ const TMDB_DECISION_POLICY = `- Use TMDB for movie and series requests.
 - Do not add parent, distributor, or related companies unless the user names them.
 - Broad negative genres use resolve.excludeGenres when possible: "no comedy" -> excludeGenres: ["Comedy"].
 - Use resolve.genres together with resolve.excludeGenres when a TMDB genre is too broad and a small, obvious exclusion would improve tone or scope. Example: serious crime dramas can use genres ["Crime","Drama"] and excludeGenres ["Comedy"]; do not exclude genres that the user asked for or that are central to the request.
-- For broad TMDB "top/best/highly rated" catalogs, use vote_count.desc or vote_average.desc with vote_count.gte >= 300. Use 500+ for very broad genres (Action, Comedy, Drama, Horror, Thriller, Romance, Sci-Fi, etc.). Only these four low-volume TV genres get a lower threshold of vote_count.gte 5-10: Reality, Documentary, Talk, TV Movie. All other genres use >= 300.
-- For recent TV catalogs, prefer popularity.desc with a first_air_date.gte floor.
+- Sorting and vote floors (vote_count.gte), one rule for every TMDB catalog:
+  - "best", "top", "greatest", "must-watch": sort_by vote_count.desc.
+  - "highest rated", "best rated", "critically acclaimed", "hidden gems", "underrated": sort_by vote_average.desc.
+  - Everything else: popularity.desc, or the date sort when the user asks for newest/latest.
+  - vote_average.desc always needs vote_count.gte: 50 when a company, cast, people, network, watch provider or keyword filter is set; 5-10 for Reality, Documentary, Talk and TV Movie; otherwise 300 (500 for Action, Comedy, Drama, Horror, Thriller, Romance, Science Fiction), even with a country, language, type or date filter.
+  - Any other sort: vote_count.gte is optional. Use at most 10 when one of those entity filters or a country, language, runtime or certification filter is set, otherwise 50-300.
+- For "new", "recent", "latest", "this year" or "last N years" catalogs use date_preset so the window moves with the calendar. Use fixed dates only for fixed periods such as a decade, a named year or "before 2000".
 - If the user references specific titles, do not use titles as TMDB keywords. Infer shared themes instead.
 - For TMDB genres, use resolve.genres / resolve.excludeGenres with genreMode or excludeGenreMode. "crime dramas" -> genres ["Crime","Drama"], genreMode "and"; "action or adventure" -> genres ["Action","Adventure"], genreMode "or".
 `;
@@ -70,12 +76,23 @@ Static params:
 - vote_average.gte / vote_average.lte: 0-10
 - vote_count.gte: positive integer
 - with_runtime.gte / with_runtime.lte: minutes
-- with_original_language: ISO 639-1 code
-- with_origin_country: ISO 3166-1 code
+- with_original_language: ISO 639-1 code, or a pipe list for any of several: "ko|ja"
+- with_origin_country: ISO 3166-1 code, or a pipe list for any of several: "KR|JP|CN|TW|HK|TH". "Asian horror" -> the main Asian film countries. "British or Irish" -> "GB|IE".
+- Countries and languages can only be included. For "not American" or "non-English", list the countries or languages the user most likely wants instead, and never list the excluded one.
 - include_adult: boolean
-- movies only: primary_release_date.gte/lte, certification_country, certification, with_release_type
-- series only: first_air_date.gte/lte, with_status
-- watch_region: region for watch provider resolution, default "US" when needed
+- date_preset: a rolling window, one of today, this_week, this_month, last_month (last 30 days), this_year, last_year (last 12 months), last_5_years, last_10_years. Movies: release date. Series: premiere date.
+- released_only: true hides titles that are not out yet (movies: out on digital, physical or TV; series: already premiered).
+- watch_region: country for resolve.watchProviders and resolve.excludeWatchProviders. Default {{REGION}}.
+- movies only:
+  - primary_release_date.gte / primary_release_date.lte: fixed YYYY-MM-DD dates
+  - certification_country plus one of certification (exact), certification.lte (at most) or certification.gte (at least). US values: G, PG, PG-13, R, NC-17. "family friendly" -> certification.lte "PG".
+  - with_release_type: pipe list of 1 Premiere, 2 Theatrical (limited), 3 Theatrical, 4 Digital, 5 Physical, 6 TV. Dates then apply to that kind of release. "in theaters now" -> with_release_type "2|3" with date_preset "last_month". "new on digital" -> "4" with date_preset "last_month".
+  - region: country of the release for with_release_type. Default {{REGION}}.
+- series only:
+  - first_air_date.gte / first_air_date.lte: fixed premiere dates
+  - air_date_preset: same windows as date_preset, matched against episode air dates. "airing this week" -> air_date_preset "this_week". air_date.gte / air_date.lte take fixed episode dates.
+  - with_type: pipe list of 0 Documentary, 1 News, 2 Miniseries, 3 Reality, 4 Scripted, 5 Talk Show, 6 Video. "miniseries" -> "2".
+  - with_status: pipe list of 0 Returning Series, 1 Planned, 2 In Production, 3 Ended, 4 Canceled, 5 Pilot. "finished shows" -> "3|4". "still running" -> "0".
 
 TMDB genres:
 - Movie genre names: ${listValues(SCHEMA.tmdb.movie.genreNames)}
@@ -87,11 +104,16 @@ Dynamic (put in "resolve" object, backend resolves names to IDs):
 - genres: ["Crime", "Drama"] plus genreMode: "and" | "or"
 - excludeGenres: ["Comedy"] plus excludeGenreMode: "and" | "or"
 - companies: ["Pixar", "Marvel Studios", "A24"]
+- excludeCompanies: ["Blumhouse Productions"]
+- companyMode: "or" (any listed company, default) | "and" (all of them). Applies to companies and excludeCompanies.
 - keywords: ["superhero", "based on novel", "dystopia", "plot twist", "mindfuck", "time loop"]
 - excludeKeywords: ["superhero", "anime", "japanese"]
+- keywordMode: "or" (any keyword, default) | "and" (every keyword). "and" empties catalogs quickly; use it only when the user wants all themes together.
 - cast: ["Tom Hanks", "Leonardo DiCaprio"] (movie actor requests only)
 - people: ["Christopher Nolan"] (movies only; broader cast/crew attachment)
-- watchProviders: ["Netflix", "Disney+", "Hulu"] (MUST also set watch_region in params e.g. "US". Default to "US" if unsure.)
+- peopleMode: "or" (any of them, default) | "and" (titles with all of them). "movies with both Tom Hanks and Meg Ryan" -> "and".
+- watchProviders: ["Netflix", "Disney+", "Hulu"] (set watch_region too). Titles on any of them.
+- excludeWatchProviders: ["Netflix", "Disney+"] (set watch_region too). Hides titles available on any of them. "not on Netflix" -> excludeWatchProviders: ["Netflix"].
 - networks: ["HBO", "Netflix", "BBC One"] (series only)
 
 IMPORTANT about keywords: There is NO "keywords" field in params. Keywords MUST go in the "resolve" object so the backend can look up their IDs. Never put keywords directly in params.
@@ -199,6 +221,9 @@ type PromptSource = Exclude<AICatalogGenerationMode, 'auto'> | 'simkl';
 interface BuildCatalogCreationPromptOptions {
   mode: AICatalogGenerationMode;
   keys: AvailableKeys;
+  maxCatalogs: number;
+  region: string;
+  language: string;
 }
 
 const SOURCE_SECTIONS: Record<PromptSource, string> = {
@@ -224,10 +249,8 @@ Rules:
 - For anime content, prefer AniList or MAL over TMDB.
 - For movies/series, prefer TMDB (most comprehensive filters).
 - "Cartoons" means western animated content (e.g. SpongeBob, Avatar, Rick and Morty) — use TMDB or Simkl with Animation genre, NOT AniList/MAL. AniList/MAL are strictly for Japanese anime (and occasionally Korean/Chinese animation).
-- Return exactly 1 catalog unless the request clearly implies multiple (e.g. "horror, comedy, and sci-fi catalogs", "by decade starting from the 70s", "create 3 catalogs"). Never split a single concept into multiple catalogs — one request like "best James Cameron movies" is 1 catalog, not separate "popular" and "top rated" catalogs. Max 5.
+- Return exactly 1 catalog unless the request clearly implies multiple (e.g. "horror, comedy, and sci-fi catalogs", "by decade starting from the 70s", "create 3 catalogs"), then one catalog per item, up to {{MAX_CATALOGS}}. Never split a single concept into multiple catalogs; one request like "best James Cameron movies" is 1 catalog, not separate "popular" and "top rated" catalogs.
 - Always include sort_by/sort/order_by in params.
-- For TMDB "best" or "top" requests: use vote_count.desc (most voted) rather than vote_average.desc. High vote count naturally surfaces the best-known, most-watched titles. Only use vote_average.desc when the user explicitly asks for "highest rated" or "best scored".
-- When using vote_average.desc, always set vote_count.gte >= 50 to avoid obscure titles. Exception: for Reality, Documentary, Talk, or TV Movie genres only, use vote_count.gte 5-10.
 - Return ONLY valid JSON. No markdown, no explanation, no code fences.
 
 `;
@@ -235,16 +258,16 @@ Rules:
 const SOURCE_EXAMPLES: Record<PromptSource, string> = {
   tmdb: `
 User: Good Netflix true crime documentaries
-JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Netflix True Crime Docs","mediaType":"movie","params":{"sort_by":"vote_count.desc","vote_count.gte":25,"watch_region":"US"},"resolve":{"genres":["Documentary"],"genreMode":"and","watchProviders":["Netflix"],"keywords":["true crime"]}}]}
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Netflix True Crime Docs","mediaType":"movie","params":{"sort_by":"vote_count.desc","vote_count.gte":10,"watch_region":"{{REGION}}"},"resolve":{"genres":["Documentary"],"genreMode":"and","watchProviders":["Netflix"],"keywords":["true crime"]}}]}
 
 User: Netflix stand-up comedy specials
-JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Netflix Stand-Up Comedy","mediaType":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":25,"watch_region":"US"},"resolve":{"watchProviders":["Netflix"],"keywords":["stand-up comedy"]}}]}
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Netflix Stand-Up Comedy","mediaType":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":10,"watch_region":"{{REGION}}"},"resolve":{"watchProviders":["Netflix"],"keywords":["stand-up comedy"]}}]}
 
 User: HBO dark crime dramas
-JSON: {"catalogs":[{"source":"tmdb","catalogType":"series","name":"HBO Crime Dramas","mediaType":"tv","params":{"sort_by":"vote_average.desc","vote_count.gte":300},"resolve":{"genres":["Crime","Drama"],"genreMode":"and","networks":["HBO"]}}]}
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"series","name":"HBO Crime Dramas","mediaType":"tv","params":{"sort_by":"popularity.desc"},"resolve":{"genres":["Crime","Drama"],"genreMode":"and","networks":["HBO"]}}]}
 
 User: Tom Hanks family comedies
-JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Tom Hanks Family Comedies","mediaType":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":50},"resolve":{"genres":["Comedy","Family"],"genreMode":"and","cast":["Tom Hanks"]}}]}
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Tom Hanks Family Comedies","mediaType":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":10},"resolve":{"genres":["Comedy","Family"],"genreMode":"and","cast":["Tom Hanks"]}}]}
 
 User: BBC period dramas
 JSON: {"catalogs":[{"source":"tmdb","catalogType":"series","name":"BBC Period Dramas","mediaType":"tv","params":{"sort_by":"popularity.desc"},"resolve":{"genres":["Drama"],"genreMode":"and","networks":["BBC One"],"keywords":["period drama"]}}]}
@@ -253,7 +276,19 @@ User: British mystery shows from 2020 onward
 JSON: {"catalogs":[{"source":"tmdb","catalogType":"series","name":"British Mystery Shows","mediaType":"tv","params":{"sort_by":"popularity.desc","with_origin_country":"GB","first_air_date.gte":"2020-01-01"},"resolve":{"genres":["Mystery"],"genreMode":"and"}}]}
 
 User: serious crime dramas from the 2000s
-JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"2000s Crime Dramas","mediaType":"movie","params":{"sort_by":"vote_average.desc","primary_release_date.gte":"2000-01-01","primary_release_date.lte":"2009-12-31","vote_count.gte":500},"resolve":{"genres":["Crime","Drama"],"genreMode":"and","excludeGenres":["Comedy"],"excludeGenreMode":"or"}}]}
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"2000s Crime Dramas","mediaType":"movie","params":{"sort_by":"popularity.desc","primary_release_date.gte":"2000-01-01","primary_release_date.lte":"2009-12-31","vote_count.gte":300},"resolve":{"genres":["Crime","Drama"],"genreMode":"and","excludeGenres":["Comedy"],"excludeGenreMode":"or"}}]}
+
+User: new miniseries this year
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"series","name":"New Miniseries","mediaType":"tv","params":{"sort_by":"popularity.desc","with_type":"2","date_preset":"this_year"}}]}
+
+User: movies in theaters now
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"In Theaters Now","mediaType":"movie","params":{"sort_by":"popularity.desc","with_release_type":"2|3","region":"{{REGION}}","date_preset":"last_month"}}]}
+
+User: horror movies not made by Blumhouse
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Horror Without Blumhouse","mediaType":"movie","params":{"sort_by":"vote_count.desc","vote_count.gte":500},"resolve":{"genres":["Horror"],"excludeCompanies":["Blumhouse Productions"]}}]}
+
+User: highest rated sci-fi movies
+JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"Highest Rated Sci-Fi","mediaType":"movie","params":{"sort_by":"vote_average.desc","vote_count.gte":500},"resolve":{"genres":["Science Fiction"]}}]}
 
 User: 80s action movies with practical stunts, no comedy
 JSON: {"catalogs":[{"source":"tmdb","catalogType":"movie","name":"80s Action Movies","mediaType":"movie","params":{"sort_by":"vote_count.desc","primary_release_date.gte":"1980-01-01","primary_release_date.lte":"1989-12-31","vote_count.gte":300},"resolve":{"genres":["Action"],"genreMode":"and","excludeGenres":["Comedy"],"excludeGenreMode":"or"}}]}
@@ -323,7 +358,12 @@ export function buildCatalogCreationPrompt(query: string, options: BuildCatalogC
   sections.push('\n=== EXAMPLES ===\n');
   sections.push(...sources.map((source) => SOURCE_EXAMPLES[source]));
   sections.push(PROMPT_FOOTER);
-  return { systemPrompt: sections.join('').replace('{{CURRENT_DATE}}', formatPromptDate()), userPrompt: query };
+  const systemPrompt = sections.join('')
+    .replaceAll('{{CURRENT_DATE}}', formatPromptDate())
+    .replaceAll('{{MAX_CATALOGS}}', String(options.maxCatalogs))
+    .replaceAll('{{REGION}}', options.region)
+    .replaceAll('{{LANGUAGE}}', options.language);
+  return { systemPrompt, userPrompt: query };
 }
 
 function normalizeResolveValue(value: any): string[] {
@@ -371,7 +411,7 @@ function coerceAICatalogOutput(rawCatalog: any): AICatalogOutput | null {
   };
 }
 
-function parsedCatalogsFromJson(parsed: any, warnings: string[] = []): ParsedAIResponse | null {
+function parsedCatalogsFromJson(parsed: any, maxCatalogs: number, warnings: string[] = []): ParsedAIResponse | null {
   const rawCatalogs = Array.isArray(parsed?.catalogs)
     ? parsed.catalogs
     : isPlainObject(parsed) && parsed.source && parsed.catalogType
@@ -395,9 +435,9 @@ function parsedCatalogsFromJson(parsed: any, warnings: string[] = []): ParsedAIR
     warnings.push(`${ignoredCatalogs} generated catalog${ignoredCatalogs === 1 ? ' was' : 's were'} invalid and skipped`);
   }
 
-  if (catalogs.length > 5) {
-    warnings.push(`AI returned ${catalogs.length} catalogs; kept the first 5`);
-    catalogs.length = 5;
+  if (catalogs.length > maxCatalogs) {
+    warnings.push(`AI returned ${catalogs.length} catalogs; kept the first ${maxCatalogs}`);
+    catalogs.length = maxCatalogs;
   }
 
   return catalogs.length ? { catalogs, ...(warnings.length ? { warnings } : {}) } : null;
@@ -421,7 +461,7 @@ function extractBalancedJson(text: string): string | null {
   return null;
 }
 
-export function parseCatalogAIResponse(rawText: string): ParsedAIResponse | null {
+export function parseCatalogAIResponse(rawText: string, maxCatalogs: number): ParsedAIResponse | null {
   if (!rawText) {
     logger.warn('Empty AI response received');
     return null;
@@ -436,7 +476,7 @@ export function parseCatalogAIResponse(rawText: string): ParsedAIResponse | null
 
   const tryParse = (json: string): ParsedAIResponse | null => {
     try {
-      return parsedCatalogsFromJson(JSON.parse(json), warnings);
+      return parsedCatalogsFromJson(JSON.parse(json), maxCatalogs, warnings);
     } catch {
       return null;
     }

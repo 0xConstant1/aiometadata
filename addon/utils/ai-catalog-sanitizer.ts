@@ -14,12 +14,34 @@ import {
   VALID_TMDB_TV_GENRES,
   VALID_SOURCES,
 } from './ai-catalog-schema';
+import {
+  TMDB_DISCOVER_DATE_TOKEN_PREFIX,
+  RELATIVE_DATE_PRESET_KEYS,
+  TMDB_DYNAMIC_DATE_FIELDS,
+  parseDateToken,
+} from '../lib/tmdbDiscoverDateTokens';
 
 const logger = consola.withTag('AICatalog');
 
 interface NormalizeCatalogOptions {
   originalQuery?: string;
   now?: Date;
+  region?: string;
+}
+
+const TMDB_TV_TYPE_CODES = ['0', '1', '2', '3', '4', '5', '6'];
+const TMDB_TV_STATUS_CODES = ['0', '1', '2', '3', '4', '5'];
+const TMDB_MOVIE_RELEASE_TYPE_CODES = ['1', '2', '3', '4', '5', '6'];
+const TMDB_RELEASED_MOVIE_TYPES = '4|5|6';
+const TMDB_RELEASED_TV_STATUSES = '0|3|4|5';
+const TMDB_RELATIVE_YEAR_PRESETS: Record<number, string> = { 1: 'last_year', 5: 'last_5_years', 10: 'last_10_years' };
+
+function tmdbDateToken(preset: string, bound: 'from' | 'to'): string {
+  return `${TMDB_DISCOVER_DATE_TOKEN_PREFIX}:${preset}:${bound}`;
+}
+
+function isTmdbDateValue(value: any): boolean {
+  return isIsoDate(value) || parseDateToken(value) !== null;
 }
 
 export function isPlainObject(value: any): value is Record<string, any> {
@@ -225,7 +247,7 @@ function getAllowedParamsForCatalog(catalog: AICatalogOutput): ReadonlySet<strin
 }
 
 const ALLOWED_RESOLVE_KEYS: Record<string, ReadonlySet<string>> = {
-  tmdb: new Set(['genres', 'excludeGenres', 'genreMode', 'excludeGenreMode', 'keywords', 'excludeKeywords', 'companies', 'cast', 'people', 'watchProviders', 'networks']),
+  tmdb: new Set(['genres', 'excludeGenres', 'genreMode', 'excludeGenreMode', 'keywords', 'excludeKeywords', 'keywordMode', 'companies', 'excludeCompanies', 'companyMode', 'cast', 'people', 'peopleMode', 'watchProviders', 'excludeWatchProviders', 'networks']),
   anilist: new Set(['studios']),
   mal: new Set(['producers']),
   tvdb: new Set(['company', 'genre', 'status', 'contentRating']),
@@ -277,13 +299,13 @@ function subtractYears(date: Date, years: number): Date {
   return next;
 }
 
-function parseRelativeYearWindow(query: string, now: Date): { isoStart: string; fuzzyStart: string } | null {
+function parseRelativeYearWindow(query: string, now: Date): { years: number; isoStart: string; fuzzyStart: string } | null {
   const match = query.match(/\blast\s+(\d{1,2})\s+years?\b/i);
   if (!match) return null;
   const years = Number(match[1]);
   if (!Number.isInteger(years) || years <= 0 || years > 99) return null;
   const start = subtractYears(now, years);
-  return { isoStart: formatIsoDate(start), fuzzyStart: formatFuzzyDate(start) };
+  return { years, isoStart: formatIsoDate(start), fuzzyStart: formatFuzzyDate(start) };
 }
 
 function parseDecadeWindow(query: string): { startYear: number; endYear: number; isoStart: string; isoEnd: string; fuzzyStart: string; fuzzyEnd: string } | null {
@@ -313,7 +335,6 @@ function applyQueryDateRepairs(catalog: AICatalogOutput, options: NormalizeCatal
   if (!query) return;
 
   const now = options.now || new Date();
-  const today = formatIsoDate(now);
   const relative = parseRelativeYearWindow(query, now);
   const decade = parseDecadeWindow(query);
   const fromYear = parseFromYearWindow(query);
@@ -321,11 +342,15 @@ function applyQueryDateRepairs(catalog: AICatalogOutput, options: NormalizeCatal
   if (catalog.source === 'tmdb') {
     const startKey = catalog.catalogType === 'series' ? 'first_air_date.gte' : 'primary_release_date.gte';
     const endKey = catalog.catalogType === 'series' ? 'first_air_date.lte' : 'primary_release_date.lte';
-    if (relative) {
+    const preset = relative ? TMDB_RELATIVE_YEAR_PRESETS[relative.years] : undefined;
+    if (relative && preset) {
+      catalog.params[startKey] = tmdbDateToken(preset, 'from');
+      catalog.params[endKey] = tmdbDateToken(preset, 'to');
+      diagnostics.push(`Repaired TMDB relative date range for "${catalog.name}" from query: ${preset}`);
+    } else if (relative) {
       catalog.params[startKey] = relative.isoStart;
-      const addedEnd = catalog.params[endKey] === undefined;
-      if (addedEnd) catalog.params[endKey] = today;
-      diagnostics.push(`Repaired TMDB relative date range for "${catalog.name}" from query: ${startKey}=${relative.isoStart}${addedEnd ? `, ${endKey}=${today}` : ''}`);
+      catalog.params[endKey] = tmdbDateToken('today', 'to');
+      diagnostics.push(`Repaired TMDB relative date range for "${catalog.name}" from query: ${startKey}=${relative.isoStart}`);
     } else if (decade) {
       catalog.params[startKey] = decade.isoStart;
       catalog.params[endKey] = decade.isoEnd;
@@ -716,21 +741,114 @@ function hasTmdbStrongIncludeConstraint(catalog: AICatalogOutput): boolean {
   });
 }
 
+const TMDB_LOW_VOLUME_GENRE_IDS = new Set([99, 10764, 10767, 10770]);
+
+function hasTmdbEntityFilter(catalog: AICatalogOutput): boolean {
+  const params = catalog.params;
+  if (['with_companies', 'with_cast', 'with_people', 'with_networks', 'with_watch_providers', 'with_keywords'].some((field) => params[field] !== undefined)) return true;
+  return ['companies', 'cast', 'people', 'networks', 'watchProviders', 'keywords'].some((field) => (catalog.resolve?.[field]?.length ?? 0) > 0);
+}
+
 function applyTmdbVoteFloorDefaults(catalog: AICatalogOutput, diagnostics: string[]): void {
   const params = catalog.params;
   const voteCount = Number(params['vote_count.gte']);
   const hasVoteFloor = params['vote_count.gte'] !== undefined && Number.isFinite(voteCount);
   const constrained = hasTmdbStrongIncludeConstraint(catalog);
 
-  if (params.sort_by === 'vote_average.desc' && !hasVoteFloor) {
-    params['vote_count.gte'] = constrained ? 50 : 300;
-    diagnostics.push(`Added TMDB vote_count.gte=${params['vote_count.gte']} for "${catalog.name}" because vote_average.desc needs a vote floor`);
+  if (params.sort_by === 'vote_average.desc') {
+    const lowVolume = splitParamValues(params.with_genres).some((id) => TMDB_LOW_VOLUME_GENRE_IDS.has(Number(id)));
+    const minimum = lowVolume ? 5 : hasTmdbEntityFilter(catalog) ? 50 : 300;
+    if (!hasVoteFloor || voteCount < minimum) {
+      params['vote_count.gte'] = minimum;
+      diagnostics.push(`Set TMDB vote_count.gte=${minimum} for "${catalog.name}" because vote_average.desc needs a vote floor`);
+    }
     return;
   }
 
-  if (params.sort_by !== 'vote_average.desc' && constrained && hasVoteFloor && voteCount > 50) {
+  if (constrained && hasVoteFloor && voteCount > 50) {
     params['vote_count.gte'] = 10;
     diagnostics.push(`Lowered TMDB vote_count.gte for constrained non-rating catalog "${catalog.name}": ${voteCount} -> 10`);
+  }
+}
+
+function normalizeTmdbCodeList(catalog: AICatalogOutput, key: string, validCodes: readonly string[], diagnostics: string[]): void {
+  const params = catalog.params;
+  if (params[key] === undefined) return;
+  const values = splitParamValues(params[key]);
+  const valid = Array.from(new Set(values.filter((value) => validCodes.includes(value))));
+  if (valid.length !== values.length) {
+    diagnostics.push(`Removed invalid TMDB ${key} values for "${catalog.name}": ${values.filter((value) => !validCodes.includes(value)).join(', ')}`);
+  }
+  if (valid.length) params[key] = valid.join('|');
+  else delete params[key];
+}
+
+function normalizeTmdbCodeListParam(catalog: AICatalogOutput, key: string, pattern: RegExp, toCase: (code: string) => string, diagnostics: string[]): void {
+  const params = catalog.params;
+  if (params[key] === undefined) return;
+  const values = splitParamValues(params[key]).map(toCase);
+  const valid = Array.from(new Set(values.filter((code) => pattern.test(code))));
+  if (valid.length !== values.length) {
+    diagnostics.push(`Removed invalid TMDB ${key} values for "${catalog.name}": ${values.filter((code) => !pattern.test(code)).join(', ')}`);
+  }
+  if (valid.length) params[key] = valid.join('|');
+  else delete params[key];
+}
+
+function applyTmdbDatePresets(catalog: AICatalogOutput, diagnostics: string[]): void {
+  const params = catalog.params;
+  const presetFields: Array<[string, string]> = catalog.catalogType === 'series'
+    ? [['date_preset', 'first_air_date'], ['air_date_preset', 'air_date']]
+    : [['date_preset', 'primary_release_date']];
+
+  for (const [presetKey, fieldPrefix] of presetFields) {
+    const preset = typeof params[presetKey] === 'string' ? params[presetKey].trim().toLowerCase() : '';
+    if (!preset) continue;
+    if (!RELATIVE_DATE_PRESET_KEYS.has(preset)) {
+      diagnostics.push(`Removed unknown TMDB ${presetKey} for "${catalog.name}": ${preset}`);
+      continue;
+    }
+    params[`${fieldPrefix}.gte`] = tmdbDateToken(preset, 'from');
+    params[`${fieldPrefix}.lte`] = tmdbDateToken(preset, 'to');
+  }
+  delete params.date_preset;
+  delete params.air_date_preset;
+
+  for (const field of TMDB_DYNAMIC_DATE_FIELDS) {
+    const value = typeof params[field] === 'string' ? params[field].trim().toLowerCase() : '';
+    if (RELATIVE_DATE_PRESET_KEYS.has(value)) {
+      params[field] = tmdbDateToken(value, field.endsWith('.gte') ? 'from' : 'to');
+    }
+  }
+}
+
+function applyTmdbReleaseFilters(catalog: AICatalogOutput, options: NormalizeCatalogOptions): void {
+  if (catalog.source !== 'tmdb') return;
+  const params = catalog.params;
+  const releasedOnly = params.released_only === true || String(params.released_only).toLowerCase() === 'true';
+  delete params.released_only;
+
+  if (catalog.catalogType === 'series') {
+    if (releasedOnly && params.with_status === undefined) params.with_status = TMDB_RELEASED_TV_STATUSES;
+    return;
+  }
+
+  if (releasedOnly && params.with_release_type === undefined) {
+    params.with_release_type = TMDB_RELEASED_MOVIE_TYPES;
+    params['release_date.lte'] = tmdbDateToken('today', 'to');
+  } else if (params.with_release_type !== undefined) {
+    for (const suffix of ['.gte', '.lte']) {
+      if (params[`release_date${suffix}`] === undefined && params[`primary_release_date${suffix}`] !== undefined) {
+        params[`release_date${suffix}`] = params[`primary_release_date${suffix}`];
+      }
+    }
+    if (params['release_date.lte'] === undefined) params['release_date.lte'] = tmdbDateToken('today', 'to');
+  }
+
+  if (params.with_release_type === undefined) return;
+  if (!params.region && options.region) params.region = options.region;
+  if (typeof params.sort_by === 'string' && params.sort_by.startsWith('primary_release_date.')) {
+    params.sort_by = params.sort_by.replace('primary_release_date.', 'release_date.');
   }
 }
 
@@ -739,7 +857,7 @@ function applyTmdbReleasedDateCaps(catalog: AICatalogOutput, options: NormalizeC
 
   const params = catalog.params;
   const now = options.now || new Date();
-  const today = formatIsoDate(now);
+  const today = tmdbDateToken('today', 'to');
   const currentYear = now.getUTCFullYear();
   const datePrefix = catalog.catalogType === 'series' ? 'first_air_date' : 'primary_release_date';
   const startKey = `${datePrefix}.gte`;
@@ -756,14 +874,14 @@ function applyTmdbReleasedDateCaps(catalog: AICatalogOutput, options: NormalizeC
     const startYear = Number(start.slice(0, 4));
     if (Number.isFinite(startYear) && startYear < currentYear) {
       params[endKey] = today;
-      diagnostics.push(`Capped TMDB open date range for "${catalog.name}": ${endKey}=${today}`);
+      diagnostics.push(`Capped TMDB open date range for "${catalog.name}": ${endKey}=today`);
     }
     return;
   }
 
   if (params.sort_by === dateDescSort) {
     params[endKey] = today;
-    diagnostics.push(`Capped TMDB release-date sort for "${catalog.name}": ${endKey}=${today}`);
+    diagnostics.push(`Capped TMDB release-date sort for "${catalog.name}": ${endKey}=today`);
   }
 }
 
@@ -912,7 +1030,7 @@ export function normalizeCatalog(catalog: AICatalogOutput, options: NormalizeCat
       }
     }
 
-    for (const field of ['keywords', 'excludeKeywords', 'companies', 'cast', 'people', 'watchProviders', 'networks']) {
+    for (const field of ['keywords', 'excludeKeywords', 'companies', 'excludeCompanies', 'cast', 'people', 'watchProviders', 'excludeWatchProviders', 'networks']) {
       if (catalog.params[field]) {
         if (!catalog.resolve) catalog.resolve = {};
         const value = catalog.params[field];
@@ -928,9 +1046,11 @@ export function normalizeCatalog(catalog: AICatalogOutput, options: NormalizeCat
       ['with_keywords', 'keywords'],
       ['without_keywords', 'excludeKeywords'],
       ['with_companies', 'companies'],
+      ['without_companies', 'excludeCompanies'],
       ['with_cast', 'cast'],
       ['with_people', 'people'],
       ['with_watch_providers', 'watchProviders'],
+      ['without_watch_providers', 'excludeWatchProviders'],
       ['with_networks', 'networks'],
     ];
     for (const [paramKey, resolveKey] of tmdbEntityParams) {
@@ -938,6 +1058,17 @@ export function normalizeCatalog(catalog: AICatalogOutput, options: NormalizeCat
       if (movedNames.length) {
         diagnostics.push(`Moved TMDB ${paramKey} names from params to resolve for "${catalog.name}": ${movedNames.join(', ')}`);
       }
+    }
+
+    applyTmdbDatePresets(catalog, diagnostics);
+    normalizeTmdbCodeListParam(catalog, 'with_origin_country', /^[A-Z]{2}$/, (code) => code.toUpperCase(), diagnostics);
+    normalizeTmdbCodeListParam(catalog, 'with_original_language', /^[a-z]{2}$/, (code) => code.toLowerCase(), diagnostics);
+    normalizeTmdbCodeList(catalog, 'with_type', TMDB_TV_TYPE_CODES, diagnostics);
+    normalizeTmdbCodeList(catalog, 'with_status', TMDB_TV_STATUS_CODES, diagnostics);
+    normalizeTmdbCodeList(catalog, 'with_release_type', TMDB_MOVIE_RELEASE_TYPE_CODES, diagnostics);
+    const usesWatchProviders = (catalog.resolve?.watchProviders?.length ?? 0) > 0 || (catalog.resolve?.excludeWatchProviders?.length ?? 0) > 0;
+    if (usesWatchProviders && !catalog.params.watch_region && options.region) {
+      catalog.params.watch_region = options.region;
     }
 
     repairTmdbGenreParam(catalog, 'with_genres', diagnostics);
@@ -1055,6 +1186,7 @@ export function normalizeCatalog(catalog: AICatalogOutput, options: NormalizeCat
   }
 
   applyQueryDateRepairs(catalog, options, diagnostics);
+  applyTmdbReleaseFilters(catalog, options);
   applyTmdbReleasedDateCaps(catalog, options, diagnostics);
 
   const strippedParams = stripUnknownParams(catalog);
@@ -1092,7 +1224,10 @@ export function validateCatalogParams(catalog: AICatalogOutput): ValidationResul
   }
 
   if (catalog.source === 'tmdb') {
-    const validSorts = getCatalogSorts(catalog.source, catalog.catalogType, catalog.params);
+    const validSorts = [
+      ...getCatalogSorts(catalog.source, catalog.catalogType, catalog.params),
+      ...(catalog.catalogType === 'movie' && catalog.params.with_release_type ? ['release_date.desc', 'release_date.asc'] : []),
+    ];
     if (catalog.params.sort_by && !validSorts.includes(catalog.params.sort_by)) {
       errors.push(`Invalid TMDB sort_by: ${catalog.params.sort_by}`);
     }
@@ -1108,7 +1243,7 @@ export function validateCatalogParams(catalog: AICatalogOutput): ValidationResul
     validateNumberRange(errors, catalog.params, 'year', 1874, 2100, true);
 
     for (const field of ['primary_release_date.gte', 'primary_release_date.lte', 'first_air_date.gte', 'first_air_date.lte', 'air_date.gte', 'air_date.lte', 'release_date.gte', 'release_date.lte']) {
-      if (catalog.params[field] !== undefined && !isIsoDate(catalog.params[field])) {
+      if (catalog.params[field] !== undefined && !isTmdbDateValue(catalog.params[field])) {
         errors.push(`${field} must use YYYY-MM-DD`);
       }
     }
