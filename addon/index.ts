@@ -5425,19 +5425,21 @@ const catalogRoute = async function (req, res) {
     if ((posterPattern || config.customBackgroundUrlPattern || config.customLandscapeUrlPattern || config.customLogoUrlPattern) && responseData?.metas && Array.isArray(responseData.metas)) {
       const isUpNextCatalog = cleanId.includes('up_next') || cleanId.includes('upnext');
       const upNextUsesShowPoster = isUpNextCatalog && catalogConfig?.metadata?.useShowPosterForUpNext === true;
-      const { resolveCustomArtUrl, getPosterRatingApiKey } = require('./utils/parseProps');
+      const { resolveCustomArtUrl, getPosterRatingApiKey, resolveLandscapePattern, posterShapeOf } = require('./utils/parseProps');
       const proxyApiKey = config.usePosterProxy ? getPosterRatingApiKey(config) : null;
+      const posterApplies = !!posterPattern && (!isUpNextCatalog || upNextUsesShowPoster);
+      const landscapePattern = resolveLandscapePattern(config, posterApplies ? posterPattern : null);
       for (const meta of responseData.metas) {
         const ids = extractIdsFromMeta(meta);
         const type = meta.type || actualType;
-        if (posterPattern && (!isUpNextCatalog || upNextUsesShowPoster)) {
+        if (posterApplies) {
           if (proxyApiKey) {
             const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
             if (proxyId) {
               meta.poster = buildProxyArtUrl({ base: `${host}/poster-cache/proxy`, imageClass: 'poster', type: type, id: proxyId, fallback: meta.poster, ratingKey: proxyApiKey, lang: config.language });
             }
           } else {
-            const resolved = resolveCustomArtUrl(posterPattern, ids, type, config);
+            const resolved = resolveCustomArtUrl(posterPattern, ids, type, config, { shape: posterShapeOf(meta) });
             if (resolved) {
               if (config.usePosterProxy) {
                 const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
@@ -5451,7 +5453,7 @@ const catalogRoute = async function (req, res) {
           }
         }
         if (config.customBackgroundUrlPattern) {
-          const resolved = resolveCustomArtUrl(config.customBackgroundUrlPattern, ids, type, config);
+          const resolved = resolveCustomArtUrl(config.customBackgroundUrlPattern, ids, type, config, { shape: 'landscape' });
           if (resolved) {
             if (config.usePosterProxy) {
               const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
@@ -5465,8 +5467,8 @@ const catalogRoute = async function (req, res) {
             }
           }
         }
-        if (config.customLandscapeUrlPattern) {
-          const resolved = resolveCustomArtUrl(config.customLandscapeUrlPattern, ids, type, config);
+        if (landscapePattern) {
+          const resolved = resolveCustomArtUrl(landscapePattern, ids, type, config, { shape: 'landscape' });
           if (resolved) {
             if (config.usePosterProxy) {
               const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
@@ -5629,12 +5631,13 @@ const metaRoute = async function (req, res) {
     {
       const userAgent = req.headers['user-agent'] || '';
       const host = process.env.HOST_NAME.startsWith('http') ? process.env.HOST_NAME : `https://${process.env.HOST_NAME}`;
-      const { resolveCustomArtUrl, resolvePosterPattern, resolveThumbnailPattern, getPosterRatingApiKey } = require('./utils/parseProps');
+      const { resolveCustomArtUrl, resolvePosterPattern, resolveThumbnailPattern, getPosterRatingApiKey, resolveLandscapePattern, posterShapeOf } = require('./utils/parseProps');
       const ids = extractIdsFromMeta(result.meta);
       const metaType = result.meta.type || type;
+      const metaPosterPattern = config.enableRatingPostersForLibrary !== false ? resolvePosterPattern(config) : null;
+      const metaLandscapePattern = resolveLandscapePattern(config, metaPosterPattern);
       // Apply poster pattern unless enableRatingPostersForLibrary is explicitly disabled
       if (config.enableRatingPostersForLibrary !== false) {
-        const metaPosterPattern = resolvePosterPattern(config);
         if (metaPosterPattern) {
           const proxyApiKey = config.usePosterProxy ? getPosterRatingApiKey(config) : null;
           if (proxyApiKey) {
@@ -5643,7 +5646,7 @@ const metaRoute = async function (req, res) {
               result.meta.poster = buildProxyArtUrl({ base: `${host}/poster-cache/proxy`, imageClass: 'poster', type: metaType, id: proxyId, fallback: result.meta.poster, ratingKey: proxyApiKey, lang: config.language });
             }
           } else {
-            const resolved = resolveCustomArtUrl(metaPosterPattern, ids, metaType, config, { userAgent });
+            const resolved = resolveCustomArtUrl(metaPosterPattern, ids, metaType, config, { userAgent, shape: posterShapeOf(result.meta) });
             if (resolved) {
               if (config.usePosterProxy) {
                 const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
@@ -5658,7 +5661,7 @@ const metaRoute = async function (req, res) {
         }
       }
       if (config.customBackgroundUrlPattern) {
-        const resolved = resolveCustomArtUrl(config.customBackgroundUrlPattern, ids, metaType, config, { userAgent });
+        const resolved = resolveCustomArtUrl(config.customBackgroundUrlPattern, ids, metaType, config, { userAgent, shape: 'landscape' });
         if (resolved) {
           if (config.usePosterProxy) {
             const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
@@ -5672,8 +5675,8 @@ const metaRoute = async function (req, res) {
           }
         }
       }
-      if (config.customLandscapeUrlPattern) {
-        const resolved = resolveCustomArtUrl(config.customLandscapeUrlPattern, ids, metaType, config, { userAgent });
+      if (metaLandscapePattern) {
+        const resolved = resolveCustomArtUrl(metaLandscapePattern, ids, metaType, config, { userAgent, shape: 'landscape' });
         if (resolved) {
           if (config.usePosterProxy) {
             const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));

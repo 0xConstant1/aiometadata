@@ -402,6 +402,14 @@ export function ArtProviderSettings() {
                   placeholder instead of discarding the URL when that ID is unavailable. Useful for patterns carrying several IDs where only
                   one needs to be present.
                 </p>
+                <p>
+                  <strong>Any of several IDs:</strong> <code>{'{imdb_id|tmdb_id}'}</code> uses the first ID the title has, and skips the URL
+                  when it has none of them.
+                </p>
+                <p>
+                  <strong>Shape:</strong> <code>{'{shape}'}</code> becomes <code>poster</code>, <code>landscape</code> or <code>square</code>.
+                  A poster pattern with it also fills the landscape poster, unless a Landscape URL Pattern is set.
+                </p>
                 <p>RPDB/TOP patterns automatically fall back to alternative IDs when the primary one is unavailable.</p>
               </div>
             </details>

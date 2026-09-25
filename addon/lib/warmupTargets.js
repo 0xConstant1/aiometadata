@@ -34,6 +34,8 @@ function collectWarmupTargets(metas, config, fallbackType, deps) {
   const {
     resolveCustomArtUrl,
     resolvePosterPattern,
+    resolveLandscapePattern,
+    posterShapeOf,
     resolveProxyRatingPosterUrl,
     getPosterRatingApiKey,
     isRatingPostersEnabled,
@@ -55,7 +57,7 @@ function collectWarmupTargets(metas, config, fallbackType, deps) {
   if (cacheCast) cacheableFields.add('cast');
   const customArtPatterns = {
     background: config.customBackgroundUrlPattern,
-    landscapePoster: config.customLandscapeUrlPattern,
+    landscapePoster: resolveLandscapePattern(config, posterPattern),
     logo: config.customLogoUrlPattern,
   };
 
@@ -92,7 +94,7 @@ function collectWarmupTargets(metas, config, fallbackType, deps) {
         }
         posterWarmed = true;
       } else {
-        const resolved = resolveCustomArtUrl(posterPattern, ids, type, config);
+        const resolved = resolveCustomArtUrl(posterPattern, ids, type, config, { shape: posterShapeOf(meta) });
         if (resolved) {
           if (config.usePosterProxy) {
             if (proxyArtBase && cachePosters && !posterCacheConfig.isBypassed(resolved)) {
@@ -121,7 +123,7 @@ function collectWarmupTargets(metas, config, fallbackType, deps) {
       // patterns in on the way out, so warming meta[field] fills a key nobody
       // requests and leaves the one they do request cold.
       const pattern = customArtPatterns[field];
-      const resolved = pattern ? resolveCustomArtUrl(pattern, ids, type, config) : null;
+      const resolved = pattern ? resolveCustomArtUrl(pattern, ids, type, config, field === 'logo' ? undefined : { shape: 'landscape' }) : null;
       if (resolved) {
         if (config.usePosterProxy && proxyId) {
           if (proxyArtBase

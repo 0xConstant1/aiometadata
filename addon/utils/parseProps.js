@@ -104,6 +104,7 @@ function resolvePattern(pattern, ids, type, config, extra) {
     '{anilist_id}': ids?.anilistId || '',
     '{anidb_id}': ids?.anidbId || '',
     '{type}': type || '',
+    '{shape}': extra?.shape || 'poster',
     '{season}': extra?.season != null ? String(extra.season) : '',
     '{episode}': extra?.episode != null ? String(extra.episode) : '',
     '{language}': lang,
@@ -123,6 +124,13 @@ function resolvePattern(pattern, ids, type, config, extra) {
   };
 
   let url = pattern;
+  for (const group of new Set(pattern.match(/\{[a-z_]+(?:\|[a-z_]+)+\??\}/g) || [])) {
+    const optional = group.endsWith('?}');
+    const names = group.slice(1, optional ? -2 : -1).split('|');
+    const value = names.map(name => placeholders[`{${name}}`]).find(Boolean) || '';
+    if (!value && !optional) return null;
+    url = url.split(group).join(value);
+  }
   for (const [placeholder, value] of Object.entries(placeholders)) {
     const optional = `${placeholder.slice(0, -1)}?}`;
     if (url.includes(optional)) {
@@ -228,6 +236,18 @@ function resolvePosterPattern(config) {
   if (provider === 'none') return null;
   return config?.customPosterUrlPattern
     || (provider && provider !== 'custom' ? getDefaultPosterPattern(provider) : null);
+}
+
+function hasShapePlaceholder(pattern) {
+  return typeof pattern === 'string' && /\{shape\??\}/.test(pattern);
+}
+
+function resolveLandscapePattern(config, posterPattern) {
+  return config?.customLandscapeUrlPattern || (hasShapePlaceholder(posterPattern) ? posterPattern : null);
+}
+
+function posterShapeOf(meta) {
+  return meta?.posterShape === 'landscape' || meta?.posterShape === 'square' ? meta.posterShape : 'poster';
 }
 
 /**
@@ -3536,6 +3556,9 @@ module.exports = {
   getDefaultPosterPattern,
   getDefaultThumbnailPattern,
   resolvePosterPattern,
+  resolveLandscapePattern,
+  hasShapePlaceholder,
+  posterShapeOf,
   resolveThumbnailPattern,
   parsePosterWithProvider,
   checkIfExists,
