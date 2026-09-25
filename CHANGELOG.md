@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.2.0](https://github.com/cedya77/aiometadata/compare/v3.1.0...v3.2.0) (2026-09-25)
+
+
+### Features
+
+* **ai-catalogs:** build as many catalogs as a prompt asks for, from every Discover setting ([3f4a237](https://github.com/cedya77/aiometadata/commit/3f4a2377829377da142da7eeaa1909981642e19c))
+* **art:** fill {shape} in art patterns and send a landscape poster from the poster pattern ([58aac94](https://github.com/cedya77/aiometadata/commit/58aac94296a025a36e0bdb956af800822d1407a4))
+* **collections:** serve builder collections as AIOStreams collection metas ([07b0f02](https://github.com/cedya77/aiometadata/commit/07b0f0256d9be94c48b33a63fa4aeb7f155f6e03))
+* **discover:** exclude streaming services ([3f4a237](https://github.com/cedya77/aiometadata/commit/3f4a2377829377da142da7eeaa1909981642e19c))
+* **discover:** pick several origin countries and original languages ([3f4a237](https://github.com/cedya77/aiometadata/commit/3f4a2377829377da142da7eeaa1909981642e19c))
+* **jellyfin:** answer watched history and counts across the library ([26ade38](https://github.com/cedya77/aiometadata/commit/26ade3869269b4c87e186391819e80f446a5c401))
+* **jellyfin:** take upcoming episodes and their air times from MDBList's calendar ([4a7dded](https://github.com/cedya77/aiometadata/commit/4a7dded12752e9743c98da534a9cee4e42bfc073))
+* **mdblist:** add other users' external lists by URL ([c204eba](https://github.com/cedya77/aiometadata/commit/c204ebacce31a018a9fa38fb6de0d80c30187886))
+* **simkl:** say which setting a Simkl client ID belongs in when the PIN request is refused ([2b089ee](https://github.com/cedya77/aiometadata/commit/2b089ee721fa9250a60cddeb2ee4efd9285e0fb7))
+
+
+### Bug Fixes
+
+* **ai-catalogs:** keep each catalog's own dates when one prompt asks for several ([3f4a237](https://github.com/cedya77/aiometadata/commit/3f4a2377829377da142da7eeaa1909981642e19c))
+* **ai:** accept OpenRouter's ~ model aliases instead of falling back to the default ([87f18c8](https://github.com/cedya77/aiometadata/commit/87f18c83e6a66f98dc21e73058d78890d395ff51))
+* **configure:** sign in again when the session expires on an open page ([6f8daf1](https://github.com/cedya77/aiometadata/commit/6f8daf15133d91fab6c1a3ad54c7fc657e7b2eec))
+* **dashboard:** name popular titles requested by a TMDB or TVDB id ([5b337e7](https://github.com/cedya77/aiometadata/commit/5b337e79fc7a387313cd34c800d8ada941f30dc7))
+* **image-cache:** answer an expired image at once and refresh it behind the request ([e8c7d81](https://github.com/cedya77/aiometadata/commit/e8c7d817f130a53e99080507915f4fe9ad251a1d))
+* **jellyfin:** answer /Items/Suggestions instead of reading it as an item id ([b8b4654](https://github.com/cedya77/aiometadata/commit/b8b4654ce3e5d95be40604af17e38fdb737163ff))
+* **jellyfin:** apply stream and subtitle cache lifetimes set in the dashboard without a restart ([47e4dab](https://github.com/cedya77/aiometadata/commit/47e4dab31aad05566720f77bccb78347c85e9b2c))
+* **jellyfin:** list collection folders even when none of their catalogs are visible ([085005c](https://github.com/cedya77/aiometadata/commit/085005cd41747675a72ce6e9d2dd524433b83ddc))
+* **jellyfin:** read a playing item's metadata once, not on every progress report ([03aec63](https://github.com/cedya77/aiometadata/commit/03aec635810f8096792300c7b76957d3cdd5320f))
+* **jellyfin:** send the full set of stream flags on placeholder media sources ([4e13dd5](https://github.com/cedya77/aiometadata/commit/4e13dd5fd09200c2603241b02d06bb86136aaa7c))
+* **jellyfin:** show a drop or watch change on the next read ([ad5ccc3](https://github.com/cedya77/aiometadata/commit/ad5ccc37a276b7dfb43af34c4459078cee22f9a9))
+* **tvdb:** use a season's own poster when TVDB points its image at a background ([5989938](https://github.com/cedya77/aiometadata/commit/598993819678155d74b978fef23921cd7b43f271))
+* **watch-tracking:** clear resume points when a title is marked unwatched ([509c54d](https://github.com/cedya77/aiometadata/commit/509c54d835bb6694613933936d5dde76e183fc08))
+
+
+### Performance Improvements
+
+* **mdblist:** read external and by-name list pages from one cursor-paged block ([bc91d9c](https://github.com/cedya77/aiometadata/commit/bc91d9cbd22250147be72801a66746a14909596c))
+
 ## [3.1.0](https://github.com/cedya77/aiometadata/compare/v3.0.0...v3.1.0) (2026-09-24)
 
 
