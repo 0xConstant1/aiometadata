@@ -706,6 +706,47 @@ function supportsMdblistScoreFilters(catalogConfig: any): boolean {
     && !id.startsWith('mdblist.recommended.');
 }
 
+async function fetchCursorBlock(opts: { baseUrl: string; apiKey: string; blockIndex: number; blockSize: number; sort?: string; order?: string; genre?: string; filterScoreMin?: number; filterScoreMax?: number; mediaTypeFilter?: string; ttl: number; ttlSegment: string }): Promise<{ rows: any[]; hasMore: boolean; nextCursor: string | null }> {
+  const { baseUrl, blockIndex, blockSize } = opts;
+  const cacheKey = `mdblist-api:cursor-block:${baseUrl}:${blockIndex}:${blockSize}:${opts.sort || ''}:${opts.order || ''}:${opts.genre || ''}:${opts.filterScoreMin ?? ''}:${opts.filterScoreMax ?? ''}:${opts.mediaTypeFilter || ''}${opts.ttlSegment}`;
+
+  return cacheWrapGlobal(cacheKey, async () => {
+    let cursor: string | null = null;
+    if (blockIndex > 0) {
+      const previous = await fetchCursorBlock({ ...opts, blockIndex: blockIndex - 1 });
+      if (!previous.hasMore || !previous.nextCursor) return { rows: [], hasMore: false, nextCursor: null };
+      cursor = previous.nextCursor;
+    }
+
+    const url = new URL(baseUrl);
+    url.searchParams.set('apikey', opts.apiKey);
+    url.searchParams.set('limit', String(blockSize));
+    url.searchParams.set('unified', 'true');
+    url.searchParams.set('append_to_response', 'genre,poster');
+    if (cursor) url.searchParams.set('cursor', cursor);
+    if (opts.sort && opts.sort.trim() !== '') url.searchParams.set('sort', opts.sort);
+    if (opts.order && opts.order.trim() !== '') url.searchParams.set('order', opts.order);
+    if (opts.genre && opts.genre.toLowerCase() !== 'none') url.searchParams.set('filter_genre', opts.genre);
+    if (typeof opts.filterScoreMin === 'number') url.searchParams.set('filter_score_min', String(opts.filterScoreMin));
+    if (typeof opts.filterScoreMax === 'number') url.searchParams.set('filter_score_max', String(opts.filterScoreMax));
+    if (opts.mediaTypeFilter) url.searchParams.set('mediatype', opts.mediaTypeFilter);
+
+    logger.debug(`MDBList cursor block request URL: ${sanitizeUrlForLogging(url.toString())}`);
+    const response: any = await makeRateLimitedRequest(
+      () => httpGet(url.toString(), { dispatcher: mdblistDispatcher }),
+      opts.apiKey,
+      `MDBList fetchCursorBlock (url: ${sanitizeUrlForLogging(baseUrl)}, block: ${blockIndex}, blockSize: ${blockSize})`
+    );
+
+    const hasMore = response.headers?.['x-has-more'] === 'true';
+    return {
+      rows: Array.isArray(response.data) ? response.data : [],
+      hasMore,
+      nextCursor: hasMore ? (response.headers?.['x-next-cursor'] || null) : null,
+    };
+  }, opts.ttl, { upstream: true, sourceList: true });
+}
+
 async function fetchMDBListExternalItems(
   url: string,
   apiKey: string,
@@ -723,89 +764,33 @@ async function fetchMDBListExternalItems(
   const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
 
   const normalizedUrl = new URL(url);
-  normalizedUrl.searchParams.delete('apikey');
-  normalizedUrl.searchParams.delete('limit');
-  normalizedUrl.searchParams.delete('offset');
-  normalizedUrl.searchParams.delete('language');
-  normalizedUrl.searchParams.delete('append_to_response');
-  normalizedUrl.searchParams.delete('unified');
-  normalizedUrl.searchParams.delete('sort');
-  normalizedUrl.searchParams.delete('order');
-  normalizedUrl.searchParams.delete('filter_genre');
-  normalizedUrl.searchParams.delete('filter_score_min');
-  normalizedUrl.searchParams.delete('filter_score_max');
+  for (const param of ['apikey', 'limit', 'offset', 'cursor', 'language', 'append_to_response', 'unified', 'sort', 'order', 'filter_genre', 'filter_score_min', 'filter_score_max', 'mediatype']) {
+    normalizedUrl.searchParams.delete(param);
+  }
   const urlBase = normalizedUrl.toString();
 
+  const mediaTypeFilter = unified === false
+    ? (catalogType === 'movie' ? 'movie' : catalogType === 'series' ? 'show' : undefined)
+    : undefined;
   const ttlSegment = cacheTTL !== undefined ? `:ttl:${cacheTTL}` : '';
-  const cacheKey = `mdblist-api:external:shared:${urlBase}:${page}:${sort || ''}:${order || ''}:${genre || ''}:${catalogType || ''}:${unified !== false}:${filterScoreMin ?? ''}:${filterScoreMax ?? ''}:${pageSize}${ttlSegment}`;
+  const cacheKey = `mdblist-api:external:v2:shared:${urlBase}:${page}:${sort || ''}:${order || ''}:${genre || ''}:${catalogType || ''}:${unified !== false}:${filterScoreMin ?? ''}:${filterScoreMax ?? ''}:${pageSize}${ttlSegment}`;
 
   const ttl = cacheTTL !== undefined ? cacheTTL : parseInt(process.env.CATALOG_TTL || String(1 * 24 * 60 * 60), 10);
 
   try {
     return await cacheWrapGlobal(cacheKey, async () => {
       const offset = (page * pageSize) - pageSize;
-      const urlWithParams = new URL(url);
-      urlWithParams.searchParams.set('apikey', apiKey);
-      urlWithParams.searchParams.set('limit', pageSize.toString());
-      urlWithParams.searchParams.set('offset', offset.toString());
-      urlWithParams.searchParams.set('append_to_response', 'genre,poster');
-      urlWithParams.searchParams.set('unified', String(unified));
-
-      if (sort && sort.trim() !== '') {
-        urlWithParams.searchParams.set('sort', sort);
-      }
-      if (order && order.trim() !== '') {
-        urlWithParams.searchParams.set('order', order);
-      }
-      if (genre && genre.toLowerCase() !== 'none') {
-        urlWithParams.searchParams.set('filter_genre', genre);
-      }
-      if (typeof filterScoreMin === 'number') {
-        urlWithParams.searchParams.set('filter_score_min', String(filterScoreMin));
-      }
-      if (typeof filterScoreMax === 'number') {
-        urlWithParams.searchParams.set('filter_score_max', String(filterScoreMax));
-      }
-
-      const fullUrl = urlWithParams.toString();
-
-      logger.debug(`MDBList external request URL: ${sanitizeUrlForLogging(fullUrl)}`);
-
-      const response: any = await makeRateLimitedRequest(
-        () => httpGet(fullUrl, { dispatcher: mdblistDispatcher }),
-        apiKey,
-        `MDBList fetchMDBListExternalItems (url: ${sanitizeUrlForLogging(url)}, page: ${page})`
-      );
-
-      const hasMore = response.headers?.['x-has-more'] === 'true';
-
-      let items: any[];
-
-      const hasMoviesShowsStructure = response.data && 
-                                      typeof response.data === 'object' && 
-                                      !Array.isArray(response.data) &&
-                                      ('movies' in response.data || 'shows' in response.data);
-      
-      if (hasMoviesShowsStructure) {
-        if (catalogType === 'series') {
-          items = response.data.shows || [];
-        } else if (catalogType === 'movie') {
-          items = response.data.movies || [];
-        } else {
-          items = [
-            ...(response.data?.movies || []),
-            ...(response.data?.shows || [])
-          ];
-        }
-      } else if (Array.isArray(response.data)) {
-        items = response.data;
-      } else {
-        items = [
-          ...(response.data?.movies || []),
-          ...(response.data?.shows || [])
-        ];
-      }
-
+      const blockSize = listBlockSize(pageSize);
+      const blockIndex = Math.floor(offset / blockSize);
+      const block = await fetchCursorBlock({
+        baseUrl: urlBase, apiKey, blockIndex, blockSize,
+        sort, order, genre, filterScoreMin, filterScoreMax, mediaTypeFilter,
+        ttl, ttlSegment,
+      });
+      const within = offset - blockIndex * blockSize;
+      const window = block.rows.slice(within, within + pageSize);
+      const items = unified !== false ? window : splitWindowByType(window, catalogType);
+      const hasMore = within + pageSize < block.rows.length ? true : block.hasMore;
       return { items, hasMore };
     }, ttl, { upstream: true, sourceList: true });
   } catch (err: any) {
@@ -813,7 +798,6 @@ async function fetchMDBListExternalItems(
     return { items: [] };
   }
 }
-
 async function parseMDBListItems(items: any[], type: string, language: string, config: UserConfig, includeVideos: boolean = false): Promise<any[]> {
   let filteredItems = items;
   //console.log(`[MDBList] Filtered items: ${JSON.stringify(filteredItems)}`);
