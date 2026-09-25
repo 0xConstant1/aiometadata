@@ -15,6 +15,7 @@ const REDIS_RATINGS_HASH = 'imdb:ratings';
 const UPDATE_INTERVAL_HOURS = parseInt(process.env.IMDB_RATINGS_UPDATE_INTERVAL_HOURS || '24');
 const UPDATE_INTERVAL_MS = UPDATE_INTERVAL_HOURS * 60 * 60 * 1000;
 const RETRY_BASE_MS = 15 * 60 * 1000;
+const NOT_READY_WARN_INTERVAL_MS = 60 * 1000;
 const MIN_VOTES = 20;
 const REDIS_BATCH_SIZE = 10000;
 
@@ -30,6 +31,8 @@ let ratingsCount = 0;
 let updateInFlight: Promise<boolean> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
+let skippedWhileNotReady = 0;
+let lastNotReadyWarnAt = 0;
 
 // Stats tracking
 let totalRequests = 0;
@@ -184,6 +187,16 @@ export async function downloadAndCacheIMDbRatings(): Promise<boolean> {
   }
 }
 
+/** Throttled: a reconnect would otherwise log once per lookup. */
+function noteSkippedWhileNotReady(): void {
+  skippedWhileNotReady++;
+  const now = Date.now();
+  if (now - lastNotReadyWarnAt < NOT_READY_WARN_INTERVAL_MS) return;
+  logger.warn(`Redis is ${redis?.status ?? 'unavailable'}; ${skippedWhileNotReady} rating lookup(s) returned no rating.`);
+  lastNotReadyWarnAt = now;
+  skippedWhileNotReady = 0;
+}
+
 function scheduleRetryIfFailed(success: boolean): boolean {
   if (retryTimer) {
     clearTimeout(retryTimer);
@@ -234,6 +247,8 @@ export async function getImdbRating(imdbId: string): Promise<ImdbRating | null> 
           return rating;
         }
       }
+    } else {
+      noteSkippedWhileNotReady();
     }
 
     cacheMisses++;
