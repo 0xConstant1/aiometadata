@@ -744,17 +744,29 @@ async function dropAndServe(
   };
 }
 
+/**
+ * An expired entry is answered at once and refreshed behind the request, since a
+ * slow origin would otherwise hold every client until its timeout only to be
+ * served the same bytes. The warmer waits instead, so its concurrency cap holds.
+ */
 export async function getOrFetch(
   imageClass: ImageClass,
   key: string,
-  producer: ImageProducer
+  producer: ImageProducer,
+  options: { awaitRefresh?: boolean } = {}
 ): Promise<FetchResult> {
   const cached = await get(imageClass, key);
   if (cached && !cached.expired) return { entry: cached, status: 'HIT' };
+  const serveStale = !!cached && !options.awaitRefresh;
+  // Opened now, before a refresh behind it can replace the file it reads.
+  const stale = (): FetchResult => {
+    const opened = cached!.body || !cached!.openStream ? undefined : cached!.openStream();
+    return { entry: opened ? { ...cached!, openStream: () => opened } : cached!, status: 'STALE' };
+  };
 
   const lockKey = indexKey(imageClass, hashKey(key));
   const existing = inflight.get(lockKey);
-  if (existing) return existing;
+  if (existing) return serveStale ? stale() : existing;
 
   const store = async (produced: { body: Buffer; contentType: string; upstream?: UpstreamCacheMeta }) => {
     if (isNotStorable(key, produced.upstream)) return dropAndServe(imageClass, key, produced);
@@ -822,6 +834,10 @@ export async function getOrFetch(
   })();
 
   inflight.set(lockKey, task);
+  if (serveStale) {
+    task.catch((error: any) => logger.debug(`Background refresh of ${imageClass} failed: ${error?.message}`));
+    return stale();
+  }
   return task;
 }
 

@@ -360,7 +360,7 @@ async function runOne(target: WarmTarget): Promise<void> {
     return;
   }
 
-  const result = await store.getOrFetch(target.imageClass, target.url, (validators) => fetchImage(target.url, { validators }));
+  const result = await store.getOrFetch(target.imageClass, target.url, (validators) => fetchImage(target.url, { validators }), { awaitRefresh: true });
   if (result.status === 'HIT') {
     stats.alreadyFresh += 1;
     classStats(target.imageClass).alreadyFresh += 1;
