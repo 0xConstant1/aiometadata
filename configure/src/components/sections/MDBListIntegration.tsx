@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { apiCache } from '@/utils/apiCache';
 import { getGenresBySelection, GenreSelection } from '@/data/genres';
 import { getMdbListType, createMDBListCatalog, isDynamicMixedList, createMDBListUnifiedDynamicCatalog } from '@/utils/catalogUtils';
+import { parseMdblistExternalListUrl } from '@/utils/urlParser';
 import type { CatalogConfig } from '@/contexts/ConfigContext';
 import { CacheTTLField } from '@/components/CacheTTLField';
 
@@ -864,6 +865,37 @@ export function MDBListIntegration({ isOpen, onClose }: MDBListIntegrationProps)
         return;
     }
     try {
+      const external = parseMdblistExternalListUrl(customListUrl);
+      if (external) {
+        const response = await fetch(listsUrl(`/api/mdblist/external/lists/${external.listId}`));
+        if (!response.ok) {
+          throw new Error(response.status === 404
+            ? 'This external list is private or does not exist'
+            : `Error fetching list (Status: ${response.status})`);
+        }
+        const [list] = await response.json();
+        if (!list) throw new Error("No lists found in the response.");
+        if (config.catalogs.some(c => c.id === `mdblist.${list.id}`)) {
+          toast.info(`List "${list.name}" is already in your catalog list.`);
+          return;
+        }
+        setConfig(prev => ({
+          ...prev,
+          catalogs: [...prev.catalogs, createMDBListCatalog({
+            list,
+            sort: defaultSort,
+            order: defaultOrder,
+            cacheTTL: defaultCacheTTL ?? undefined,
+            genreSelection: defaultGenreSelection,
+            displayTypeOverrides: prev.displayTypeOverrides,
+            sourceUrl: `https://api.mdblist.com/external/lists/${list.id}/items`,
+            listUrl: customListUrl,
+          })],
+        }));
+        toast.success("List Added", { description: `The list "${list.name}" has been added to your catalogs.` });
+        setCustomListUrl("");
+        return;
+      }
       const path = new URL(customListUrl).pathname;
       const parts = path.split('/').filter(p => p);
       if (parts.length < 3 || parts[0] !== 'lists') {

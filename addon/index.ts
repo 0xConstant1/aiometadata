@@ -2870,6 +2870,26 @@ addon.get("/api/mdblist/external/lists/user", async (req, res) => {
   }
 });
 
+addon.get("/api/mdblist/external/lists/:listId", async (req, res) => {
+  try {
+    const { listId } = req.params;
+    if (!/^\d+$/.test(listId)) {
+      return res.status(400).json({ error: "listId must be numeric" });
+    }
+    const apikey = resolveMdblistKey(req.query.apikey);
+    if (!apikey) {
+      return res.status(400).json({ error: "apikey is required" });
+    }
+    const url = `https://api.mdblist.com/external/lists/${listId}?apikey=${apikey}`;
+    const response = await makeRateLimitedMDBListRequest(url, apikey, `MDBList Proxy - Get External List ${listId}`);
+    res.json(response.data);
+  } catch (error) {
+    consola.error("[MDBList Proxy] Error fetching external list details:", error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.message || "Failed to fetch external list details" });
+  }
+});
+
 // ── TMDB Discover Preview ──
 addon.get("/api/tmdb/discover/preview", async (req, res) => {
   try {

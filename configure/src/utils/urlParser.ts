@@ -8,6 +8,7 @@ export interface ParsedUrl {
   type: 'single-list' | 'user-profile' | 'watchlist' | 'manifest';
   username?: string;
   listSlug?: string;
+  externalListId?: string;
   url: string;
 }
 
@@ -17,6 +18,7 @@ export interface ParsedUrl {
  */
 const URL_PATTERNS = {
   mdblist: {
+    externalList: /^https?:\/\/(?:www\.)?mdblist\.com\/lists\/([^\/]+)\/external\/(\d+)\/?$/,
     // https://mdblist.com/lists/{username}/{list-name}
     singleList: /^https?:\/\/(?:www\.)?mdblist\.com\/lists\/([^\/]+)\/([^\/]+)\/?$/,
     // https://mdblist.com/lists/{username}/ or https://mdblist.com/users/{username}/
@@ -52,6 +54,11 @@ function stripQueryParams(url: string): string {
   return url.split('?')[0];
 }
 
+export function parseMdblistExternalListUrl(url: string): { username: string; listId: string } | null {
+  const match = stripQueryParams(url.trim()).match(URL_PATTERNS.mdblist.externalList);
+  return match ? { username: match[1], listId: match[2] } : null;
+}
+
 /**
  * Parses a URL and returns structured data about the detected service
  */
@@ -60,6 +67,17 @@ export function parseQuickAddUrl(url: string): ParsedUrl {
   
   if (!trimmedUrl) {
     return { service: 'unknown', type: 'single-list', url: trimmedUrl };
+  }
+
+  const mdblistExternal = parseMdblistExternalListUrl(trimmedUrl);
+  if (mdblistExternal) {
+    return {
+      service: 'mdblist',
+      type: 'single-list',
+      username: mdblistExternal.username,
+      externalListId: mdblistExternal.listId,
+      url: trimmedUrl,
+    };
   }
 
   // Check MDBList patterns

@@ -187,7 +187,34 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
     setError(null);
 
     try {
-      if (parsedUrl.type === 'single-list' && parsedUrl.username && parsedUrl.listSlug) {
+      if (parsedUrl.externalListId) {
+        const response = await fetch(
+          `/api/mdblist/external/lists/${parsedUrl.externalListId}${apiKey ? `?apikey=${apiKey}` : ''}`
+        );
+        if (!response.ok) {
+          throw new Error(response.status === 404
+            ? 'This external list is private or does not exist'
+            : `Failed to fetch list (Status: ${response.status})`);
+        }
+        const [list] = await response.json();
+        if (!list) throw new Error('No list returned from MDBList');
+
+        if (catalogExists(`mdblist.${list.id}`)) {
+          toast.info(`List "${list.name}" is already in your catalog list.`);
+          onClose();
+          return;
+        }
+
+        const newCatalog = createMDBListCatalog({
+          list,
+          displayTypeOverrides: config.displayTypeOverrides,
+          sourceUrl: `https://api.mdblist.com/external/lists/${list.id}/items`,
+          listUrl: parsedUrl.url,
+        });
+        setConfig(prev => ({ ...prev, catalogs: [...prev.catalogs, newCatalog] }));
+        toast.success("List Added", { description: `The list "${list.name}" has been added to your catalogs.` });
+        onClose();
+      } else if (parsedUrl.type === 'single-list' && parsedUrl.username && parsedUrl.listSlug) {
         // Single list - add directly
         const response = await fetch(
           `/api/mdblist/lists/${encodeURIComponent(parsedUrl.username)}/${encodeURIComponent(parsedUrl.listSlug)}${apiKey ? `?apikey=${apiKey}` : ''}`
@@ -916,7 +943,7 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
                   <CardTitle className="text-sm">Supported URLs</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-xs text-muted-foreground">
-                  <p><strong>MDBList:</strong> mdblist.com/lists/username/list-name or mdblist.com/users/username</p>
+                  <p><strong>MDBList:</strong> mdblist.com/lists/username/list-name, mdblist.com/lists/username/external/12345 or mdblist.com/users/username</p>
                   <p><strong>Trakt:</strong> trakt.tv/users/username/lists/list-slug or trakt.tv/users/username</p>
                   <p><strong>Letterboxd:</strong> letterboxd.com/username/list/list-name or letterboxd.com/username/watchlist</p>
                   <p><strong>TheTVDB:</strong> thetvdb.com/lists/list-slug</p>
