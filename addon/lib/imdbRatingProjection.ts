@@ -33,7 +33,7 @@ async function applyImdbRatingProjection(meta: any): Promise<any> {
   return meta;
 }
 
-/** One HMGET for the page rather than a lookup per tile. */
+/** One batch for the page rather than a call per tile. */
 async function applyImdbRatingProjectionToList(metas: any[]): Promise<any[]> {
   if (!Array.isArray(metas) || metas.length === 0) return metas;
 
