@@ -63,6 +63,23 @@ export interface NextUpRow {
   airsAt?: number | null;
 }
 
+export interface HistoryEntry {
+  kind: 'movie' | 'episode';
+  id: string;
+  metaId?: string;
+  mediaType: 'movie' | 'series' | 'anime';
+  at: number;
+}
+
+function recordWatch(history: Map<string, HistoryEntry>, entry: HistoryEntry): void {
+  const held = history.get(entry.id);
+  if (!held || entry.at > held.at) history.set(entry.id, entry);
+}
+
+function newestFirst(history: Map<string, HistoryEntry>): HistoryEntry[] {
+  return [...history.values()].sort((a, b) => b.at - a.at);
+}
+
 export interface WatchedSnapshot {
   /** Video ids in the space the meta publishes, e.g. `kitsu:49002:11`. */
   episodes: Set<string>;
@@ -79,6 +96,7 @@ export interface WatchedSnapshot {
   dropped: Set<string>;
   /** The drops could not be read, so `dropped` is not the whole list. */
   droppedUnread?: boolean;
+  history: HistoryEntry[];
   fingerprint: string;
 }
 
@@ -90,6 +108,7 @@ const EMPTY: WatchedSnapshot = {
   following: [],
   at: new Map(),
   dropped: new Set(),
+  history: [],
   fingerprint: '',
 };
 
@@ -179,7 +198,7 @@ function parseNextToWatch(value: any): { season: number | null; episode: number 
   return null;
 }
 
-function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): void {
+function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean, history: Map<string, HistoryEntry>): void {
   const ids = entry?.show?.ids ?? {};
   const keys = seriesKeys(ids);
 
@@ -236,6 +255,9 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
       };
 
       if (absolute) mark(`${absolute}:${number}`);
+      if (absolute && metaId) {
+        recordWatch(history, { kind: 'episode', id: `${absolute}:${number}`, metaId, mediaType: 'anime', at: watchedAt });
+      }
 
       if (!seasoned.length) continue;
 
@@ -249,6 +271,15 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
       for (const base of seasoned) {
         mark(`${base}:${broadcast.season}:${broadcast.episode}`);
       }
+      if (!absolute && metaId) {
+        recordWatch(history, {
+          kind: 'episode',
+          id: `${seasoned[0]}:${broadcast.season}:${broadcast.episode}`,
+          metaId,
+          mediaType: 'series',
+          at: watchedAt,
+        });
+      }
     }
   }
 }
@@ -256,6 +287,7 @@ function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean): v
 interface RawSnapshot {
   episodes: string[];
   movies: string[];
+  history?: HistoryEntry[];
   at?: Array<[string, number]>;
   series: Array<[string, { watched: number; total: number; at?: number }]>;
   nextUp: NextUpRow[];
@@ -281,8 +313,10 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     following: [],
     at: new Map(),
     dropped: new Set(),
+    history: [],
     fingerprint: '',
   };
+  const history = new Map<string, HistoryEntry>();
 
   for (const entry of Array.isArray(data?.movies) ? data.movies : []) {
     if (entry?.status !== 'completed') continue;
@@ -292,14 +326,17 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     if (ids.tmdb) snapshot.movies.add(`tmdb:${ids.tmdb}`);
     if (at && ids.imdb) snapshot.at.set(String(ids.imdb), at);
     if (at && ids.tmdb) snapshot.at.set(`tmdb:${ids.tmdb}`, at);
+    const id = ids.imdb ? String(ids.imdb) : ids.tmdb ? `tmdb:${ids.tmdb}` : null;
+    if (id) recordWatch(history, { kind: 'movie', id, mediaType: 'movie', at });
   }
 
-  for (const entry of Array.isArray(data?.shows) ? data.shows : []) collectShow(entry, snapshot, false);
-  for (const entry of Array.isArray(data?.anime) ? data.anime : []) collectShow(entry, snapshot, true);
+  for (const entry of Array.isArray(data?.shows) ? data.shows : []) collectShow(entry, snapshot, false, history);
+  for (const entry of Array.isArray(data?.anime) ? data.anime : []) collectShow(entry, snapshot, true, history);
 
   return {
     episodes: [...snapshot.episodes],
     movies: [...snapshot.movies],
+    history: newestFirst(history),
     at: [...snapshot.at],
     series: [...snapshot.series],
     nextUp: snapshot.nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
@@ -347,6 +384,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
   if (!movieRows.length && !episodeRows.length) logger.debug('No watched history on MDBList');
 
   const at = new Map<string, number>();
+  const history = new Map<string, HistoryEntry>();
   for (const entry of movieRows) {
     const ids = entry?.movie?.ids ?? {};
     const seen = Date.parse(entry?.last_watched_at ?? '') || 0;
@@ -354,6 +392,8 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
     if (ids.tmdb) movies.add(`tmdb:${ids.tmdb}`);
     if (seen && ids.imdb) at.set(String(ids.imdb), seen);
     if (seen && ids.tmdb) at.set(`tmdb:${ids.tmdb}`, seen);
+    const id = ids.imdb ? String(ids.imdb) : ids.tmdb ? `tmdb:${ids.tmdb}` : null;
+    if (id) recordWatch(history, { kind: 'movie', id, mediaType: 'movie', at: seen });
   }
 
   const latest = new Map<string, { resolved: any; season: number; number: number; at: number }>();
@@ -371,6 +411,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
 
     const seen = Date.parse(entry?.last_watched_at ?? '') || 0;
     if (seen) at.set(resolved.videoId, seen);
+    recordWatch(history, { kind: 'episode', id: resolved.videoId, metaId: resolved.metaId, mediaType: resolved.mediaType, at: seen });
     const counts = series.get(resolved.metaId) ?? { watched: 0, total: 0 };
     counts.watched += 1;
     if (seen && (!counts.at || seen > counts.at)) counts.at = seen;
@@ -448,6 +489,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
   return {
     episodes: [...episodes],
     movies: [...movies],
+    history: newestFirst(history),
     at: [...at],
     series: [...series],
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
@@ -503,7 +545,7 @@ async function readWatchedSnapshot(userUUID: string, config: any, force = false)
 
     const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_v4:${key}`,
+      `jellyfin_watched_v5:${key}`,
       () => build(accessToken),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true, resultClassifier: classifyResultAllowEmpty }
@@ -517,6 +559,7 @@ async function readWatchedSnapshot(userUUID: string, config: any, force = false)
       nextUp: raw?.nextUp ?? [],
       following: raw?.following ?? [],
       dropped: new Set(raw?.dropped ?? []),
+      history: raw?.history ?? [],
       fingerprint,
     };
     hold(tokenHash, key, snapshot);
@@ -616,6 +659,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
   const seen = new Map<string, number>();
   const series = new Map<string, { watched: number; total: number; at?: number }>();
   const latest = new Map<string, { row: any; at: number }>();
+  const history = new Map<string, HistoryEntry>();
   const followedSince = Date.now() - envInt('JELLYFIN_NEXTUP_OWN_DAYS', 120, 1) * 24 * 60 * 60 * 1000;
 
   for (const row of rows) {
@@ -629,6 +673,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
         seen.set(base, at);
         seen.set(`tmdb:${row.tmdb_id}`, at);
       }
+      recordWatch(history, { kind: 'movie', id: base, mediaType: 'movie', at });
       continue;
     }
     const season = Number(row?.season);
@@ -639,6 +684,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     if (episodes.has(resolved.videoId)) continue;
     episodes.add(resolved.videoId);
     if (at) seen.set(resolved.videoId, at);
+    recordWatch(history, { kind: 'episode', id: resolved.videoId, metaId: resolved.metaId, mediaType: resolved.mediaType, at });
 
     const counts = series.get(resolved.metaId) ?? { watched: 0, total: 0 };
     counts.watched += 1;
@@ -680,6 +726,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
   return {
     episodes: [...episodes],
     movies: [...movies],
+    history: newestFirst(history),
     at: [...seen],
     series: [...series],
     nextUp: nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
@@ -710,7 +757,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any, force
   try {
     const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_pmdb_v2:${key}`,
+      `jellyfin_watched_pmdb_v3:${key}`,
       () => buildPmdb(apiKey, config),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true, resultClassifier: classifyResultAllowEmpty }
@@ -725,6 +772,7 @@ async function pmdbSnapshot(userUUID: string, apiKey: string, config: any, force
       following: raw?.following ?? [],
       dropped: new Set(raw?.dropped ?? []),
       droppedUnread: raw?.droppedUnread === true,
+      history: raw?.history ?? [],
       fingerprint: key,
     };
     hold(keyHash, key, snapshot);
@@ -789,7 +837,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any, fo
   try {
     const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
     const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_mdblist_v3:${key}`,
+      `jellyfin_watched_mdblist_v4:${key}`,
       () => buildMdblist(apiKey, config),
       envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
       { upstream: true, resultClassifier: classifyResultAllowEmpty }
@@ -804,6 +852,7 @@ async function mdblistSnapshot(userUUID: string, apiKey: string, config: any, fo
       following: [],
       dropped: new Set(raw?.dropped ?? []),
       droppedUnread: raw?.droppedUnread === true,
+      history: raw?.history ?? [],
       fingerprint: key,
     };
     hold(keyHash, key, snapshot);
@@ -955,9 +1004,20 @@ export async function applyLocalWatch(
       if (change.played) {
         set.add(change.videoId);
         snapshot.at.set(change.videoId, Date.now());
+        snapshot.history = [
+          {
+            kind: change.kind,
+            id: change.videoId,
+            metaId: change.kind === 'episode' ? change.metaId : undefined,
+            mediaType: change.kind === 'movie' ? 'movie' : change.videoId.startsWith('kitsu:') ? 'anime' : 'series',
+            at: Date.now(),
+          },
+          ...snapshot.history.filter((entry) => entry.id !== change.videoId),
+        ];
       } else {
         set.delete(change.videoId);
         snapshot.at.delete(change.videoId);
+        snapshot.history = snapshot.history.filter((entry) => entry.id !== change.videoId);
       }
       if (change.kind !== 'episode') return;
       const counts = snapshot.series.get(change.metaId);

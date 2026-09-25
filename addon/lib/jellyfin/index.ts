@@ -582,6 +582,85 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.json(itemList(items, count, startIndex));
       return;
     }
+    const playedFlag = String(req.query.IsPlayed ?? req.query.isPlayed ?? '').toLowerCase() === 'true';
+    if ((filters.split(',').map((f) => f.trim()).includes('IsPlayed') || playedFlag) && !parentId) {
+      const started = Date.now();
+      const wanted = includeItemTypes
+        ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
+        : new Set(['Movie', 'Episode']);
+      const countOnly = String(req.query.Limit ?? req.query.limit ?? '') === '0';
+      const snapshot = await watchedSnapshot(userUUID, config);
+      const profile = profileKey(config);
+
+      type Played =
+        | { kind: 'movie' | 'episode'; id: string; metaId?: string; mediaType: 'movie' | 'series' | 'anime'; at: number }
+        | { kind: 'series'; id: string; mediaType: 'series' | 'anime'; at: number };
+      const played: Played[] = [];
+
+      if (wanted.has('Movie') || wanted.has('Episode')) {
+        const kinds = new Set<string>([wanted.has('Movie') ? 'movie' : '', wanted.has('Episode') ? 'episode' : '']);
+        for (const entry of snapshot.history) if (kinds.has(entry.kind)) played.push(entry);
+        const database: any = require('../database');
+        const rows: any[] = await database.listPlaystatePlayedFor(userUUID, envInt('JELLYFIN_HISTORY_LOCAL_LIMIT', 5000, 1), profile).catch(() => []);
+        for (const row of rows) {
+          const videoId = String(row.video_id);
+          if (snapshot.episodes.has(videoId) || snapshot.movies.has(videoId)) continue;
+          const parsed = parseStremioId(videoId);
+          if (!parsed) continue;
+          const isEpisode = parsed.episode !== null;
+          if (!kinds.has(isEpisode ? 'episode' : 'movie')) continue;
+          const at = Number(row.last_played_at) || 0;
+          played.push(
+            isEpisode
+              ? { kind: 'episode', id: videoId, metaId: parsed.base, mediaType: videoId.startsWith('kitsu:') ? 'anime' : 'series', at }
+              : { kind: 'movie', id: videoId, mediaType: 'movie', at }
+          );
+        }
+      }
+
+      if (wanted.has('Series')) {
+        const shown = new Set<object>();
+        for (const [key, counts] of snapshot.series) {
+          if (shown.has(counts) || !(counts.total > 0 && counts.watched >= counts.total)) continue;
+          shown.add(counts);
+          played.push({ kind: 'series', id: key, mediaType: key.startsWith('kitsu:') ? 'anime' : 'series', at: counts.at ?? 0 });
+        }
+      }
+
+      played.sort((a, b) => b.at - a.at || b.id.localeCompare(a.id, undefined, { numeric: true }));
+      if (countOnly) {
+        res.json(itemList([], played.length, startIndex));
+        return;
+      }
+
+      const page = played.slice(startIndex, startIndex + limit);
+      const shows = [...new Set(page.flatMap((entry) => (entry.kind === 'episode' && entry.metaId ? [entry.metaId] : [])))];
+      await warmSeriesIndex(userUUID, shows);
+      const built = await mapWithConcurrency(page, shelfConcurrency(), async (entry): Promise<any | null> => {
+        if (entry.kind === 'movie') {
+          const meta = await fetchMeta(userUUID, 'movie', entry.id);
+          return meta ? metaToBaseItem(meta, 'movie', serverId, null) : null;
+        }
+        if (entry.kind === 'series') {
+          const meta = await fetchMeta(userUUID, 'series', entry.id);
+          return meta ? metaToBaseItem(meta, entry.mediaType, serverId, null) : null;
+        }
+        if (!entry.metaId) return null;
+        const meta = await seriesIndex(userUUID, entry.metaId);
+        if (!meta) return null;
+        const mediaType = entry.mediaType === 'anime' ? 'anime' : 'series';
+        const episodes = buildEpisodes(meta, mediaType, encodeJellyfinId({ k: 'series', t: mediaType, i: String(meta.id) }), serverId, null);
+        return (await locateEpisode(episodes, entry.id, mediaType, String(meta.id))) ?? null;
+      });
+      const items = built.filter(Boolean);
+      await applyWatchedState(items, snapshot, userUUID, profile);
+      const seen = new Set<string>();
+      const shelf = items.filter((item: any) => !seen.has(item.Id) && seen.add(item.Id)).filter(keepsUnderProfileCap(config));
+      logger.debug(`History for ${userUUID} from ${clientInfo(req).client}: ${shelf.length} of ${played.length}, types ${[...wanted].join(',')}, from ${startIndex}, in ${Date.now() - started}ms`);
+      res.json(itemList(shelf, played.length, startIndex));
+      return;
+    }
+
     const searchTerm = req.query.SearchTerm ?? req.query.searchTerm;
 
     // Particular items by id, not a listing of whichever library comes first.

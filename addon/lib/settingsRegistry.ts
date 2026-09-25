@@ -875,6 +875,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_HISTORY_LOCAL_LIMIT',
+    envVar: 'JELLYFIN_HISTORY_LOCAL_LIMIT',
+    label: 'Jellyfin History Local Plays',
+    description: 'How many plays recorded on this server, beyond what the tracker holds, the watched history and its counts read.',
+    category: 'Features',
+    type: 'number',
+    default: 5000,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_UPCOMING_MAX_PAGES',
     envVar: 'JELLYFIN_UPCOMING_MAX_PAGES',
     label: 'Jellyfin Upcoming MDBList Pages',
