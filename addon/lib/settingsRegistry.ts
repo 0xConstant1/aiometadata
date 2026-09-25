@@ -875,6 +875,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_UPCOMING_MAX_PAGES',
+    envVar: 'JELLYFIN_UPCOMING_MAX_PAGES',
+    label: 'Jellyfin Upcoming MDBList Pages',
+    description: 'How many pages of 100 shows are read from MDBList\'s upcoming episodes for the Upcoming row.',
+    category: 'Features',
+    type: 'number',
+    default: 10,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_DASHBOARD_DESCRIBE_CONCURRENCY',
     envVar: 'JELLYFIN_DASHBOARD_DESCRIBE_CONCURRENCY',
     label: 'Jellyfin Dashboard Lookups at Once',

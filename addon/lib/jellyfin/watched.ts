@@ -531,8 +531,14 @@ async function readWatchedSnapshot(userUUID: string, config: any, force = false)
   }
 }
 
-/** Shows the tracker says are caught up with an episode on the way, as followed shows. */
-export async function upcomingFollowed(config: any, days: number): Promise<Array<{ metaId: string; mediaType: 'anime' | 'series' }>> {
+/** A followed show's next episode as the tracker names it, with when it airs. */
+export type UpcomingRow = Omit<NextUpRow, 'lastWatchedAt'>;
+
+/**
+ * Shows the tracker follows with an episode on the way, and that episode: watchlisted,
+ * in progress or caught up. Whether one counts as upcoming is the shelf's call.
+ */
+export async function upcomingFollowed(config: any, days: number): Promise<UpcomingRow[]> {
   const { readsTrackers } = require('./profiles');
   if (!readsTrackers(config)) return [];
   const apiKey = credentialFor(config, 'mdblist');
@@ -542,16 +548,25 @@ export async function upcomingFollowed(config: any, days: number): Promise<Array
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   try {
     return await cacheWrapGlobal(
-      `jellyfin_upcoming_mdblist_v1:${keyHash}:${days}`,
+      `jellyfin_upcoming_mdblist_v3:${keyHash}:${days}`,
       async () => {
         const { fetchMDBListUpcoming } = require('../../utils/mdbList');
-        const out: Array<{ metaId: string; mediaType: 'anime' | 'series' }> = [];
+        const out: UpcomingRow[] = [];
         for (const item of await fetchMDBListUpcoming(apiKey, days)) {
           const season = Number(item?.next_episode?.season);
           const episode = Number(item?.next_episode?.episode);
           if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
           const resolved = await videoIdFor(item?.show?.ids ?? {}, season, episode, config);
-          if (resolved) out.push({ metaId: resolved.metaId, mediaType: resolved.mediaType });
+          if (!resolved) continue;
+          // Numbered as Next Up numbers them: anime by its own video, the rest by season and episode.
+          out.push({
+            metaId: resolved.metaId,
+            mediaType: resolved.mediaType,
+            videoId: resolved.mediaType === 'anime' ? resolved.videoId : null,
+            season: resolved.mediaType === 'anime' ? null : season,
+            episode,
+            airsAt: Date.parse(item?.next_episode?.air_date ?? '') || null,
+          });
         }
         return out;
       },

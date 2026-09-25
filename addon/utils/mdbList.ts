@@ -7,6 +7,7 @@ import { mapWithLimit } from "./concurrency.js";
 import { cacheWrapMetaSmart, cacheWrapMDBListGenres, cacheWrapGlobal } from "../lib/getCache.js";
 import { UserConfig } from "../types/index.js";
 import { getSetting } from "../lib/settingsService.js";
+import { envInt } from "./envNumber.js";
 const consola = require('consola');
 const crypto = require('crypto');
 const { socksDispatcher } = require('fetch-socks');
@@ -1508,22 +1509,33 @@ async function fetchMDBListUpNext(
   }
 }
 
-/** Caught-up shows with an episode airing within `days` (MDBList caps it at 90). */
+/**
+ * The next future episode of every show the user follows, airing within `days` (MDBList
+ * caps it at 90): watchlisted, in progress or caught up. Callers decide which count as
+ * upcoming. `instant` gives next_episode.air_date as a UTC timestamp, not a bare date.
+ */
 async function fetchMDBListUpcoming(apiKey: string, days: number, limit: number = 100): Promise<any[]> {
   if (!apiKey) return [];
   const window = Math.min(Math.max(1, Math.round(days)), 90);
-  const url = `https://api.mdblist.com/upnext/upcoming?apikey=${apiKey}&days=${window}&limit=${Math.min(Math.max(1, limit), 100)}`;
+  const pageSize = Math.min(Math.max(1, limit), 100);
+  const maxPages = envInt('JELLYFIN_UPCOMING_MAX_PAGES', 10, 1);
+  const items: any[] = [];
   try {
-    const response: any = await makeRateLimitedRequest(
-      () => httpGet(url, { dispatcher: mdblistDispatcher }),
-      apiKey,
-      `MDBList fetchMDBListUpcoming (days: ${window})`
-    );
-    return Array.isArray(response.data?.items) ? response.data.items : [];
+    for (let page = 0; page < maxPages; page += 1) {
+      const url = `https://api.mdblist.com/upnext/upcoming/episodes?apikey=${apiKey}&days=${window}&limit=${pageSize}&offset=${page * pageSize}&air_date_format=instant`;
+      const response: any = await makeRateLimitedRequest(
+        () => httpGet(url, { dispatcher: mdblistDispatcher }),
+        apiKey,
+        `MDBList fetchMDBListUpcoming (days: ${window}, page: ${page + 1})`
+      );
+      const pageItems = Array.isArray(response.data?.items) ? response.data.items : [];
+      items.push(...pageItems);
+      if (!response.data?.has_more || pageItems.length === 0) break;
+    }
   } catch (error: any) {
-    logger.error(`[MDBList Upcoming] Error fetching upcoming shows: ${error.message}`);
-    return [];
+    logger.error(`[MDBList Upcoming] Error fetching upcoming episodes: ${error.message}`);
   }
+  return items;
 }
 
 /**

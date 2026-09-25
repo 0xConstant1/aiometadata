@@ -2263,6 +2263,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const followed = [...shows.entries()];
     const named = new Map<string, NextUpRow>();
     for (const row of snapshot.nextUp) if (row.airsAt) named.set(row.metaId, row);
+    // MDBList names each followed show's next episode and when it airs, in progress or not,
+    // so its time is used only once the show passes the caught-up check below.
+    const timed = new Map<string, (typeof caughtUp)[number]>();
+    for (const row of caughtUp) if (row.airsAt) timed.set(row.metaId, row);
 
     const seen = new Set<string>();
     const premieres: any[] = [];
@@ -2292,7 +2296,17 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         if (episode) await applyWatchedState([episode], snapshot, userUUID, profile);
         if (!episode || episode.UserData?.Played !== true) return;
       }
-      const next = episodes
+      // The episode the tracker names, at the time it gives, before the metadata's guess:
+      // the metadata often has only a day, or no date yet.
+      let next: any;
+      const timedRow = timed.get(metaId);
+      if (timedRow && within(timedRow.airsAt as number)) {
+        next = timedRow.videoId
+          ? await locateEpisode(episodes, timedRow.videoId, mediaType, String(meta.id))
+          : episodes.find((e: any) => e.IndexNumber === timedRow.episode && (timedRow.season === null || e.ParentIndexNumber === timedRow.season));
+        if (next) next.PremiereDate = new Date(timedRow.airsAt as number).toISOString();
+      }
+      next ??= episodes
         .filter((episode: any) => within(premiereAt(episode)))
         .sort((a: any, b: any) => premiereAt(a) - premiereAt(b))[0];
       if (!next) return;
