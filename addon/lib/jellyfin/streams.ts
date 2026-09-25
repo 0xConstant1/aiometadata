@@ -240,6 +240,11 @@ export function toPlayable(stream: any): PlayableStream | null {
   };
 }
 
+// Lifetimes are read on every write, not when the cache is built, so a change made
+// in the dashboard applies to the next entry without a restart.
+const streamTtlMs = () => envInt('JELLYFIN_STREAM_CACHE_TTL', 60, 1) * 1000;
+const subtitleTtlMs = () => envInt('JELLYFIN_SUBTITLE_TTL', 60 * 60, 60) * 1000;
+
 // A source is renamed to its item's id when it is the default one, so what
 // belongs to the file is kept by the URL, which survives that.
 const fileOf = new LRUCache<string, { subtitles: SubtitleTrack[]; hints: FileHints }>({
@@ -266,12 +271,12 @@ const failures = new LRUCache<string, string>({
 });
 
 export function rememberStreams(key: string, streams: any[]): void {
-  resolved.set(key, streams);
+  resolved.set(key, streams, { ttl: streamTtlMs() });
   failures.delete(key);
 }
 
 export function rememberFailure(key: string, reason: string): void {
-  failures.set(key, reason);
+  failures.set(key, reason, { ttl: streamTtlMs() });
 }
 
 export function recallFailure(key: string): string | undefined {
@@ -535,10 +540,14 @@ export function mediaSourceFor(
   playable: PlayableStream,
   runtimeTicks: number | null
 ): any {
-  fileOf.set(playable.url, {
-    subtitles: playable.subtitles,
-    hints: { videoHash: playable.videoHash, videoSize: playable.size, filename: playable.filename },
-  });
+  fileOf.set(
+    playable.url,
+    {
+      subtitles: playable.subtitles,
+      hints: { videoHash: playable.videoHash, videoSize: playable.size, filename: playable.filename },
+    },
+    { ttl: subtitleTtlMs() }
+  );
   return {
     Protocol: 'Http',
     Id: playable.id,

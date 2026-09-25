@@ -312,7 +312,8 @@ export async function fetchAddonSubtitles(base: string, type: string, videoId: s
       seen.add(track);
       out.push({ id: String(s?.id ?? track), url: track, lang: String(s?.lang ?? 'und'), source: 'addon' });
     }
-    addonTracks.set(key, out);
+    // Read on every write, so a dashboard change applies without a restart.
+    addonTracks.set(key, out, { ttl: envInt('JELLYFIN_SUBTITLE_TTL', 60 * 60, 60) * 1000 });
     return out;
   } catch (error: any) {
     logger.debug(`Subtitles ${type}/${videoId} failed: ${error?.message || error}`);

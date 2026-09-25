@@ -1362,6 +1362,8 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     type: 'number',
     default: 2000,
     min: 1,
+    // Each cache is sized once, when the server starts.
+    requiresRestart: true,
   },
   {
     key: 'JELLYFIN_STREAM_CACHE_TTL',
