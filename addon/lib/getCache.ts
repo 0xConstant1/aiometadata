@@ -2307,6 +2307,13 @@ async function cacheWrapMetaSmart(userUUID: string, metaId: string, method: () =
     }
 
     await writeMetaAlias({ config, metaId, aliasTo: idToCache, ttl, type, useShowPoster });
+    if (metaId !== idToCache) {
+      try {
+        require('./requestTracker').captureMetadataFromComponents(metaId, meta, meta.type, config?.language || 'en-US').catch(() => {});
+      } catch (error: any) {
+        cacheLogger.warn(`Failed to capture metadata for dashboard: ${error.message}`);
+      }
+    }
 
     return writeMetaComponentsWithConfig({
       config,
