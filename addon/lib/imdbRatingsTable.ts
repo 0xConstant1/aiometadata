@@ -86,7 +86,7 @@ export class RatingsTable {
       count++;
     }
 
-    return { table: RatingsTable.sorted(ids.slice(0, count), votes.slice(0, count), ratings.slice(0, count)), filtered };
+    return { table: RatingsTable.sorted(ids.subarray(0, count), votes.subarray(0, count), ratings.subarray(0, count)), filtered };
   }
 
   toBuffer(etag: string | null): Buffer {
@@ -141,18 +141,20 @@ export class RatingsTable {
     for (let i = 1; i < ids.length && sorted; i++) {
       if (ids[i - 1] > ids[i]) sorted = false;
     }
-    if (sorted) return new RatingsTable(ids, votes, ratings);
+    // Copied so the table does not keep the oversized growth buffers alive.
+    if (sorted) return new RatingsTable(ids.slice(), votes.slice(), ratings.slice());
 
-    // id in the high half, row in the low half: one native sort orders all three arrays.
-    const keys = new BigUint64Array(ids.length);
-    for (let i = 0; i < ids.length; i++) keys[i] = (BigInt(ids[i]) << 32n) | BigInt(i);
+    // id * rows + row: one native sort orders all three arrays, exact while that stays under 2^53.
+    const n = ids.length;
+    const keys = new Float64Array(n);
+    for (let i = 0; i < n; i++) keys[i] = ids[i] * n + i;
     keys.sort();
 
-    const sortedIds = new Uint32Array(ids.length);
-    const sortedVotes = new Uint32Array(ids.length);
-    const sortedRatings = new Uint8Array(ids.length);
-    for (let i = 0; i < keys.length; i++) {
-      const row = Number(keys[i] & 0xffffffffn);
+    const sortedIds = new Uint32Array(n);
+    const sortedVotes = new Uint32Array(n);
+    const sortedRatings = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const row = keys[i] % n;
       sortedIds[i] = ids[row];
       sortedVotes[i] = votes[row];
       sortedRatings[i] = ratings[row];

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { createGunzip } from 'zlib';
 import { createInterface } from 'readline';
-import { Readable, pipeline } from 'stream';
+import { pipeline } from 'stream';
 import { request } from 'undici';
 import consola from 'consola';
 import redis from './redisClient';
@@ -30,6 +30,7 @@ let ratingsLoaded = false;
 let ratingsUpdateInterval: ReturnType<typeof setInterval> | null = null;
 let ratingsCount = 0;
 let updateInFlight: Promise<boolean> | null = null;
+let inFlightForced = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
 let legacyRedisCopyDropped = false;
@@ -124,7 +125,7 @@ async function downloadAndCacheIMDbRatings(force = false): Promise<boolean> {
     });
 
     // pipeline, not pipe: a body error has to reach readline or the parse never ends.
-    const decompressed = pipeline(Readable.from(response.body as AsyncIterable<Uint8Array>), createGunzip(), () => {});
+    const decompressed = pipeline(response.body, createGunzip(), () => {});
     const lines = createInterface({ input: decompressed, crlfDelay: Infinity });
     const { table: next, filtered } = await RatingsTable.fromLines(lines, MIN_VOTES);
     logger.debug(`Filtered out ${filtered.toLocaleString()} ratings with < ${MIN_VOTES} votes.`);
@@ -170,11 +171,14 @@ function scheduleRetryIfFailed(success: boolean): boolean {
 
 /** A failed load retries with backoff rather than waiting for the next daily run. */
 function runRatingsUpdate(force = false): Promise<boolean> {
-  if (!updateInFlight) {
-    updateInFlight = downloadAndCacheIMDbRatings(force)
-      .then(scheduleRetryIfFailed)
-      .finally(() => { updateInFlight = null; });
+  if (updateInFlight) {
+    if (!force || inFlightForced) return updateInFlight;
+    return updateInFlight.then(() => runRatingsUpdate(true));
   }
+  inFlightForced = force;
+  updateInFlight = downloadAndCacheIMDbRatings(force)
+    .then(scheduleRetryIfFailed)
+    .finally(() => { updateInFlight = null; });
   return updateInFlight;
 }
 
