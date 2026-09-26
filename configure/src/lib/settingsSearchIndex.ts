@@ -63,12 +63,6 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ['rpdb', 'poster', 'rating', 'library'],
   },
   {
-    id: 'general.traktWatchTracking', section: 'general', anchor: 'trakt-watch-tracking',
-    label: 'Trakt Checkin',
-    description: 'Automatically sync your watch progress to external services when you play content.',
-    keywords: ['scrobble', 'checkin', 'progress', 'watched'],
-  },
-  {
     id: 'general.simklWatchTracking', section: 'general', anchor: 'simkl-watch-tracking',
     label: 'Simkl Checkin',
     description: 'Automatically sync your watch progress to external services when you play content.',

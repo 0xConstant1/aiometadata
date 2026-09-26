@@ -322,14 +322,13 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const watchlistOptions = useMemo<WatchlistOption[]>(() => {
     const candidates: Array<WatchlistOption & { ready: boolean }> = [
       { value: 'mdblist', label: 'MDBList', shelves: ['movies', 'series'], ready: Boolean(config.apiKeys?.mdblist) && config.mdblistWatchTracking !== false },
-      { value: 'trakt', label: 'Trakt', shelves: ['movies', 'series'], ready: Boolean(config.apiKeys?.traktTokenId) && config.traktWatchTracking !== false },
       { value: 'simkl', label: 'Simkl', shelves: ['movies', 'series', 'anime'], ready: Boolean(config.apiKeys?.simklTokenId) && config.simklWatchTracking !== false },
       { value: 'anilist', label: 'AniList', shelves: ['anime'], ready: Boolean(config.apiKeys?.anilistTokenId) && config.anilistWatchTracking !== false },
       { value: 'mal', label: 'MyAnimeList', shelves: ['anime'], ready: Boolean(config.apiKeys?.malTokenId) && config.malWatchTracking !== false },
       { value: 'publicmetadb', label: 'PublicMetaDB', shelves: ['movies', 'series'], ready: Boolean(config.apiKeys?.publicmetadb) && config.publicmetadbWatchTracking !== false && (config.catalogs ?? []).some((c) => c.id.startsWith('publicmetadb.list.')) },
     ];
     return candidates.filter((c) => c.ready).map(({ value, label, shelves }) => ({ value, label, shelves }));
-  }, [config.apiKeys, config.catalogs, config.mdblistWatchTracking, config.traktWatchTracking, config.simklWatchTracking, config.anilistWatchTracking, config.malWatchTracking, config.publicmetadbWatchTracking]);
+  }, [config.apiKeys, config.catalogs, config.mdblistWatchTracking, config.simklWatchTracking, config.anilistWatchTracking, config.malWatchTracking, config.publicmetadbWatchTracking]);
 
   const catalogCountFor = (chosen: string[]) => {
     const wanted = new Set(chosen.map((t) => t.toLowerCase()));

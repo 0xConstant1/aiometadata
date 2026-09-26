@@ -23,10 +23,44 @@ export interface ResumeRow {
   writtenAt?: number;
 }
 
-const snapshots = new LRUCache<string, ResumeRow[]>({
+interface HeldRows {
+  rows: ResumeRow[];
+  /** The tracker's activity when the rows were read; null where it reports none. */
+  fingerprint: string | null;
+  at: number;
+}
+
+const snapshots = new LRUCache<string, HeldRows>({
   max: envInt('JELLYFIN_RESUME_CACHE_MAX', 500, 1),
-  ttl: envInt('JELLYFIN_RESUME_TTL', 60, 1) * 1000,
+  ttl: envInt('JELLYFIN_RESUME_MAX_AGE', 6 * 60 * 60, 60) * 1000,
 });
+
+// A watch ends a paused session as surely as a pause starts one.
+const MDBLIST_PLAYBACK_FIELDS = ['paused_at', 'episode_paused_at', 'watched_at', 'episode_watched_at', 'season_watched_at'];
+
+/**
+ * What the tracker says about its playback, read from the activity digest the watched
+ * state already reads, so asking costs no call of its own. PublicMetaDB reports none.
+ */
+async function playbackFingerprint(service: Capable, credential: string, config: any): Promise<string | null> {
+  try {
+    if (service === 'simkl') {
+      const { getSimklToken, fetchSimklLastActivities } = require('../../utils/simklUtils');
+      const token = await getSimklToken(credential);
+      if (!token?.access_token) return null;
+      const activities = await fetchSimklLastActivities(token.access_token, config);
+      return activities?.all ? String(activities.all) : null;
+    }
+    if (service === 'mdblist') {
+      const { fetchMdblistLastActivities } = require('../../utils/mdbList');
+      const activities = await fetchMdblistLastActivities(credential);
+      return activities?.server_time ? MDBLIST_PLAYBACK_FIELDS.map((field) => activities[field] ?? '').join('|') : null;
+    }
+  } catch (error: any) {
+    logger.debug(`Playback activity from ${service} unavailable: ${error?.message || error}`);
+  }
+  return null;
+}
 
 const inFlight = new Map<string, Promise<ResumeRow[]>>();
 
@@ -345,8 +379,11 @@ async function serviceSnapshot(userUUID: string, config: any, service: Capable):
   if (!credential) return [];
 
   const key = `${userUUID}:${service}`;
-  const cached = snapshots.get(key);
-  if (cached) return cached;
+  const held = snapshots.get(key);
+  // Read again only once the tracker reports playback moved; one that reports nothing is read on a timer.
+  if (held && Date.now() - held.at < envInt('JELLYFIN_RESUME_TTL', 60, 1) * 1000) return held.rows;
+  const fingerprint = await playbackFingerprint(service, credential, config);
+  if (held && fingerprint && fingerprint === held.fingerprint) return held.rows;
 
   const generation = generationOf(userUUID);
   const flightKey = `${generation}:${key}`;
@@ -356,11 +393,11 @@ async function serviceSnapshot(userUUID: string, config: any, service: Capable):
   const started = (async () => {
     try {
       const rows = await rowsFrom(service, credential, config);
-      if (generationOf(userUUID) === generation) snapshots.set(key, rows);
+      if (generationOf(userUUID) === generation) snapshots.set(key, { rows, fingerprint, at: Date.now() });
       logger.debug(`Resume snapshot for ${userUUID} from ${service}: ${rows.length} rows`);
       return rows;
     } catch (error: any) {
-      if (generationOf(userUUID) === generation) snapshots.set(key, []);
+      if (generationOf(userUUID) === generation) snapshots.set(key, { rows: [], fingerprint: null, at: Date.now() });
       logger.warn(`Resume snapshot from ${service} failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_RESUME_TTL', 60, 1)}s`);
       return [];
     } finally {

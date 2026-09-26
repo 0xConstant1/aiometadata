@@ -10,6 +10,7 @@
 import consola from 'consola';
 import crypto from 'crypto';
 import { request } from 'undici';
+import { noteTrackerCall } from '../utils/trackerCalls';
 
 const database: any = require('./database');
 const idMapper: any = require('./id-mapper');
@@ -96,15 +97,23 @@ async function malRequest(url: string, options: { method?: string; form?: Record
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
   }
 
-  const { statusCode, body: responseBody } = await request(url, {
-    method: method as any,
-    headers,
-    body,
-    bodyTimeout: REQUEST_TIMEOUT_MS,
-    headersTimeout: REQUEST_TIMEOUT_MS
-  });
+  let response: any;
+  try {
+    response = await request(url, {
+      method: method as any,
+      headers,
+      body,
+      bodyTimeout: REQUEST_TIMEOUT_MS,
+      headersTimeout: REQUEST_TIMEOUT_MS
+    });
+  } catch (error) {
+    noteTrackerCall(url, 0);
+    throw error;
+  }
+  const { statusCode, body: responseBody } = response;
 
   const text = await responseBody.text();
+  noteTrackerCall(url, statusCode, text, response.headers?.['retry-after']);
   let data: any = null;
   try {
     data = text ? JSON.parse(text) : null;

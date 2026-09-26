@@ -80,7 +80,27 @@ function newestFirst(history: Map<string, HistoryEntry>): HistoryEntry[] {
   return [...history.values()].sort((a, b) => b.at - a.at);
 }
 
+/**
+ * What a tracker account's watched state says, held small: the titles themselves live in
+ * the watch index and are asked for a page at a time.
+ */
 export interface WatchedSnapshot {
+  /** The account the watch index is kept under; null when no tracker is read. */
+  source: string | null;
+  nextUp: NextUpRow[];
+  /** Shows the tracker lists as being watched, next episode aired or not. */
+  following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
+  /** Shows the tracker lists as dropped, under every id they answer to. */
+  dropped: Set<string>;
+  /** The drops could not be read, so `dropped` is not the whole list. */
+  droppedUnread?: boolean;
+  fingerprint: string;
+}
+
+const EMPTY: WatchedSnapshot = { source: null, nextUp: [], following: [], dropped: new Set(), fingerprint: '' };
+
+/** What a tracker library is assembled into before it is written to the watch index. */
+interface Collecting {
   /** Video ids in the space the meta publishes, e.g. `kitsu:49002:11`. */
   episodes: Set<string>;
   /** Base ids of watched films. */
@@ -88,68 +108,11 @@ export interface WatchedSnapshot {
   /** Watched and total episode counts, keyed by every id the series answers to. */
   series: Map<string, { watched: number; total: number; at?: number }>;
   nextUp: NextUpRow[];
-  /** Shows the tracker lists as being watched, next episode aired or not. */
   following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
   /** When a video was last watched, by video id, where the tracker says. */
   at: Map<string, number>;
-  /** Shows the tracker lists as dropped, under every id they answer to. */
   dropped: Set<string>;
-  /** The drops could not be read, so `dropped` is not the whole list. */
-  droppedUnread?: boolean;
-  history: HistoryEntry[];
-  fingerprint: string;
 }
-
-const EMPTY: WatchedSnapshot = {
-  episodes: new Set(),
-  movies: new Set(),
-  series: new Map(),
-  nextUp: [],
-  following: [],
-  at: new Map(),
-  dropped: new Set(),
-  history: [],
-  fingerprint: '',
-};
-
-// The raw lists live in Redis keyed by the activities digest, the way the
-// watched-id lookup already does it, so a refetch happens when Simkl says
-// something changed rather than on a timer. Only the hydrated sets are held
-// per process, keyed by that same digest.
-const hydrated = new LRUCache<string, WatchedSnapshot>({
-  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1),
-  ttl: envInt('JELLYFIN_WATCHED_TTL', 3600, 1) * 1000,
-});
-
-// Held under the credential alone: watching something changes the tracker's digest.
-const lastGood = new LRUCache<string, WatchedSnapshot>({
-  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1),
-  ttl: envInt('JELLYFIN_WATCHED_STALE_TTL', 24 * 60 * 60, 60) * 1000,
-});
-const rebuilding = new Set<string>();
-
-function hold(keyHash: string, key: string, snapshot: WatchedSnapshot): void {
-  if (!snapshot.episodes.size && !snapshot.movies.size && !snapshot.series.size) return;
-  hydrated.set(key, snapshot);
-  lastGood.set(keyHash, snapshot);
-}
-
-/** The rebuild is asked for with force, or it would find this held snapshot and return it. */
-function heldWhileRebuilding(keyHash: string, rebuild: () => Promise<WatchedSnapshot>): WatchedSnapshot | undefined {
-  const stale = lastGood.get(keyHash);
-  if (!stale || rebuilding.has(keyHash)) return stale;
-  rebuilding.add(keyHash);
-  void rebuild()
-    .catch((error: any) => logger.debug(`Watched snapshot refresh failed: ${error?.message || error}`))
-    .finally(() => rebuilding.delete(keyHash));
-  return stale;
-}
-
-// A failed read is held for a while; a dead token must not pull the library per request.
-const failed = new LRUCache<string, string>({
-  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1),
-  ttl: envInt('JELLYFIN_WATCHED_RETRY', 300, 1) * 1000,
-});
 
 /** Every id a series might be addressed by, so a lookup needs no id space. */
 function seriesKeys(ids: Record<string, any>): string[] {
@@ -198,7 +161,7 @@ function parseNextToWatch(value: any): { season: number | null; episode: number 
   return null;
 }
 
-function collectShow(entry: any, snapshot: WatchedSnapshot, isAnime: boolean, history: Map<string, HistoryEntry>): void {
+function collectShow(entry: any, snapshot: Collecting, isAnime: boolean, history: Map<string, HistoryEntry>): void {
   const ids = entry?.show?.ids ?? {};
   const keys = seriesKeys(ids);
 
@@ -296,16 +259,9 @@ interface RawSnapshot {
   droppedUnread?: boolean;
 }
 
-async function build(accessToken: string): Promise<RawSnapshot> {
-  const { fetchSimklAllItems } = require('../../utils/simklUtils');
-  const data = await fetchSimklAllItems(accessToken);
-
-  // A failed read is not an empty library. Returning empty here would be cached
-  // and served as though nothing had ever been watched, so every tick would
-  // disappear until it expired.
-  if (!data) throw new Error('The watched library could not be read');
-
-  const snapshot: WatchedSnapshot = {
+/** A Simkl library, as `/sync/all-items` returns it, made into a snapshot. */
+export function assembleSimkl(data: any): RawSnapshot {
+  const snapshot: Collecting = {
     episodes: new Set(),
     movies: new Set(),
     series: new Map(),
@@ -313,8 +269,6 @@ async function build(accessToken: string): Promise<RawSnapshot> {
     following: [],
     at: new Map(),
     dropped: new Set(),
-    history: [],
-    fingerprint: '',
   };
   const history = new Map<string, HistoryEntry>();
 
@@ -348,39 +302,91 @@ async function build(accessToken: string): Promise<RawSnapshot> {
 // MDBList pages its watched history and names an episode by its show's ids and
 // a season number, so an anime row needs the same anidb pivot the resume path
 // uses before it matches what the meta publishes.
-async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
+export interface MdblistData {
+  movieRows: any[];
+  episodeRows: any[];
+  /** MDBList's own up-next list; empty when it could not be read. */
+  upNext: any[];
+  droppedShows: any[];
+  droppedUnread: boolean;
+}
+
+export async function fetchMdblistUpNext(apiKey: string): Promise<any[]> {
+  const upNext: any[] = [];
+  try {
+    const { fetchMDBListUpNext } = require('../../utils/mdbList');
+    for (let page = 1; page <= envInt('JELLYFIN_NEXTUP_MDBLIST_PAGES', 5, 1); page++) {
+      const batch = await fetchMDBListUpNext(apiKey, page, 100);
+      upNext.push(...batch.items);
+      if (!batch.hasMore || !batch.items.length) break;
+    }
+  } catch (error: any) {
+    logger.warn(`MDBList up next failed, seeding from history: ${error?.message || error}`);
+  }
+  return upNext;
+}
+
+export async function fetchMdblistDropped(apiKey: string): Promise<{ shows: any[]; unread: boolean }> {
   const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
   const pageSize = envInt('JELLYFIN_WATCHED_PAGE_SIZE', 1000, 1);
   const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
+  const shows: any[] = [];
+  try {
+    for (let offset = 0; offset < maxPages * pageSize; offset += pageSize) {
+      const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/dropped?limit=${pageSize}&offset=${offset}&apikey=${apiKey}`, apiKey, 'MDBList dropped');
+      const page = Array.isArray(response?.data?.shows) ? response.data.shows : [];
+      shows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return { shows, unread: false };
+  } catch (error: any) {
+    logger.warn(`MDBList dropped shows failed: ${error?.message || error}`);
+    return { shows, unread: true };
+  }
+}
 
+/** Every page of a user's MDBList watched history, optionally only what changed since a time. */
+export async function fetchMdblistWatched(apiKey: string, mediatype: 'episode' | 'movie' | 'show', since?: string): Promise<any[]> {
+  const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
+  const pageSize = envInt('JELLYFIN_WATCHED_PAGE_SIZE', 1000, 1);
+  const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
+  const collected: any[] = [];
+  let cursor = '';
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const url =
+      `https://api.mdblist.com/sync/watched?mediatype=${mediatype}` +
+      `&limit=${pageSize}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` +
+      // Sent with every page: the cursor alone carries on into older history.
+      `${since ? `&since=${encodeURIComponent(since)}` : ''}` +
+      `&apikey=${apiKey}`;
+    const response = await makeRateLimitedMDBListRequest(url, apiKey, `MDBList watched ${mediatype} page ${page + 1}`);
+    const body = response?.data ?? {};
+    const batch = body[`${mediatype}s`];
+    if (!Array.isArray(batch) || !batch.length) break;
+
+    collected.push(...batch);
+    cursor = body?.pagination?.next_cursor ?? '';
+    if (!cursor) break;
+  }
+
+  return collected;
+}
+
+export async function assembleMdblist(data: MdblistData, config: any): Promise<RawSnapshot> {
+  const { movieRows, episodeRows, upNext, droppedShows, droppedUnread } = data;
+  const { Resolutions } = require('./resolutions');
+  const resolutions = new Resolutions();
+  await resolutions.preload(
+    [
+      ...episodeRows.map((entry: any) => [entry?.episode?.show?.ids ?? {}, Number(entry?.episode?.season), Number(entry?.episode?.number)]),
+      ...upNext.map((item: any) => [item?.show?.ids ?? {}, Number(item?.next_episode?.season), Number(item?.next_episode?.episode)]),
+    ],
+    []
+  );
   const episodes = new Set<string>();
   const movies = new Set<string>();
   const series = new Map<string, { watched: number; total: number; at?: number }>();
-
-  const read = async (mediatype: 'episode' | 'movie'): Promise<any[]> => {
-    const collected: any[] = [];
-    let cursor = '';
-
-    for (let page = 0; page < maxPages; page += 1) {
-      const url =
-        `https://api.mdblist.com/sync/watched?mediatype=${mediatype}` +
-        `&limit=${pageSize}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` +
-        `&apikey=${apiKey}`;
-      const response = await makeRateLimitedMDBListRequest(url, apiKey, `MDBList watched ${mediatype} page ${page + 1}`);
-      const body = response?.data ?? {};
-      const batch = mediatype === 'episode' ? body.episodes : body.movies;
-      if (!Array.isArray(batch) || !batch.length) break;
-
-      collected.push(...batch);
-      cursor = body?.pagination?.next_cursor ?? '';
-      if (!cursor) break;
-    }
-
-    return collected;
-  };
-
-  const movieRows = await read('movie');
-  const episodeRows = await read('episode');
   if (!movieRows.length && !episodeRows.length) logger.debug('No watched history on MDBList');
 
   const at = new Map<string, number>();
@@ -404,7 +410,7 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
     const ids = episode?.show?.ids ?? {};
     if (!Number.isFinite(season) || !Number.isFinite(number)) continue;
 
-    const resolved = await videoIdFor(ids, season, number, config);
+    const resolved = await resolutions.episode(ids, season, number, config);
     if (!resolved) continue;
 
     episodes.add(resolved.videoId);
@@ -427,22 +433,11 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
   // history seeds it only when that call fails: the last episode watched, from
   // which the shelf moves on.
   const nextUp: NextUpRow[] = [];
-  const upNext: any[] = [];
-  try {
-    const { fetchMDBListUpNext } = require('../../utils/mdbList');
-    for (let page = 1; page <= envInt('JELLYFIN_NEXTUP_MDBLIST_PAGES', 5, 1); page++) {
-      const batch = await fetchMDBListUpNext(apiKey, page, 100);
-      upNext.push(...batch.items);
-      if (!batch.hasMore || !batch.items.length) break;
-    }
-  } catch (error: any) {
-    logger.warn(`MDBList up next failed, seeding from history: ${error?.message || error}`);
-  }
   for (const item of upNext) {
     const season = Number(item?.next_episode?.season);
     const number = Number(item?.next_episode?.episode);
     if (!Number.isFinite(season) || !Number.isFinite(number)) continue;
-    const resolved = await videoIdFor(item?.show?.ids ?? {}, season, number, config);
+    const resolved = await resolutions.episode(item?.show?.ids ?? {}, season, number, config);
     if (!resolved) continue;
     const total = Number(item?.progress?.total_episode_count) || 0;
     if (total > 0) {
@@ -473,18 +468,9 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
   }
 
   const dropped = new Set<string>();
-  let droppedUnread = false;
-  try {
-    for (let offset = 0; offset < maxPages * pageSize; offset += pageSize) {
-      const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/dropped?limit=${pageSize}&offset=${offset}&apikey=${apiKey}`, apiKey, 'MDBList dropped');
-      const shows = Array.isArray(response?.data?.shows) ? response.data.shows : [];
-      for (const item of shows) for (const key of seriesKeysWithKitsu(item?.show?.ids ?? {})) dropped.add(key);
-      if (shows.length < pageSize) break;
-    }
-  } catch (error: any) {
-    logger.warn(`MDBList dropped shows failed: ${error?.message || error}`);
-    droppedUnread = true;
-  }
+  for (const item of droppedShows) for (const key of seriesKeysWithKitsu(item?.show?.ids ?? {})) dropped.add(key);
+
+  await resolutions.save();
 
   return {
     episodes: [...episodes],
@@ -499,79 +485,283 @@ async function buildMdblist(apiKey: string, config: any): Promise<RawSnapshot> {
 }
 
 
-/**
- * Simkl suspends a client_id for polling the whole library, so a refetch is
- * gated on the activities digest and the snapshot is otherwise served from
- * cache however often a client asks.
- */
-async function readWatchedSnapshot(userUUID: string, config: any, force = false): Promise<WatchedSnapshot> {
+// --- The watch store ---------------------------------------------------------------
+//
+// Each tracker account's library is mirrored in the database and kept current from what
+// changed since the last sync (trackerMirror.ts). Each time the mirror moves, it is
+// assembled into the watch index: one row per watched film or episode as this server
+// publishes it, and the series counts. A page then asks the index for its own titles,
+// and what is held per account is only Next Up, the followed and the dropped shows.
+
+type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb';
+
+interface SummaryData {
+  nextUp: NextUpRow[];
+  following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
+  dropped: string[];
+  droppedUnread?: boolean;
+}
+
+const summaries = new LRUCache<string, WatchedSnapshot>({ max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) });
+// One build per account at a time, each after the last, so two versions never write the index at once.
+const indexBuilds = new Map<string, Promise<unknown>>();
+
+function viewOf(source: string, fingerprint: string, data: SummaryData): WatchedSnapshot {
+  return {
+    source,
+    nextUp: data?.nextUp ?? [],
+    following: data?.following ?? [],
+    dropped: new Set(data?.dropped ?? []),
+    droppedUnread: data?.droppedUnread === true,
+    fingerprint,
+  };
+}
+
+async function assembleFromMirror(service: MirroredService, credential: string, config: any): Promise<RawSnapshot> {
+  const { mirrorRows } = require('./trackerMirror');
+  const rows: Array<{ key: string; data: any }> = await mirrorRows(service, credential);
+  const byTime = (field: string) => (a: any, b: any) => (Date.parse(b?.[field] ?? '') || 0) - (Date.parse(a?.[field] ?? '') || 0);
+
+  if (service === 'simkl') {
+    const data: any = { movies: [], shows: [], anime: [] };
+    for (const row of rows) {
+      const type = row.key.split(':')[0];
+      if (data[type]) data[type].push(row.data);
+    }
+    return assembleSimkl(data);
+  }
+  if (service === 'mdblist') {
+    const movieRows: any[] = [];
+    const episodeRows: any[] = [];
+    let upNext: any[] = [];
+    let dropped: any = { shows: [], unread: false };
+    for (const row of rows) {
+      if (row.key.startsWith('movie:')) movieRows.push(row.data);
+      else if (row.key.startsWith('ep:')) episodeRows.push(row.data);
+      else if (row.key === 'upnext') upNext = Array.isArray(row.data) ? row.data : [];
+      else if (row.key === 'dropped') dropped = row.data ?? dropped;
+    }
+    movieRows.sort(byTime('last_watched_at'));
+    episodeRows.sort(byTime('last_watched_at'));
+    // MDBList names no followed shows.
+    return { ...(await assembleMdblist({ movieRows, episodeRows, upNext, droppedShows: dropped.shows ?? [], droppedUnread: dropped.unread === true }, config)), following: [] };
+  }
+  const plays: any[] = [];
+  let dropped: any = { items: [], unread: false };
+  for (const row of rows) {
+    if (row.key.startsWith('play:')) plays.push(row.data);
+    else if (row.key === 'dropped') dropped = row.data ?? dropped;
+  }
+  // Newest first, as PublicMetaDB lists them: the first play of an episode is its latest.
+  plays.sort(byTime('watched_at'));
+  return assemblePmdb({ rows: plays, droppedItems: dropped.items ?? [], droppedUnread: dropped.unread === true }, config);
+}
+
+/** Writes this server made that the tracker has not taken yet, laid over what it holds. */
+function withPending(raw: RawSnapshot, pending: Array<{ videoId: string; kind: 'movie' | 'episode'; metaId: string; played: boolean; at: number }>): void {
+  if (!pending.length) return;
+  const episodes = new Set(raw.episodes);
+  const movies = new Set(raw.movies);
+  const at = new Map(raw.at ?? []);
+  const history = new Map((raw.history ?? []).map((entry) => [entry.id, entry] as const));
+  const counts = new Map(raw.series ?? []);
+  for (const change of pending) {
+    const set = change.kind === 'movie' ? movies : episodes;
+    const had = set.has(change.videoId);
+    if (change.played === had) continue;
+    if (change.played) {
+      set.add(change.videoId);
+      at.set(change.videoId, change.at);
+      history.set(change.videoId, {
+        kind: change.kind,
+        id: change.videoId,
+        ...(change.kind === 'episode' ? { metaId: change.metaId } : {}),
+        mediaType: change.kind === 'movie' ? 'movie' : change.videoId.startsWith('kitsu:') ? 'anime' : 'series',
+        at: change.at,
+      });
+    } else {
+      set.delete(change.videoId);
+      at.delete(change.videoId);
+      history.delete(change.videoId);
+    }
+    // A show's ids share one counts object, so this moves the count under all of them.
+    const show = change.kind === 'episode' ? counts.get(change.metaId) : undefined;
+    if (show) show.watched = Math.max(0, Math.min(show.total, show.watched + (change.played ? 1 : -1)));
+  }
+  raw.episodes = [...episodes];
+  raw.movies = [...movies];
+  raw.at = [...at];
+  raw.history = [...history.values()].sort((a, b) => b.at - a.at);
+}
+
+type IndexRow = { video_id: string; kind: string; meta_id: string; media_type: string; at: number; listed: number };
+
+/** The assembled library written over the index, as the rows that changed. */
+async function writeIndex(source: string, raw: RawSnapshot): Promise<{ added: number; removed: number }> {
+  const database: any = require('../database');
+  const { parseStremioId } = require('./ids');
+  const at = new Map(raw.at ?? []);
+  const listed = new Map((raw.history ?? []).map((entry) => [entry.id, entry] as const));
+  const want = new Map<string, IndexRow>();
+  const add = (id: string, kind: 'episode' | 'movie') => {
+    const entry = listed.get(id);
+    const base = kind === 'episode' ? parseStremioId(id)?.base ?? id : id;
+    want.set(id, {
+      video_id: id,
+      kind,
+      meta_id: entry?.metaId ?? base,
+      media_type: entry?.mediaType ?? (kind === 'movie' ? 'movie' : id.startsWith('kitsu:') ? 'anime' : 'series'),
+      at: at.get(id) ?? entry?.at ?? 0,
+      listed: entry ? 1 : 0,
+    });
+  };
+  for (const id of raw.episodes) add(id, 'episode');
+  for (const id of raw.movies) add(id, 'movie');
+  for (const entry of raw.history ?? []) if (!want.has(entry.id)) add(entry.id, entry.kind);
+
+  const have = new Map<string, IndexRow>((await database.listWatchIndex(source)).map((row: IndexRow) => [row.video_id, row]));
+  const changed: IndexRow[] = [];
+  for (const row of want.values()) {
+    const held = have.get(row.video_id);
+    if (!held || held.kind !== row.kind || held.meta_id !== row.meta_id || held.media_type !== row.media_type || held.at !== Math.round(row.at) || held.listed !== row.listed) changed.push(row);
+  }
+  const gone = [...have.keys()].filter((id) => !want.has(id));
+  if (changed.length) await database.upsertWatchIndex(source, changed);
+  if (gone.length) await database.deleteWatchIndex(source, gone);
+
+  const series = new Map(raw.series ?? []);
+  // A show's ids share one counts object; the first id it was filed under names the show.
+  const groups = new Map<object, string>();
+  for (const [key, counts] of series) if (!groups.has(counts)) groups.set(counts, key);
+  const heldSeries = new Map<string, any>((await database.listWatchSeries(source)).map((row: any) => [row.series_key, row]));
+  const seriesChanged: Array<{ series_key: string; group_key: string; watched: number; total: number; at: number }> = [];
+  for (const [key, counts] of series) {
+    const held = heldSeries.get(key);
+    const row = { series_key: key, group_key: groups.get(counts) ?? key, watched: counts.watched, total: counts.total, at: Math.round(counts.at ?? 0) };
+    if (!held || held.group_key !== row.group_key || held.watched !== row.watched || held.total !== row.total || held.at !== row.at) seriesChanged.push(row);
+  }
+  const seriesGone = [...heldSeries.keys()].filter((key) => !series.has(key));
+  if (seriesChanged.length) await database.upsertWatchSeries(source, seriesChanged);
+  if (seriesGone.length) await database.deleteWatchSeries(source, seriesGone);
+  return { added: changed.length, removed: gone.length };
+}
+
+async function buildIndex(service: MirroredService, credential: string, config: any, source: string, version: number): Promise<WatchedSnapshot> {
+  const database: any = require('../database');
+  const fingerprint = `store:${source}:v${version}`;
+  const stored = await database.getWatchSummary(source);
+  if (stored?.version === version) return viewOf(source, fingerprint, stored.data);
+
+  const started = Date.now();
+  const raw = await assembleFromMirror(service, credential, config);
+  const { pendingWatches } = require('../trackerOutbox');
+  withPending(raw, await pendingWatches(service, credential).catch(() => []));
+  const written = await writeIndex(source, raw);
+  const data: SummaryData = { nextUp: raw.nextUp ?? [], following: raw.following ?? [], dropped: raw.dropped ?? [], droppedUnread: raw.droppedUnread === true };
+  // Written last: an index left half-written by a crash is rebuilt, since its version never lands.
+  await database.putWatchSummary(source, version, data);
+  logger.debug(`Watch index for ${service} ${source.slice(-8)} at version ${version}: ${raw.episodes.length} episodes, ${raw.movies.length} films, ${written.added} rows written and ${written.removed} removed in ${Date.now() - started}ms`);
+  return viewOf(source, fingerprint, data);
+}
+
+async function storeSnapshot(userUUID: string, config: any, service: MirroredService, credential: string): Promise<WatchedSnapshot> {
+  const { syncMirror, mirrorVersion, sourceKeyFor } = require('./trackerMirror');
+  const source = sourceKeyFor(service, credential);
+  let version: number;
+  try {
+    version = await syncMirror(service, credential, config);
+  } catch (error: any) {
+    // A failed sync leaves the mirror as it was, which is still the best answer held.
+    version = await mirrorVersion(service, credential);
+    logger.warn(`Watch store sync from ${service} failed for ${userUUID}: ${error?.message || error}${version ? '; serving the mirror as last synced' : ''}`);
+    if (!version) {
+      const database: any = require('../database');
+      const stored = await database.getWatchSummary(source).catch(() => null);
+      return stored ? viewOf(source, `store:${source}:v${stored.version}`, stored.data) : EMPTY;
+    }
+  }
+
+  const key = `store:${source}:v${version}`;
+  const memo = summaries.get(key);
+  if (memo) return memo;
+  const prior = indexBuilds.get(source) ?? Promise.resolve();
+  const work = prior.catch(() => undefined).then(async () => {
+    const again = summaries.get(key);
+    if (again) return again;
+    const view = await buildIndex(service, credential, config, source, version);
+    summaries.set(key, view);
+    return view;
+  });
+  const settled = work.finally(() => {
+    if (indexBuilds.get(source) === settled) indexBuilds.delete(source);
+  });
+  indexBuilds.set(source, settled);
+  return work;
+}
+
+async function readWatchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
   const { readsTrackers } = require('./profiles');
   if (!readsTrackers(config)) return EMPTY;
-
   const service = sourceFor(config);
-  if (!service) return EMPTY;
+  const credential = service ? credentialFor(config, service) : undefined;
+  if (!service || !credential) return EMPTY;
+  return storeSnapshot(userUUID, config, service, credential);
+}
 
-  const credential = credentialFor(config, service);
-  if (!credential) return EMPTY;
+/** The watched titles among these ids, with when each was watched, 0 where the tracker does not say. */
+export async function watchedAmong(snapshot: WatchedSnapshot, ids: string[]): Promise<Map<string, number>> {
+  if (!snapshot.source || !ids.length) return new Map();
+  const database: any = require('../database');
+  const rows: Array<{ video_id: string; at: number }> = await database.watchIndexAmong(snapshot.source, ids).catch(() => []);
+  return new Map(rows.map((row) => [row.video_id, row.at]));
+}
 
-  if (service === 'mdblist') return mdblistSnapshot(userUUID, credential, config, force);
-  if (service === 'publicmetadb') return pmdbSnapshot(userUUID, credential, config, force);
-  if (service !== 'simkl') return EMPTY;
+export async function seriesCountsAmong(snapshot: WatchedSnapshot, keys: string[]): Promise<Map<string, { watched: number; total: number; at: number }>> {
+  if (!snapshot.source || !keys.length) return new Map();
+  const database: any = require('../database');
+  const rows: any[] = await database.watchSeriesAmong(snapshot.source, keys).catch(() => []);
+  return new Map(rows.map((row) => [row.series_key, { watched: row.watched, total: row.total, at: row.at }]));
+}
 
-  const tokenId = credential;
-  if (failed.has(`simkl:${tokenId}`)) return EMPTY;
+/** Watched films and episodes, one per title, newest first. */
+export async function watchedHistory(snapshot: WatchedSnapshot, kinds: Array<'movie' | 'episode'>, limit: number): Promise<HistoryEntry[]> {
+  if (!snapshot.source || !kinds.length) return [];
+  const database: any = require('../database');
+  const rows: any[] = await database.listWatchHistory(snapshot.source, kinds, limit).catch(() => []);
+  return rows.map((row) => ({
+    kind: row.kind,
+    id: row.video_id,
+    ...(row.kind === 'episode' ? { metaId: row.meta_id } : {}),
+    mediaType: row.media_type,
+    at: row.at,
+  }));
+}
 
-  try {
-    const { getSimklToken, getSimklActivityFingerprint } = require('../../utils/simklUtils');
-    const token = await getSimklToken(tokenId);
-    if (!token?.access_token) return EMPTY;
+/** Each show the tracker counts as fully watched, once. */
+export async function finishedSeries(snapshot: WatchedSnapshot): Promise<Array<{ id: string; at: number }>> {
+  if (!snapshot.source) return [];
+  const database: any = require('../database');
+  const rows: any[] = await database.listFinishedSeries(snapshot.source).catch(() => []);
+  return rows.map((row) => ({ id: row.series_key, at: row.at }));
+}
 
-    const accessToken = token.access_token;
-    const parts = await Promise.all(
-      (['movies', 'shows', 'anime'] as const).map((type) =>
-        getSimklActivityFingerprint(accessToken, type, 'completed', config)
-      )
-    );
-    const tokenHash = createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
-    const fingerprint = createHash('sha256').update(parts.join('|')).digest('hex').substring(0, 16);
+/** Every watched id, for the few readers that compare whole lists. Read, used and let go. */
+export async function allWatched(snapshot: WatchedSnapshot): Promise<{ episodes: string[]; movies: string[]; at: Map<string, number> }> {
+  if (!snapshot.source) return { episodes: [], movies: [], at: new Map() };
+  const database: any = require('../database');
+  const rows: IndexRow[] = await database.listWatchIndex(snapshot.source);
+  return {
+    episodes: rows.filter((row) => row.kind === 'episode').map((row) => row.video_id),
+    movies: rows.filter((row) => row.kind === 'movie').map((row) => row.video_id),
+    at: new Map(rows.filter((row) => row.at > 0).map((row) => [row.video_id, row.at])),
+  };
+}
 
-    const key = `${tokenHash}:${fingerprint}`;
-    const memo = force ? undefined : hydrated.get(key);
-    if (memo) return memo;
-    if (!force) {
-      const held = heldWhileRebuilding(tokenHash, () => readWatchedSnapshot(userUUID, config, true));
-      if (held) return held;
-    }
-
-    const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
-    const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_v5:${key}`,
-      () => build(accessToken),
-      envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
-      { upstream: true, resultClassifier: classifyResultAllowEmpty }
-    );
-
-    const snapshot: WatchedSnapshot = {
-      episodes: new Set(raw?.episodes ?? []),
-      movies: new Set(raw?.movies ?? []),
-      at: new Map(raw?.at ?? []),
-      series: new Map(raw?.series ?? []),
-      nextUp: raw?.nextUp ?? [],
-      following: raw?.following ?? [],
-      dropped: new Set(raw?.dropped ?? []),
-      history: raw?.history ?? [],
-      fingerprint,
-    };
-    hold(tokenHash, key, snapshot);
-    logger.debug(
-      `Watched snapshot for ${userUUID}: ${snapshot.episodes.size} episodes, ${snapshot.movies.size} films`
-    );
-    return snapshot;
-  } catch (error: any) {
-    failed.set(`simkl:${tokenId}`, String(error?.message || error));
-    logger.warn(`Watched snapshot failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
-    return EMPTY;
-  }
+export async function allSeriesCounts(snapshot: WatchedSnapshot): Promise<Map<string, { watched: number; total: number; at: number }>> {
+  if (!snapshot.source) return new Map();
+  const database: any = require('../database');
+  const rows: any[] = await database.listWatchSeries(snapshot.source);
+  return new Map(rows.map((row) => [row.series_key, { watched: row.watched, total: row.total, at: row.at }]));
 }
 
 /** A followed show's next episode as the tracker names it, with when it airs. */
@@ -622,36 +812,39 @@ export async function upcomingFollowed(config: any, days: number): Promise<Upcom
   }
 }
 
-// No activity digest on PublicMetaDB; the newest play and the total stand in.
-async function pmdbFingerprint(apiKey: string): Promise<string> {
-  const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
-  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
-  const head = await cacheWrapGlobal(
-    `pmdb_watched_head:${keyHash}`,
-    async () => {
-      const { fetchWatched, fetchDropped } = require('../../utils/publicmetadbUtils');
-      const [page, dropped] = await Promise.all([fetchWatched(apiKey, 1, 1), fetchDropped(apiKey, 1, 1).catch(() => ({ items: [], total: 0, totalPages: 0 }))]);
-      const first = page.items[0];
-      return `${page.total}|${first?.id ?? ''}|${first?.watched_at ?? ''}|${dropped.total}`;
-    },
-    envInt('PMDB_ACTIVITIES_TTL', 300, 30),
-    { upstream: true, resultClassifier: classifyResultAllowEmpty }
-  );
-  return createHash('sha256').update(String(head)).digest('hex').substring(0, 16);
+// The newest play of a show seeds Next Up, which moves on from it.
+export interface PmdbData {
+  rows: any[];
+  droppedItems: any[];
+  droppedUnread: boolean;
 }
 
-// The newest play of a show seeds Next Up, which moves on from it.
-async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
-  const { fetchWatched, fetchDropped } = require('../../utils/publicmetadbUtils');
-  const { movieBase } = require('./resume');
+export async function fetchPmdbDropped(apiKey: string): Promise<{ items: any[]; unread: boolean }> {
+  const { fetchDropped } = require('../../utils/publicmetadbUtils');
   const maxPages = envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1);
-
-  const rows: any[] = [];
-  for (let page = 1; page <= maxPages; page += 1) {
-    const result = await fetchWatched(apiKey, page, 500);
-    rows.push(...result.items);
-    if (page >= result.totalPages || !result.items.length) break;
+  const items: any[] = [];
+  try {
+    for (let page = 1; page <= maxPages; page += 1) {
+      const result = await fetchDropped(apiKey, page, 100);
+      items.push(...result.items);
+      if (page >= result.totalPages || !result.items.length) break;
+    }
+    return { items, unread: false };
+  } catch (error: any) {
+    logger.warn(`PublicMetaDB dropped shows failed: ${error?.message || error}`);
+    return { items, unread: true };
   }
+}
+
+/** A user's PublicMetaDB plays and drops made into a snapshot; plays newest first. */
+export async function assemblePmdb(data: PmdbData, config: any): Promise<RawSnapshot> {
+  const { rows, droppedItems, droppedUnread } = data;
+  const { Resolutions } = require('./resolutions');
+  const resolutions = new Resolutions();
+  await resolutions.preload(
+    rows.filter((row: any) => row?.tmdb_id && row.media_type !== 'movie').map((row: any) => [{ tmdb: row.tmdb_id }, Number(row?.season), Number(row?.episode)]),
+    rows.filter((row: any) => row?.tmdb_id && row.media_type === 'movie').map((row: any) => row.tmdb_id)
+  );
   if (!rows.length) logger.debug('No watched history on PublicMetaDB');
 
   const episodes = new Set<string>();
@@ -666,7 +859,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     if (!row?.tmdb_id) continue;
     const at = Date.parse(row?.watched_at ?? '') || 0;
     if (row.media_type === 'movie') {
-      const base = await movieBase(row.tmdb_id, config);
+      const base = await resolutions.movie(row.tmdb_id, config);
       movies.add(base);
       movies.add(`tmdb:${row.tmdb_id}`);
       if (at) {
@@ -679,7 +872,7 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
     const season = Number(row?.season);
     const episode = Number(row?.episode);
     if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
-    const resolved = await videoIdFor({ tmdb: row.tmdb_id }, season, episode, config);
+    const resolved = await resolutions.episode({ tmdb: row.tmdb_id }, season, episode, config);
     if (!resolved) continue;
     if (episodes.has(resolved.videoId)) continue;
     episodes.add(resolved.videoId);
@@ -709,19 +902,11 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
   }
 
   const dropped = new Set<string>();
-  let droppedUnread = false;
-  try {
-    for (let page = 1; page <= maxPages; page += 1) {
-      const result = await fetchDropped(apiKey, page, 100);
-      for (const item of result.items) {
-        if (item?.tmdb_id && (item?.media_type ?? 'tv') === 'tv') for (const key of await droppedKeys({ tmdb: item.tmdb_id }, config)) dropped.add(key);
-      }
-      if (page >= result.totalPages || !result.items.length) break;
-    }
-  } catch (error: any) {
-    logger.warn(`PublicMetaDB dropped shows failed: ${error?.message || error}`);
-    droppedUnread = true;
+  for (const item of droppedItems) {
+    if (item?.tmdb_id && (item?.media_type ?? 'tv') === 'tv') for (const key of await droppedKeys({ tmdb: item.tmdb_id }, config)) dropped.add(key);
   }
+
+  await resolutions.save();
 
   return {
     episodes: [...episodes],
@@ -736,140 +921,57 @@ async function buildPmdb(apiKey: string, config: any): Promise<RawSnapshot> {
   };
 }
 
-async function pmdbSnapshot(userUUID: string, apiKey: string, config: any, force = false): Promise<WatchedSnapshot> {
-  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
-  if (failed.has(`pmdb:${keyHash}`)) return EMPTY;
-  let key: string;
-  try {
-    key = `${keyHash}:${await pmdbFingerprint(apiKey)}`;
-  } catch (error: any) {
-    logger.warn(`PublicMetaDB history digest failed: ${error?.message || error}`);
-    return EMPTY;
-  }
+// A request answers from the snapshot held here and a refresh follows behind it, so a
+// tracker slow to answer never holds up a client; only the first read waits on one.
+const served = new LRUCache<string, { snapshot: WatchedSnapshot; at: number }>({
+  max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1),
+});
+const refreshing = new Set<string>();
 
-  const memo = force ? undefined : hydrated.get(key);
-  if (memo) return memo;
-  if (!force) {
-    const held = heldWhileRebuilding(keyHash, () => pmdbSnapshot(userUUID, apiKey, config, true));
-    if (held) return held;
-  }
-
-  try {
-    const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
-    const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_pmdb_v3:${key}`,
-      () => buildPmdb(apiKey, config),
-      envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
-      { upstream: true, resultClassifier: classifyResultAllowEmpty }
-    );
-
-    const snapshot: WatchedSnapshot = {
-      episodes: new Set(raw?.episodes ?? []),
-      movies: new Set(raw?.movies ?? []),
-      at: new Map(raw?.at ?? []),
-      series: new Map(raw?.series ?? []),
-      nextUp: raw?.nextUp ?? [],
-      following: raw?.following ?? [],
-      dropped: new Set(raw?.dropped ?? []),
-      droppedUnread: raw?.droppedUnread === true,
-      history: raw?.history ?? [],
-      fingerprint: key,
-    };
-    hold(keyHash, key, snapshot);
-    logger.debug(
-      `Watched snapshot for ${userUUID} from publicmetadb: ${snapshot.episodes.size} episodes, ${snapshot.movies.size} films`
-    );
-    return snapshot;
-  } catch (error: any) {
-    failed.set(`pmdb:${keyHash}`, String(error?.message || error));
-    logger.warn(`Watched snapshot from publicmetadb failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
-    return EMPTY;
-  }
+/** The tracker credential a snapshot is read with, hashed, which invalidation also knows. */
+function sourceHash(service: string, credential: string): string {
+  return createHash('sha256').update(`${service}:${credential}`).digest('hex').substring(0, 16);
 }
 
-/**
- * MDBList publishes the same kind of digest Simkl does, and its own docs say to
- * read it before deciding what changed, so the key is those timestamps rather
- * than a clock: a watch marked elsewhere lands on the next request.
- */
-async function mdblistFingerprint(apiKey: string): Promise<string> {
-  const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
-  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
-
-  const activities = await cacheWrapGlobal(
-    `mdblist_last_activities:${keyHash}`,
-    async () => {
-      const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
-      const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/last_activities?apikey=${apiKey}`, apiKey, 'MDBList activities');
-      return response?.data ?? {};
-    },
-    envInt('MDBLIST_ACTIVITIES_TTL', 300, 30),
-    { upstream: true }
-  );
-
-  // server_time moves on every call and would defeat the whole point.
-  const parts = ['watched_at', 'season_watched_at', 'episode_watched_at', 'journal_at', 'dropped_at']
-    .map((field) => activities?.[field] ?? '')
-    .join('|');
-
-  return createHash('sha256').update(parts).digest('hex').substring(0, 16);
+function servedKey(userUUID: string, config: any): string | null {
+  const service = sourceFor(config);
+  const credential = service ? credentialFor(config, service) : undefined;
+  if (!userUUID || !service || !credential) return null;
+  const { profileKey } = require('./profiles');
+  return `${sourceHash(service, credential)}:${userUUID}:${profileKey(config)}`;
 }
 
-async function mdblistSnapshot(userUUID: string, apiKey: string, config: any, force = false): Promise<WatchedSnapshot> {
-  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
-  if (failed.has(`mdblist:${keyHash}`)) return EMPTY;
-  let key: string;
-  try {
-    key = `${keyHash}:${await mdblistFingerprint(apiKey)}`;
-  } catch (error: any) {
-    failed.set(`mdblist:${keyHash}`, String(error?.message || error));
-    logger.warn(`MDBList activities failed: ${error?.message || error}; watched state not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
-    return EMPTY;
+async function readAndFollow(userUUID: string, config: any): Promise<WatchedSnapshot> {
+  const snapshot = await readWatchedSnapshot(userUUID, config);
+  // Titles unmarked on the tracker are cleared here behind the answer, not before it.
+  if (snapshot.fingerprint) {
+    followTrackerUnmarks(userUUID, config, snapshot).catch(() => undefined);
   }
+  return snapshot;
+}
 
-  const memo = force ? undefined : hydrated.get(key);
-  if (memo) return memo;
-  if (!force) {
-    const held = heldWhileRebuilding(keyHash, () => mdblistSnapshot(userUUID, apiKey, config, true));
-    if (held) return held;
-  }
-
-  try {
-    const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
-    const raw: RawSnapshot = await cacheWrapGlobal(
-      `jellyfin_watched_mdblist_v4:${key}`,
-      () => buildMdblist(apiKey, config),
-      envInt('JELLYFIN_WATCHED_REDIS_TTL', 24 * 60 * 60, 60),
-      { upstream: true, resultClassifier: classifyResultAllowEmpty }
-    );
-
-    const snapshot: WatchedSnapshot = {
-      episodes: new Set(raw?.episodes ?? []),
-      movies: new Set(raw?.movies ?? []),
-      at: new Map(raw?.at ?? []),
-      series: new Map(raw?.series ?? []),
-      nextUp: raw?.nextUp ?? [],
-      following: [],
-      dropped: new Set(raw?.dropped ?? []),
-      droppedUnread: raw?.droppedUnread === true,
-      history: raw?.history ?? [],
-      fingerprint: key,
-    };
-    hold(keyHash, key, snapshot);
-    logger.debug(
-      `Watched snapshot for ${userUUID} from mdblist: ${snapshot.episodes.size} episodes, ${snapshot.movies.size} films`
-    );
-    return snapshot;
-  } catch (error: any) {
-    failed.set(`mdblist:${keyHash}`, String(error?.message || error));
-    logger.warn(`Watched snapshot from mdblist failed: ${error?.message || error}; not read again for ${envInt('JELLYFIN_WATCHED_RETRY', 300, 1)}s`);
-    return EMPTY;
-  }
+function refreshServed(key: string, userUUID: string, config: any): void {
+  if (refreshing.has(key)) return;
+  refreshing.add(key);
+  readAndFollow(userUUID, config)
+    .then((snapshot) => served.set(key, { snapshot, at: Date.now() }))
+    .catch((error: any) => logger.debug(`Watched snapshot refresh failed for ${userUUID}: ${error?.message || error}`))
+    .finally(() => refreshing.delete(key));
 }
 
 export async function watchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
-  const snapshot = await readWatchedSnapshot(userUUID, config);
-  if (snapshot.fingerprint) await followTrackerUnmarks(userUUID, config, snapshot);
+  const key = servedKey(userUUID, config);
+  let snapshot: WatchedSnapshot;
+  const held = key ? served.get(key) : undefined;
+  if (held) {
+    snapshot = held.snapshot;
+    if (Date.now() - held.at >= envInt('JELLYFIN_WATCHED_REFRESH', 30, 5) * 1000) refreshServed(key!, userUUID, config);
+  } else {
+    snapshot = await readAndFollow(userUUID, config);
+    if (key) served.set(key, { snapshot, at: Date.now() });
+  }
+
+  // Kept out of what is held: a drop made here shows on the next read.
   const { dropsKeptHere, localDrops } = require('./dropped');
   if (!userUUID || !dropsKeptHere(config)) return snapshot;
   const local: Set<string> = await localDrops(userUUID, config);
@@ -911,7 +1013,8 @@ async function reconcileUnmarks(userUUID: string, profile: string, service: stri
   const database: any = require('../database');
   if (!(await database.listPlayedVideoIds(userUUID, 1, profile)).length) return;
 
-  const ids = [...snapshot.episodes, ...snapshot.movies];
+  const whole = await allWatched(snapshot);
+  const ids = [...whole.episodes, ...whole.movies];
   if (!ids.length) return;
 
   const { readGlobalCache, writeGlobalCache } = require('../getCache');
@@ -972,70 +1075,43 @@ async function movieSpellings(id: string, config: any): Promise<string[]> {
 }
 
 /**
- * A watch reported to this server has already reached the tracker, but the
- * activities digest it is keyed on is cached for minutes, so the snapshot would
- * keep serving the state from before. Dropping the digest lets the next request
- * see the change instead of waiting out the throttle.
+ * A watch or an unwatch made here goes into the watch index at once, rather than waiting
+ * for the tracker to take it and the mirror to follow; the next build from the mirror
+ * replaces it with what the tracker then holds.
  */
-async function snapshotSeed(config: any): Promise<string | null> {
-  const service = sourceFor(config);
-  if (!service || (service !== 'simkl' && service !== 'mdblist' && service !== 'publicmetadb')) return null;
-  const credential = credentialFor(config, service);
-  if (!credential) return null;
-  if (service !== 'simkl') return credential;
-  const { getSimklToken } = require('../../utils/simklUtils');
-  const token = await getSimklToken(credential);
-  return token?.access_token ?? null;
-}
-
 export async function applyLocalWatch(
   config: any,
   change: { videoId: string; metaId: string; kind: 'movie' | 'episode'; played: boolean }
 ): Promise<void> {
   try {
-    const seed = await snapshotSeed(config);
-    if (!seed) return;
-    const keyHash = createHash('sha256').update(seed).digest('hex').substring(0, 16);
+    const service = sourceFor(config);
+    const credential = service ? credentialFor(config, service) : undefined;
+    if (!service || !credential) return;
+    const { sourceKeyFor } = require('./trackerMirror');
+    const source = sourceKeyFor(service, credential);
+    const database: any = require('../database');
 
-    const patch = (snapshot: WatchedSnapshot): void => {
-      const set = change.kind === 'movie' ? snapshot.movies : snapshot.episodes;
-      const had = set.has(change.videoId);
-      if (change.played === had) return;
-      if (change.played) {
-        set.add(change.videoId);
-        snapshot.at.set(change.videoId, Date.now());
-        snapshot.history = [
-          {
-            kind: change.kind,
-            id: change.videoId,
-            metaId: change.kind === 'episode' ? change.metaId : undefined,
-            mediaType: change.kind === 'movie' ? 'movie' : change.videoId.startsWith('kitsu:') ? 'anime' : 'series',
-            at: Date.now(),
-          },
-          ...snapshot.history.filter((entry) => entry.id !== change.videoId),
-        ];
-      } else {
-        set.delete(change.videoId);
-        snapshot.at.delete(change.videoId);
-        snapshot.history = snapshot.history.filter((entry) => entry.id !== change.videoId);
-      }
-      if (change.kind !== 'episode') return;
-      const counts = snapshot.series.get(change.metaId);
-      if (!counts) return;
-      const watched = Math.max(0, Math.min(counts.total, counts.watched + (change.played ? 1 : -1)));
-      snapshot.series.set(change.metaId, { ...counts, watched, at: Date.now() });
-    };
-
-    const seen = new Set<WatchedSnapshot>();
-    const stale = lastGood.get(keyHash);
-    if (stale) { patch(stale); seen.add(stale); }
-    for (const key of [...hydrated.keys()]) {
-      if (!String(key).startsWith(`${keyHash}:`)) continue;
-      const snapshot = hydrated.get(key);
-      if (snapshot && !seen.has(snapshot)) { patch(snapshot); seen.add(snapshot); }
+    const had = (await database.watchIndexAmong(source, [change.videoId])).length > 0;
+    if (change.played === had) return;
+    if (change.played) {
+      await database.upsertWatchIndex(source, [{
+        video_id: change.videoId,
+        kind: change.kind,
+        meta_id: change.kind === 'episode' ? change.metaId : change.videoId,
+        media_type: change.kind === 'movie' ? 'movie' : change.videoId.startsWith('kitsu:') ? 'anime' : 'series',
+        at: Date.now(),
+        listed: 1,
+      }]);
+    } else {
+      await database.deleteWatchIndex(source, [change.videoId]);
     }
+    if (change.kind !== 'episode') return;
+    const counts = (await database.watchSeriesAmong(source, [change.metaId]))[0];
+    if (!counts) return;
+    const watched = Math.max(0, Math.min(counts.total, counts.watched + (change.played ? 1 : -1)));
+    await database.upsertWatchSeries(source, [{ series_key: change.metaId, group_key: counts.group_key, watched, total: counts.total, at: Date.now() }]);
   } catch (error: any) {
-    logger.debug(`Could not apply the local watch to the held snapshot: ${error?.message || error}`);
+    logger.debug(`Could not record the local watch in the watch index: ${error?.message || error}`);
   }
 }
 
@@ -1045,6 +1121,12 @@ export async function invalidateWatched(config: any): Promise<void> {
 
   const credential = credentialFor(config, service);
   if (!credential) return;
+
+  // What this server just changed must show on the next read, not after a refresh.
+  const prefix = `${sourceHash(service, credential)}:`;
+  for (const key of [...served.keys()]) {
+    if (String(key).startsWith(prefix)) served.delete(key);
+  }
 
   try {
     let seed = credential;
@@ -1056,10 +1138,6 @@ export async function invalidateWatched(config: any): Promise<void> {
     }
 
     const keyHash = createHash('sha256').update(seed).digest('hex').substring(0, 16);
-    for (const key of [...hydrated.keys()]) {
-      if (String(key).startsWith(`${keyHash}:`)) hydrated.delete(key);
-    }
-    lastGood.delete(keyHash);
 
     // An upstream key is stored as global:<key>, so it is deleted by name; a
     // pattern with a leading wildcard walked the whole keyspace per watch.
@@ -1075,10 +1153,6 @@ export async function invalidateWatched(config: any): Promise<void> {
   }
 }
 
-
-export function isWatched(snapshot: WatchedSnapshot, stremioId: string): boolean {
-  return snapshot.episodes.has(stremioId) || snapshot.movies.has(stremioId);
-}
 
 /**
  * Fills in watch state on items already built. Identity comes back out of the
@@ -1131,15 +1205,6 @@ async function ownPlayedEpisodes(userUUID: string, profile: string): Promise<Set
   return played;
 }
 
-async function playedUnderAnySpelling(videoId: string, snapshot: WatchedSnapshot, ownPlayed: Set<string>): Promise<boolean> {
-  if (snapshot.episodes.has(videoId) || ownPlayed.has(videoId)) return true;
-  const { videoIdAliases } = require('./aliases');
-  for (const alias of await videoIdAliases(videoId)) {
-    if (snapshot.episodes.has(alias) || ownPlayed.has(alias)) return true;
-  }
-  return false;
-}
-
 export async function applyWatchedState(
   items: any[],
   snapshot: WatchedSnapshot,
@@ -1181,6 +1246,30 @@ export async function applyWatchedState(
     ? await ownPlayedEpisodes(userUUID, profile)
     : new Set<string>();
 
+  // The page's titles are asked of the watch index together: each film and episode, the
+  // series counts, then each held show's aired episodes, other spellings only for a miss.
+  const seriesDescriptors = [...descriptors.values()].filter((d) => d.k === 'series');
+  const seriesCounts = await seriesCountsAmong(snapshot, seriesDescriptors.map((d) => String(d.i)));
+  const airedBySeries = new Map<string, string[] | null>();
+  if (userUUID) {
+    await Promise.all(seriesDescriptors.map(async (d) => {
+      if (seriesCounts.has(String(d.i)) || ownPlayed.size) airedBySeries.set(String(d.i), await airedEpisodeIds(userUUID, d));
+    }));
+  }
+  const direct = [
+    ...[...descriptors.values()].filter((d) => d.k === 'movie' || d.k === 'episode').map((d) => stremioIdFor(d)).filter(Boolean) as string[],
+    ...[...airedBySeries.values()].flatMap((ids) => ids ?? []),
+  ];
+  const watched = await watchedAmong(snapshot, direct);
+  const aliasesOf = new Map<string, string[]>();
+  const { videoIdAliases } = require('./aliases');
+  for (const videoId of new Set([...airedBySeries.values()].flatMap((ids) => ids ?? []))) {
+    if (!watched.has(videoId) && !ownPlayed.has(videoId)) aliasesOf.set(videoId, await videoIdAliases(videoId));
+  }
+  for (const [id, at] of await watchedAmong(snapshot, [...aliasesOf.values()].flat())) watched.set(id, at);
+  const playedUnderAnySpelling = (videoId: string): boolean =>
+    watched.has(videoId) || ownPlayed.has(videoId) || (aliasesOf.get(videoId) ?? []).some((alias) => watched.has(alias) || ownPlayed.has(alias));
+
   await Promise.all(
     items.map(async (item: any) => {
       const descriptor = descriptors.get(String(item?.Id));
@@ -1191,25 +1280,26 @@ export async function applyWatchedState(
         if (snapshot.dropped.size && itemKeys(item, String(descriptor.i)).some((key: string) => snapshot.dropped.has(key))) {
           item.UserData = { ...item.UserData, Likes: false };
         }
-        const counts = snapshot.series.get(String(descriptor.i)) ?? (ownPlayed.size ? { watched: 0, total: 0 } : null);
+        const held = seriesCounts.get(String(descriptor.i));
+        const counts = held ?? (ownPlayed.size ? { watched: 0, total: 0 } : null);
         if (!counts) return;
         // The show's aired episodes are the whole, specials and what has not
         // aired left out; a tracker's own counts stand in only when the meta
         // has none. Without either nothing is claimed, since zero unplayed
         // reads as fully watched.
-        const aired = userUUID ? await airedEpisodeIds(userUUID, descriptor) : [];
+        const aired = userUUID ? airedBySeries.get(String(descriptor.i)) ?? null : [];
         const total = aired?.length || counts.total;
         if (total <= 0) return;
-        const watched = aired?.length
-          ? (await Promise.all(aired.map((videoId) => playedUnderAnySpelling(videoId, snapshot, ownPlayed)))).filter(Boolean).length
+        const watchedCount = aired?.length
+          ? aired.filter((videoId) => playedUnderAnySpelling(videoId)).length
           : Math.min(counts.watched, total);
-        if (!watched && !snapshot.series.has(String(descriptor.i))) return;
-        const unplayed = Math.max(0, total - watched);
+        if (!watchedCount && !held) return;
+        const unplayed = Math.max(0, total - watchedCount);
         item.UserData = {
           ...item.UserData,
           UnplayedItemCount: unplayed,
           Played: unplayed === 0,
-          PlayedPercentage: Math.min(100, (watched / total) * 100),
+          PlayedPercentage: Math.min(100, (watchedCount / total) * 100),
         };
         return;
       }
@@ -1220,7 +1310,7 @@ export async function applyWatchedState(
       const record = own.get(stremioId);
       // The most recent action wins: a watch the tracker dates after this row's
       // last change was made elsewhere since, so it answers instead of the row.
-      const trackerAt = isWatched(snapshot, stremioId) ? snapshot.at.get(stremioId) ?? 0 : 0;
+      const trackerAt = watched.get(stremioId) ?? 0;
       if (record && trackerAt > (Number(record.updated_at) || 0)) {
         item.UserData = {
           ...item.UserData,
@@ -1247,7 +1337,7 @@ export async function applyWatchedState(
         return;
       }
 
-      if (!isWatched(snapshot, stremioId)) return;
+      if (!watched.has(stremioId)) return;
       item.UserData = { ...item.UserData, Played: true, PlayCount: 1 };
     })
   );

@@ -9,6 +9,7 @@ import {
   isWatchTrackingServiceEnabled,
   normalizeWatchTrackingMediaType,
   shouldTrackServiceMediaType,
+  type WatchTrackingService as TrackedService,
 } from './watchTracking';
 
 const logger: any = consola.withTag('SubtitleHandler');
@@ -227,15 +228,6 @@ function handleSubtitleRequest(type: string, id: string, config: any, userUUID: 
     if (shouldTrackServiceMediaType(config, 'simkl', mediaType)) {
       checkinSimkl(parsedId, config).catch((error: any) => {
         logger.error(`[Watch Tracking] Simkl tracking failed for ${id}: ${error.message}`, {
-          stack: error.stack,
-          parsedId: parsedId
-        });
-      });
-    }
-
-    if (shouldTrackServiceMediaType(config, 'trakt', mediaType)) {
-      checkinTrakt(parsedId, config).catch((error: any) => {
-        logger.error(`[Watch Tracking] Trakt tracking failed for ${id}: ${error.message}`, {
           stack: error.stack,
           parsedId: parsedId
         });
@@ -497,6 +489,13 @@ async function creditWatch(parsedId: ParsedMediaId, config: any): Promise<void> 
   await publicMetaDbHistory(parsedId, config, mediaType, 'watched');
 }
 
+/** The history half of a credited watch, for one service. */
+async function creditHistory(parsedId: ParsedMediaId, config: any, only: TrackedService): Promise<void> {
+  const mediaType = parsedId.type === 'movie' ? 'movie' : 'series';
+  if (only === 'publicmetadb') await publicMetaDbHistory(parsedId, config, mediaType, 'watched');
+  else await eachHistoryService(parsedId, config, mediaType, 'addToHistory', 'Crediting a watch', only);
+}
+
 // PublicMetaDB keeps plays rather than a watched flag and is keyed on TMDB.
 async function publicMetaDbHistory(
   parsedId: ParsedMediaId,
@@ -517,9 +516,11 @@ async function eachHistoryService(
   config: any,
   mediaType: 'movie' | 'series',
   method: 'addToHistory' | 'removeFromHistory' | 'clearPlayback',
-  what: string
+  what: string,
+  only?: TrackedService
 ): Promise<void> {
-  for (const service of ['trakt', 'simkl', 'mdblist'] as const) {
+  for (const service of ['simkl', 'mdblist'] as const) {
+    if (only && only !== service) continue;
     if (!shouldTrackServiceMediaType(config, service, mediaType)) continue;
     try {
       let utils: any;
@@ -529,27 +530,21 @@ async function eachHistoryService(
         utils = require('../utils/mdbList');
         credential = config.apiKeys?.mdblist;
       } else {
-        utils = service === 'trakt'
-          ? require('../utils/traktUtils')
-          : require('../utils/simklUtils');
-        const tokenId = service === 'trakt'
-          ? config.apiKeys?.traktTokenId
-          : config.apiKeys?.simklTokenId;
+        utils = require('../utils/simklUtils');
+        const tokenId = config.apiKeys?.simklTokenId;
         if (!tokenId) continue;
-        const token = service === 'trakt'
-          ? await utils.getTraktToken(tokenId)
-          : await utils.getSimklToken(tokenId);
+        const token = await utils.getSimklToken(tokenId);
         credential = token?.access_token;
       }
       if (!credential) continue;
 
       if (parsedId.type === 'movie') {
         const ids = normalizeIdsForMovie(parsedId);
-        if (ids) await utils[method](service === 'trakt' ? ids : await withTmdbId(ids, 'movie'), credential);
+        if (ids) await utils[method](await withTmdbId(ids, 'movie'), credential);
       } else {
         const resolution = await resolveSeriesIds(parsedId, config, service === 'simkl');
         if (resolution) {
-          const ids = service === 'trakt' ? resolution.ids : await withTmdbId(resolution.ids, 'series');
+          const ids = await withTmdbId(resolution.ids, 'series');
           await utils[method](ids, credential, resolution.season, resolution.episode);
         }
       }
@@ -564,12 +559,14 @@ async function markEpisodes(
   videoIds: string[],
   config: any,
   method: 'addToHistory' | 'removeFromHistory',
-  scope?: 'season' | 'series'
+  scope?: 'season' | 'series',
+  only?: TrackedService
 ): Promise<void> {
   const parsed = videoIds.map(parseMediaId).filter((p): p is ParsedMediaId => !!p && p.type === 'series');
   if (!parsed.length) return;
 
-  for (const service of ['trakt', 'simkl', 'mdblist'] as const) {
+  for (const service of ['simkl', 'mdblist'] as const) {
+    if (only && only !== service) continue;
     if (!shouldTrackServiceMediaType(config, service, 'series')) continue;
     try {
       let utils: any;
@@ -578,10 +575,10 @@ async function markEpisodes(
         utils = require('../utils/mdbList');
         credential = config.apiKeys?.mdblist;
       } else {
-        utils = service === 'trakt' ? require('../utils/traktUtils') : require('../utils/simklUtils');
-        const tokenId = service === 'trakt' ? config.apiKeys?.traktTokenId : config.apiKeys?.simklTokenId;
+        utils = require('../utils/simklUtils');
+        const tokenId = config.apiKeys?.simklTokenId;
         if (!tokenId) continue;
-        const token = service === 'trakt' ? await utils.getTraktToken(tokenId) : await utils.getSimklToken(tokenId);
+        const token = await utils.getSimklToken(tokenId);
         credential = token?.access_token;
       }
       if (!credential) continue;
@@ -590,7 +587,7 @@ async function markEpisodes(
       for (const id of parsed) {
         const resolution = await resolveSeriesIds(id, config, service === 'simkl');
         if (!resolution) continue;
-        const ids = service === 'trakt' ? resolution.ids : await withTmdbId(resolution.ids, 'series');
+        const ids = await withTmdbId(resolution.ids, 'series');
         const key = JSON.stringify(ids);
         const group = groups.get(key) ?? { ids, episodes: [] };
         group.episodes.push({ season: resolution.season, episode: resolution.episode });
@@ -604,6 +601,7 @@ async function markEpisodes(
     }
   }
 
+  if (only && only !== 'publicmetadb') return;
   if (!shouldTrackServiceMediaType(config, 'publicmetadb', 'series')) return;
 
   // PublicMetaDB deletes a whole show or season in one call; a watch is one call per episode.
@@ -631,18 +629,18 @@ async function markEpisodes(
   );
 }
 
-async function unwatch(parsedId: ParsedMediaId, config: any): Promise<void> {
+async function unwatch(parsedId: ParsedMediaId, config: any, only?: TrackedService): Promise<void> {
   const mediaType = parsedId.type === 'movie' ? 'movie' : 'series';
-  await eachHistoryService(parsedId, config, mediaType, 'removeFromHistory', 'Unwatch');
-  await clearMdblistResumePoint(parsedId, config, mediaType);
-  await publicMetaDbHistory(parsedId, config, mediaType, 'unwatch');
+  await eachHistoryService(parsedId, config, mediaType, 'removeFromHistory', 'Unwatch', only);
+  if (!only || only === 'mdblist') await clearMdblistResumePoint(parsedId, config, mediaType);
+  if (!only || only === 'publicmetadb') await publicMetaDbHistory(parsedId, config, mediaType, 'unwatch');
 }
 
 /** The resume point on every tracker, and nothing else: the watch stays. */
-async function clearResumePoint(parsedId: ParsedMediaId, config: any): Promise<void> {
+async function clearResumePoint(parsedId: ParsedMediaId, config: any, only?: TrackedService): Promise<void> {
   const mediaType = parsedId.type === 'movie' ? 'movie' : 'series';
-  await eachHistoryService(parsedId, config, mediaType, 'clearPlayback', 'Clear resume point');
-  await clearPublicMetaDbResumePoint(parsedId, config, mediaType);
+  await eachHistoryService(parsedId, config, mediaType, 'clearPlayback', 'Clear resume point', only);
+  if (!only || only === 'publicmetadb') await clearPublicMetaDbResumePoint(parsedId, config, mediaType);
 }
 
 async function clearPublicMetaDbResumePoint(parsedId: ParsedMediaId, config: any, mediaType: 'movie' | 'series'): Promise<void> {
@@ -762,60 +760,6 @@ async function checkinSimkl(
 }
 
 /**
- * `options` selects the Trakt call, matching the other trackers. Left out this
- * is the check-in, which Trakt flips to watched on its own once the runtime has
- * elapsed, whether or not anybody watched it.
- */
-async function checkinTrakt(
-  parsedId: ParsedMediaId,
-  config: any,
-  options: { action?: 'checkin' | 'start' | 'pause' | 'stop'; progress?: number } = {}
-): Promise<void> {
-  try {
-    const { checkinSeries, checkinMovie, getTraktToken } = require('../utils/traktUtils');
-    const tokenId = config.apiKeys?.traktTokenId;
-    const accessToken = await getTraktToken(tokenId);
-
-    if (!accessToken) {
-      logger.debug('[Trakt Checkin] Skipping checkin - missing or invalid token');
-      return;
-    }
-
-    if (parsedId.type === 'movie') {
-      const ids = normalizeIdsForMovie(parsedId);
-      if (!ids) {
-        logger.debug(`[Trakt Checkin] No valid identifiers for movie provider ${parsedId.provider}`);
-        return;
-      }
-
-      logger.debug(`[Trakt Checkin] Tracking movie (${buildIdSummary(ids)})`);
-      await checkinMovie(ids, accessToken, options);
-      return;
-    }
-
-    if (parsedId.type === 'series') {
-      const resolution = await resolveSeriesIds(parsedId, config);
-      if (!resolution) {
-        logger.debug(`[Trakt Checkin] Unable to resolve identifiers for series provider ${parsedId.provider}`);
-        return;
-      }
-
-      logger.debug(
-        `[Trakt Checkin] Checkin in episode (${buildIdSummary(resolution.ids)}) S${resolution.season}E${resolution.episode}`
-      );
-      await checkinSeries(resolution.ids, resolution.season, resolution.episode, accessToken, options);
-      return;
-    }
-
-    logger.debug(`[Trakt Checkin] Unsupported content type for tracking: ${parsedId.type}`);
-  } catch (error: any) {
-    logger.error(`[Trakt Checkin] Unexpected tracking error: ${error.message}`, {
-      stack: error.stack
-    });
-  }
-}
-
-/**
  * PublicMetaDB holds resume points and watch history, with no session to start.
  * Without options this stays the immediate mark-watched the subtitle trigger
  * sends; a stop saves the position, and marks watched only when the sender
@@ -870,11 +814,11 @@ export {
   parseMediaId,
   checkinSimkl,
   trackMdblistWatchStatus,
-  checkinTrakt,
   checkinPublicMetaDB,
   unwatch,
   clearResumePoint,
   creditWatch,
+  creditHistory,
   markEpisodes,
   shouldTrackMdblistWatch,
   shouldTrackAniList
@@ -884,11 +828,11 @@ module.exports = {
   parseMediaId,
   checkinSimkl,
   trackMdblistWatchStatus,
-  checkinTrakt,
   checkinPublicMetaDB,
   unwatch,
   clearResumePoint,
   creditWatch,
+  creditHistory,
   markEpisodes,
   shouldTrackMdblistWatch,
   shouldTrackAniList

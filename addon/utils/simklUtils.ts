@@ -1,5 +1,6 @@
 import { httpGet, httpPost, httpRequest } from "./httpClient.js";
 import { historyPayload, type EpisodeRef } from "./historyPayload";
+import { noteTrackerCall } from "./trackerCalls";
 import { getMeta } from "../lib/getMeta.js";
 import { cacheWrapMetaSmart, cacheWrapGlobal, cacheWrapJikanApi, classifyResultAllowEmpty } from "../lib/getCache.js";
 import { mapWithLimit } from "./concurrency";
@@ -265,6 +266,7 @@ async function makeRateLimitedRequest<T>(
     const pausedUntil = await simklPausedUntil(bucketKey);
     if (pausedUntil) {
       logger.debug(`[Simkl] Daily allowance spent until ${new Date(pausedUntil).toISOString()}, not calling - ${context}`);
+      noteTrackerCall(SIMKL_BASE_URL, 429, 'user_limit_exceeded', null, pausedUntil);
       throw simklQuotaExhausted(pausedUntil);
     }
 
@@ -480,27 +482,6 @@ async function getSimklRatings(
 // Paused sessions across every type, which is the shape a continue watching
 // row wants. Anime entries carry their own kitsu numbering alongside the TVDB
 // one, so an episode needs no mapping to name it the way the meta does.
-// The whole library in one call, movies, shows and anime together. Episodes are
-// only loaded for the in-progress buckets unless every status is asked for, so a
-// finished show would otherwise arrive as a bare count, and the anime variant
-// carries each episode's broadcast numbering beside its own. Simkl suspends a
-// client_id for polling this, so a caller gates the refetch on the digest.
-async function fetchSimklAllItems(accessToken: string): Promise<any> {
-  if (!accessToken) return null;
-
-  try {
-    const response = await makeAuthenticatedSimklRequest(
-      `${SIMKL_BASE_URL}/sync/all-items?extended=full_anime_seasons&episode_watched_at=yes&include_all_episodes=yes&next_watch_info=yes`,
-      accessToken,
-      'Simkl fetchSimklAllItems'
-    );
-    return response?.data ?? null;
-  } catch (error: any) {
-    logger.error(`[Simkl] Fetching the library failed: ${error.message}`);
-    return null;
-  }
-}
-
 async function fetchPlaybackSessions(accessToken: string): Promise<any[]> {
   if (!accessToken) return [];
 
@@ -627,47 +608,6 @@ async function fetchSimklUserStats(tokenId: string): Promise<any> {
   );
 }
 
-// Check if any significant timestamp has changed.
-// `reconcile` means items may have LEFT this list, which a date_from delta can
-// never tell us: it only carries additions and updates.
-function hasActivityChanged(oldActivity: any, newActivity: any, status: string): { changed: boolean, reconcile: boolean } {
-  if (!oldActivity) return { changed: true, reconcile: true };
-  if (!newActivity) return { changed: true, reconcile: true }; // Should not happen if API healthy
-
-  // Check generic "all" first
-  if (newActivity.all !== oldActivity.all) {
-    // Dig deeper
-    const categories = ['movies', 'tv_shows', 'anime'];
-    let contentChanged = false;
-    let contentLeft = false;
-
-    for (const cat of categories) {
-      if (newActivity[cat]?.all !== oldActivity[cat]?.all) {
-        // This category changed. Check specific status.
-        if (newActivity[cat]?.[status] !== oldActivity[cat]?.[status]) {
-          contentChanged = true;
-        }
-
-        // An item lives in exactly one status, so it leaves this list either by
-        // landing in a sibling one or by leaving the library. This status bumps
-        // on the way out too, but that is indistinguishable from an arrival: the
-        // sibling bump is what actually says something has to be dropped.
-        const movedOut = SIMKL_LIST_STATUSES.some(
-          s => s !== status && newActivity[cat]?.[s] !== oldActivity[cat]?.[s]
-        );
-
-        // removed_from_list is the other exit: gone from the library entirely.
-        if (movedOut || newActivity[cat]?.removed_from_list !== oldActivity[cat]?.removed_from_list) {
-          contentLeft = true;
-        }
-      }
-    }
-    return { changed: contentChanged, reconcile: contentLeft };
-  }
-
-  return { changed: false, reconcile: false };
-}
-
 async function fetchSimklLastActivities(accessToken: string, config?: any): Promise<any> {
   const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
   const cacheKey = `simkl-api-last-activities:${tokenHash}`;
@@ -714,201 +654,56 @@ async function getSimklActivityFingerprint(
 }
 
 /**
- * Drop the items that have left a list. A date_from delta only carries additions
- * and updates, so Simkl's documented way to spot a departure is to refetch the
- * list ids-only and diff: whatever the cached blob still holds and the live list
- * does not has moved to another status or left the library.
- * Returns null when the answer could not be trusted, so the caller keeps the
- * cached list rather than pruning against a body it failed to read.
+ * One status of a Simkl library, read from the watch mirror: the account's library kept
+ * in the database and brought up to date from what changed since its last sync, the
+ * same copy the Jellyfin server reads. A catalog, Up Next and the hide-watched filter
+ * therefore ask Simkl only what changed, once for all of them.
  */
-async function reconcileSimklList(
-  accessToken: string,
-  status: string,
-  cached: any
-): Promise<any | null> {
-  let response: any;
-  try {
-    // ids-only: the point is which ids are still here, not their contents, and
-    // this runs often enough that pulling extended=full again would be wasteful.
-    const url = `${SIMKL_BASE_URL}/sync/all-items/${status}?extended=simkl_ids_only`;
-    response = await makeAuthenticatedSimklRequest(url, accessToken, `Simkl Reconcile ${status}`);
-  } catch (e: any) {
-    logger.warn(`Simkl ${status}: reconcile fetch failed (${e.message}), keeping cached list`);
-    return null;
-  }
-
-  const data = response?.data;
-  if (!data || typeof data !== 'object') {
-    logger.warn(`Simkl ${status}: reconcile returned no usable body, keeping cached list`);
-    return null;
-  }
-
-  const result: any = {};
-  let dropped = 0;
-  for (const bucket of ['movies', 'shows', 'anime']) {
-    const live = Array.isArray(data[bucket]) ? data[bucket] : [];
-    const liveIds = new Set<any>();
-    for (const item of live) {
-      const id = simklItemId(item);
-      // An id we cannot read would prune a live item, so give up rather than guess.
-      if (!id) {
-        logger.warn(`Simkl ${status}: reconcile item carried no simkl id, keeping cached list`);
-        return null;
-      }
-      liveIds.add(id);
-    }
-    result[bucket] = (cached?.[bucket] || []).filter((item: any) => {
-      const id = simklItemId(item);
-      // Unidentifiable cached items are left alone, the same way mergeItems skips them.
-      if (!id) return true;
-      if (liveIds.has(id)) return true;
-      dropped++;
-      return false;
-    });
-  }
-
-  if (dropped) logger.debug(`Simkl ${status}: reconcile dropped ${dropped} item(s) that left the list`);
-  return result;
-}
-
 async function fetchSimklWatchlistItems(
   accessToken: string,
   type: 'movies' | 'shows' | 'anime',
   status: 'watching' | 'plantowatch' | 'hold' | 'completed' | 'dropped',
-  cacheTTL: number = SIMKL_WATCHLIST_TTL, // Default long TTL, we manage invalidation manually
+  cacheTTL: number = SIMKL_WATCHLIST_TTL,
   config?: any
 ): Promise<{items: any[]}> {
   try {
-    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 16);
-    // Redis keys
-    // v2 carried next_to_watch_info; v3 drops the blobs that delta syncs left items
-    // stranded in, so both have to be refetched rather than merged into.
-    const fullListKey = `simkl-watchlist-full-v3:${tokenHash}:${status}`; // Stores the full object { movies:[], shows:[], anime:[] }
-    const activitiesKey = `simkl-activities:${tokenHash}:${status}`; // Per-status watermark, matching fullListKey granularity
+    const tokenId = config?.apiKeys?.simklTokenId;
+    if (!tokenId) {
+      logger.debug(`Simkl ${status}: no Simkl connection on this configuration`);
+      return { items: [] };
+    }
 
-    // 1. Get latest activities from Simkl (Cached via fetchSimklLastActivities for 6 hours)
-    let currentActivities;
+    const { syncMirror, mirrorVersion, sourceKeyFor } = require('../lib/jellyfin/trackerMirror');
+    let version: number;
     try {
-      currentActivities = await fetchSimklLastActivities(accessToken, config);
-    } catch (e) {
-      logger.error(`Failed to fetch Simkl activities: ${e.message}. Using cache if available.`);
+      version = await syncMirror('simkl', tokenId, config);
+    } catch (error: any) {
+      version = await mirrorVersion('simkl', tokenId);
+      if (!version) throw error;
+      logger.warn(`Simkl ${status}: sync failed, serving the library as last synced: ${error?.message || error}`);
     }
 
-    // 2. Get cached data
-    let cachedList: any = null;
-    let cachedActivities: any = null;
-    
-    if (redis) {
-      const [listStr, actStr] = await Promise.all([
-        redis.get(fullListKey),
-        redis.get(activitiesKey)
-      ]);
-      if (listStr) cachedList = JSON.parse(listStr);
-      if (actStr) cachedActivities = JSON.parse(actStr);
-    }
-
-    // 3. Determine Sync Strategy
-    let itemsToReturn: any = { movies: [], shows: [], anime: [] };
-    let shouldUpdateCache = false;
-    let reconcileFailed = false;
-
-    if (!currentActivities) {
-      // API failed, return cache if exists
-      if (cachedList) {
-        itemsToReturn = cachedList;
-      } else {
-        return { items: [] };
-      }
-    } else {
-      // We have API connection
-      const { changed, reconcile } = hasActivityChanged(cachedActivities, currentActivities, status);
-
-      if (!cachedList) {
-        // Case A: No cache -> Full Sync
-        logger.debug(`Simkl ${status}: Performing FULL sync (Reason: No cache)`);
-        
-        const url = `${SIMKL_BASE_URL}/sync/all-items/${status}?extended=full&next_watch_info=yes&language=en`;
-        const response: any = await makeAuthenticatedSimklRequest(url, accessToken, `Simkl Full Sync ${status}`);
-        
-        itemsToReturn = {
-          movies: response.data?.movies || [],
-          shows: response.data?.shows || [],
-          anime: response.data?.anime || []
-        };
-        shouldUpdateCache = true;
-
-      } else if (changed || reconcile) {
-        // Case B: Updates available -> Incremental Sync
-        itemsToReturn = cachedList;
-
-        if (changed) {
-          // Use the main 'all' timestamp from the *cached* activities as date_from
-          const lastSyncDate = cachedActivities?.all || new Date(0).toISOString();
-          logger.debug(`Simkl ${status}: Performing INCREMENTAL sync (Since: ${lastSyncDate})`);
-
-          const url = `${SIMKL_BASE_URL}/sync/all-items/${status}?extended=full&next_watch_info=yes&language=en&date_from=${encodeURIComponent(lastSyncDate)}`;
-          const response: any = await makeAuthenticatedSimklRequest(url, accessToken, `Simkl Incremental Sync ${status}`);
-
-          const updates = {
-            movies: response.data?.movies || [],
-            shows: response.data?.shows || [],
-            anime: response.data?.anime || []
-          };
-
-          // Merge logic
-          itemsToReturn = {
-            movies: mergeItems(itemsToReturn.movies || [], updates.movies),
-            shows: mergeItems(itemsToReturn.shows || [], updates.shows),
-            anime: mergeItems(itemsToReturn.anime || [], updates.anime)
-          };
-
-          const totalUpdates = updates.movies.length + updates.shows.length + updates.anime.length;
-          logger.debug(`Simkl ${status}: Merged ${totalUpdates} updates`);
+    const source = sourceKeyFor('simkl', tokenId);
+    const items: any[] = await cacheWrapGlobal(`simkl-watchlist-mirror:${source}:v${version}:${type}:${status}`, async () => {
+      const database: any = require('../lib/database');
+      const out: any[] = [];
+      for (const row of await database.listTrackerMirrorGroup(source, type)) {
+        let entry: any;
+        try {
+          entry = JSON.parse(row.data);
+        } catch {
+          continue;
         }
-
-        if (reconcile) {
-          // The merge above can add and update, never drop, so anything that left
-          // the list is still sitting in the blob until this diff removes it.
-          const pruned = await reconcileSimklList(accessToken, status, itemsToReturn);
-          if (pruned) itemsToReturn = pruned;
-          else reconcileFailed = true;
-        }
-
-        shouldUpdateCache = true;
-
-      } else {
-        // Case C: No changes
-        // This is the path taken when you paginate quickly, because fetchSimklLastActivities returns cached data
-        // and that data matches what's stored in activitiesKey
-        logger.debug(`Simkl ${status}: No changes detected (Hit Cache)`);
-        itemsToReturn = cachedList;
-        // Extend TTL
-        if (redis) redis.expire(fullListKey, cacheTTL);
+        if (entry?.status !== status) continue;
+        // The episode lists are the watch store's; no list reader looks at them.
+        const { seasons, mapped_tvdb_seasons, ...item } = entry;
+        out.push(item);
       }
-    }
+      return out;
+    }, cacheTTL, { upstream: true, resultClassifier: classifyResultAllowEmpty });
 
-    // 4. Update Cache if needed
-    if (shouldUpdateCache && redis && currentActivities) {
-      const writes: any[] = [redis.setex(fullListKey, cacheTTL, JSON.stringify(itemsToReturn))];
-      // Holding the watermark back on a failed reconcile is what makes the next
-      // call retry the diff instead of trusting a list it could not verify.
-      if (!reconcileFailed) {
-        writes.push(redis.setex(activitiesKey, cacheTTL, JSON.stringify(currentActivities)));
-      }
-      await Promise.all(writes);
-    }
-
-    // 5. Select items based on requested type
-    let finalItems: any[] = [];
-    if (type === 'movies') {
-      finalItems = itemsToReturn.movies || [];
-    } else if (type === 'shows') {
-      finalItems = itemsToReturn.shows || [];
-    } else if (type === 'anime') {
-      finalItems = itemsToReturn.anime || [];
-    }
-
-    // 6. Sort: plantowatch/hold by added date, others by last watched
+    const finalItems = [...(items ?? [])];
+    // Plan to Watch and On Hold by the date added, the others by the last watch.
     if (status === 'plantowatch' || status === 'hold') {
       finalItems.sort((a: any, b: any) => {
         const aTime = a.added_to_watchlist_at ? new Date(a.added_to_watchlist_at).getTime() : 0;
@@ -924,7 +719,6 @@ async function fetchSimklWatchlistItems(
     }
 
     return { items: finalItems };
-
   } catch (error: any) {
     logger.error(`Error fetching Simkl watchlist items: ${error.message}`);
     return { items: [] };
@@ -1297,83 +1091,6 @@ async function checkinSeries(
   }
 }
 
-
-function simklItemId(item: any): any {
-  return item?.show?.ids?.simkl ?? item?.movie?.ids?.simkl ?? item?.anime?.ids?.simkl ?? item?.ids?.simkl;
-}
-
-function mergeItems(existingItems: any[], newItems: any[]): any[] {
-  const itemMap = new Map();
-  
-  // Index existing items
-  existingItems.forEach((item: any) => {
-    const simklId = simklItemId(item);
-    if (simklId) itemMap.set(simklId, item);
-  });
-
-  // Merge new items (overwriting existing ones)
-  newItems.forEach((item: any) => {
-    const simklId = simklItemId(item);
-    if (simklId) itemMap.set(simklId, item);
-  });
-
-  return Array.from(itemMap.values());
-}
-
-async function fetchSimklWatchedItems(
-  accessToken: string,
-  type: 'movies' | 'shows' | 'anime' = 'movies',
-  status: 'completed' | 'dropped' | 'hold' = 'completed'
-): Promise<any[]> {
-  try {
-    const endpoint = type === 'movies' ? 'movies' : type === 'shows' ? 'tv' : 'anime';
-    // Default richness on purpose: it already carries user_rating, last_watched_at
-    // and the episode counters. `extended=full` only adds per-episode arrays.
-    const url = `${SIMKL_BASE_URL}/sync/all-items/${endpoint}/${status}`;
-    
-    const response: any = await makeAuthenticatedSimklRequest(
-      url,
-      accessToken,
-      `Simkl fetchWatchedItems (${type}/${status})`
-    );
-    
-    // The payload is an object keyed by media kind, never a bare array, so an
-    // Array.isArray guard on it silently returns nothing.
-    const payload = response.data;
-    const items = Array.isArray(payload)
-      ? payload
-      : (payload?.movies || payload?.shows || payload?.anime || []);
-    return Array.isArray(items) ? items : [];
-  } catch (error: any) {
-    logger.error(`Error fetching Simkl watched items: ${error.message}`);
-    return [];
-  }
-}
-
-async function fetchSimklWatchingItems(
-  accessToken: string,
-  type: 'shows' | 'anime' = 'shows'
-): Promise<any[]> {
-  try {
-    const endpoint = type === 'shows' ? 'tv' : 'anime';
-    const url = `${SIMKL_BASE_URL}/sync/all-items/${endpoint}/watching`;
-    
-    const response: any = await makeAuthenticatedSimklRequest(
-      url,
-      accessToken,
-      `Simkl fetchWatchingItems (${type})`
-    );
-    
-    const payload = response.data;
-    const items = Array.isArray(payload)
-      ? payload
-      : (payload?.shows || payload?.anime || payload?.movies || []);
-    return Array.isArray(items) ? items : [];
-  } catch (error: any) {
-    logger.error(`Error fetching Simkl watching items: ${error.message}`);
-    return [];
-  }
-}
 
 export type SimklListsError = 'premium_only' | 'needs_v2';
 
@@ -2365,12 +2082,11 @@ export {
   getSimklRatings,
   getSimklToken,
   fetchPlaybackSessions,
-  fetchSimklAllItems,
+  fetchSimklLastActivities,
   getSimklWatchedIds,
   fetchSimklUserLists,
   fetchSimklListPage,
   simklUserTokenIfRequired,
-  fetchSimklWatchedItems,
   getSimklActivityFingerprint,
   fetchSimklTrendingItems,
   fetchSimklRecipeItems,

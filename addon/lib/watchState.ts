@@ -98,8 +98,10 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
 
   if (!version || since === version) return { version, items, ...(watchlist ? { watchlist } : {}) };
 
+  const { allWatched, allSeriesCounts } = require('./jellyfin/watched');
+  const whole = await allWatched(snapshot);
   const counts: Record<string, { watched: number; total: number; at?: number }> = {};
-  for (const [id, value] of snapshot.series) {
+  for (const [id, value] of await allSeriesCounts(snapshot)) {
     counts[id] = { watched: value.watched, total: value.total, ...(value.at ? { at: seconds(value.at) } : {}) };
   }
 
@@ -107,8 +109,8 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
     version,
     items,
     watched: {
-      movies: [...snapshot.movies],
-      episodes: [...snapshot.episodes],
+      movies: whole.movies,
+      episodes: whole.episodes,
       counts,
       nextUp: snapshot.nextUp.map((row: any) => ({
         type: 'series' as const,

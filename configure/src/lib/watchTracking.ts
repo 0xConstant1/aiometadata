@@ -3,7 +3,6 @@ import type { SettingsSectionId } from '@/lib/settingsRoute';
 
 export type WatchTrackingMediaType = 'movie' | 'series';
 type WatchTrackingMasterKey =
-  | 'traktWatchTracking'
   | 'simklWatchTracking'
   | 'anilistWatchTracking'
   | 'malWatchTracking'
@@ -21,7 +20,6 @@ interface WatchTrackingServiceDefinition {
 }
 
 export const WATCH_TRACKING_SERVICES: WatchTrackingService[] = [
-  'trakt',
   'simkl',
   'anilist',
   'mal',
@@ -33,15 +31,6 @@ export const WATCH_TRACKING_SERVICE_DEFINITIONS: Record<
   WatchTrackingService,
   WatchTrackingServiceDefinition
 > = {
-  trakt: {
-    label: 'Trakt',
-    masterKey: 'traktWatchTracking',
-    hasCredential: (config) => !!config.apiKeys?.traktTokenId,
-    movieLabel: 'Movies',
-    seriesLabel: 'TV Shows',
-    connectSection: 'catalogs',
-    connectHint: 'Open the Catalogs tab and tap the Trakt icon to sign in.',
-  },
   simkl: {
     label: 'Simkl',
     masterKey: 'simklWatchTracking',

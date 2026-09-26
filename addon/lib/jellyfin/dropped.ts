@@ -1,7 +1,6 @@
 import consola from 'consola';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
-import { httpPost } from '../../utils/httpClient';
 import { credentialFor, sourceFor } from './trackerSource';
 
 const logger = consola.withTag('Jellyfin');
@@ -12,7 +11,7 @@ const held = new LRUCache<string, Set<string>>({
   ttl: envInt('JELLYFIN_RESUME_TTL', 60, 1) * 1000,
 });
 
-// Simkl, MDBList and PublicMetaDB report their dropped shows back; Trakt's is never read.
+// Simkl, MDBList and PublicMetaDB report their dropped shows back.
 export function dropsKeptHere(config: any): boolean {
   const { readsTrackers } = require('./profiles');
   const source = readsTrackers(config) ? sourceFor(config) : null;
@@ -45,12 +44,12 @@ export function itemKeys(item: any, metaId: string): string[] {
   return showKeys(metaId, { imdb: ids.Imdb, tvdb: ids.Tvdb, tmdb: ids.Tmdb, kitsu: ids.Kitsu, mal: ids.MyAnimeList });
 }
 
-async function writeDropped(config: any, ids: Record<string, any>, dropped: boolean): Promise<void> {
+export async function writeDropped(config: any, ids: Record<string, any>, dropped: boolean, only?: string): Promise<void> {
   const showIds = { ...(ids.imdb ? { imdb: ids.imdb } : {}), ...(ids.tmdb ? { tmdb: Number(ids.tmdb) } : {}), ...(ids.tvdb ? { tvdb: Number(ids.tvdb) } : {}) };
   const verb = dropped ? 'drop' : 'undrop';
 
   const simklToken = credentialFor(config, 'simkl');
-  if (simklToken) {
+  if (simklToken && (!only || only === 'simkl')) {
     try {
       const { getSimklToken, makeAuthenticatedSimklRequest } = require('../../utils/simklUtils');
       const token = await getSimklToken(simklToken);
@@ -65,7 +64,7 @@ async function writeDropped(config: any, ids: Record<string, any>, dropped: bool
   }
 
   const mdblistKey = credentialFor(config, 'mdblist');
-  if (mdblistKey && Object.keys(showIds).length) {
+  if (mdblistKey && Object.keys(showIds).length && (!only || only === 'mdblist')) {
     try {
       const { makeRateLimitedMDBListPost } = require('../../utils/mdbList');
       const show = dropped ? { ids: showIds, dropped_at: new Date().toISOString() } : { ids: showIds };
@@ -75,23 +74,8 @@ async function writeDropped(config: any, ids: Record<string, any>, dropped: bool
     }
   }
 
-  const traktTokenId = credentialFor(config, 'trakt');
-  if (traktTokenId && Object.keys(showIds).length) {
-    try {
-      const { getTraktToken } = require('../../utils/traktUtils');
-      const { traktHeaders } = require('./watchlistSources');
-      const token = await getTraktToken(traktTokenId);
-      const accessToken = token?.access_token ?? token;
-      if (accessToken) {
-        await httpPost(`https://api.trakt.tv/users/hidden/dropped${dropped ? '' : '/remove'}`, { shows: [{ ids: showIds }] }, { headers: traktHeaders(accessToken), timeout: 10000 });
-      }
-    } catch (error: any) {
-      logger.warn(`Trakt ${verb} failed: ${error?.message || error}`);
-    }
-  }
-
   const pmdbKey = credentialFor(config, 'publicmetadb');
-  if (pmdbKey && ids.tmdb) {
+  if (pmdbKey && ids.tmdb && (!only || only === 'publicmetadb')) {
     try {
       const { setDropped } = require('../../utils/publicmetadbUtils');
       await setDropped(pmdbKey, ids.tmdb, dropped);
@@ -113,13 +97,14 @@ export function undropOnWatch(userUUID: string, config: any, seriesIds: string[]
   })().catch((error: any) => logger.debug(`Undrop on watch failed: ${error?.message || error}`));
 }
 
-// Likes false drops the show; true or a cleared rating undrops it.
+// Likes false drops the show; true or a cleared rating undrops it. Reports whether it
+// changed anything.
 export async function rateSeries(userUUID: string, config: any, descriptor: any, likes: boolean | null): Promise<boolean> {
   if (descriptor?.k !== 'series') return false;
   const { fetchMeta } = require('./items');
   const { idsFor } = require('./watchlist');
   const { profileKey, writesTrackers } = require('./profiles');
-  const { watchedSnapshot, invalidateWatched } = require('./watched');
+  const { watchedSnapshot } = require('./watched');
 
   const meta = await fetchMeta(userUUID, 'series', descriptor.i);
   if (!meta) return false;
@@ -134,11 +119,14 @@ export async function rateSeries(userUUID: string, config: any, descriptor: any,
   await database.setDropped(userUUID, profileKey(config), keys, dropping);
   held.delete(`${userUUID}:${profileKey(config)}`);
   if (writesTrackers(config)) {
-    await writeDropped(config, ids, dropping);
-    await invalidateWatched(config).catch(() => undefined);
+    const { enqueueTrackerWrites } = require('../trackerOutbox');
+    const services = (['simkl', 'mdblist', 'publicmetadb'] as const).filter((service) => credentialFor(config, service));
+    await enqueueTrackerWrites(userUUID, config, services.map((service) => ({
+      service, op: 'dropped', item: String(meta.id), coalesce: `dropped:${meta.id}`, payload: { ids, dropped: dropping },
+    })));
   }
   const { invalidateResume } = require('./resume');
   invalidateResume(userUUID);
   logger.info(`${dropping ? 'Dropped' : 'Undropped'} ${meta.name || meta.id} for ${userUUID}`);
-  return dropping;
+  return true;
 }

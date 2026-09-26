@@ -140,6 +140,8 @@ A title played in any other client, or on a Jellyfin server that was not signed 
 - A mark-played or mark-unplayed that repeats a decision within `PLAYBACK_MARK_REPEAT_WINDOW` seconds is an echo of it and is not sent again.
 - A film is recorded under both its IMDb and TMDB ids, and an episode under every id its show is known by, so a client that opens the same title from an anime catalog and a series catalog sees one history.
 
+**How writes reach the trackers.** A play, a mark, a drop or a watchlist change is stored in the database first and the request returns; the trackers are written from there. Each tracker account gets its writes one at a time and in the order they were made, which is what Simkl's per-user write lock and one-write-a-second limit ask for, while `TRACKER_OUTBOX_CONCURRENCY` accounts are written at once. A write that gets no answer, a server error, a rate limit or Simkl's write lock is tried again later, backing off up to an hour between tries, until `TRACKER_OUTBOX_MAX_AGE_HOURS` have passed; one the tracker refuses outright, such as an id it does not know, is dropped and logged. A waiting start or pause is replaced by the next event for the same title, and a mark by the next mark, so a burst sends only what is still true; a stop is never replaced. A start that could not go out within `TRACKER_OUTBOX_START_WINDOW` seconds is not sent. Queued writes survive a restart. What this server recorded shows in the client at once; the snapshots read from the trackers are read again once the writes land.
+
 ### The tracker picker
 
 Reading and writing are two different things here. Every play through the server is **written** to every tracker with watch tracking on, whatever is picked below, as long as the user is you. **Trackers** on a user card decides what is **read back** from them and shown in the client, on top of what was played through this server:
@@ -158,7 +160,7 @@ Reading and writing are two different things here. Every play through the server
 
 A user that is not you never writes to your trackers, whatever their card says. Their card's own **Trackers** pick still decides what they read: left on Automatic they see your trackers' paused titles and history on top of their own plays, which is how a user set up as someone else can follow your history without touching it; set to **This server only** they see their own plays alone.
 
-**Dropping a show.** A thumbs-down on a series, in a client that offers one, drops it: it leaves Continue Watching, Next Up and Upcoming, and the series reports the dislike back so the button shows its state. Playing an episode of it to the end, or marking one watched, takes the drop back. The drop is written to every connected tracker with watch tracking on (Simkl's dropped list, MDBList's and PublicMetaDB's dropped shows, Trakt's hidden dropped), and a thumbs-up or clearing the rating takes it back; Simkl has no undrop, so the show moves to Watching there. When the tracker read is Simkl, MDBList or PublicMetaDB, that tracker's dropped list is what counts, so a show dropped or taken back on its website follows; otherwise the drop is kept on this server. A thumbs-down on a film or an episode stores nothing.
+**Dropping a show.** A thumbs-down on a series, in a client that offers one, drops it: it leaves Continue Watching, Next Up and Upcoming, and the series reports the dislike back so the button shows its state. Playing an episode of it to the end, or marking one watched, takes the drop back. The drop is written to every connected tracker with watch tracking on (Simkl's dropped list, MDBList's and PublicMetaDB's dropped shows), and a thumbs-up or clearing the rating takes it back; Simkl has no undrop, so the show moves to Watching there. When the tracker read is Simkl, MDBList or PublicMetaDB, that tracker's dropped list is what counts, so a show dropped or taken back on its website follows; otherwise the drop is kept on this server. A thumbs-down on a film or an episode stores nothing.
 
 Not every tracker holds every kind of state:
 
@@ -181,13 +183,15 @@ Not every tracker holds every kind of state:
 
 ### How tracker state is read
 
-The watch history of the chosen tracker is read once into a snapshot and kept `JELLYFIN_WATCHED_TTL` seconds; the snapshot is rebuilt only when the tracker's activity digest changes, so a large history is not re-read on every page. MDBList history is read `JELLYFIN_WATCHED_MAX_PAGES` pages of a thousand deep. Paused positions are cheaper and kept `JELLYFIN_RESUME_TTL` seconds; a play through this server invalidates both immediately.
+The chosen tracker's library is copied into the database once, then kept current from what changed since the last read: Simkl's activity digest and the items changed since then, MDBList's journal of changes, and for PublicMetaDB, which has neither, the newest plays until one already held. The whole library is read again only when a tracker cannot say what changed. Each time the copy moves, it is written into a watch index of the titles as this server names them, with the shows' watched counts; a page asks the index for its own titles, so a large history is neither re-read nor held in memory. Only Next Up, the followed shows and the dropped ones are kept per account, and a restart picks all of it up from the database without reading any tracker. MDBList history is read `JELLYFIN_WATCHED_MAX_PAGES` pages of a thousand deep on the first copy.
+
+Paused positions are read from each tracker again only once its activity says playback moved (Simkl and MDBList), at most every `JELLYFIN_RESUME_MAX_AGE` seconds otherwise; PublicMetaDB, which reports no activity, every `JELLYFIN_RESUME_TTL` seconds. A tracker's activity is itself checked on its own schedule (Simkl's is your Simkl sync interval, 30 minutes by default), so a title paused on another device can take that long to reach Continue Watching. A play through this server shows at once, and both are read again once the trackers have it.
 
 Every read and write to MDBList goes through the addon's rate limiter and counts against the key's daily quota; Simkl's per-token limits are respected the same way. A `429` in the log is the limiter being hit upstream and the request retried, not lost.
 
 ### The playstate sync
 
-Every `JELLYFIN_PLAYSTATE_SYNC_INTERVAL` seconds (thirty minutes) the server pulls tracker state into the playstate table for every configuration with a tracker chosen, starting `JELLYFIN_PLAYSTATE_SYNC_DELAY` seconds after boot. The table wins on anything it already holds:
+Every `JELLYFIN_PLAYSTATE_SYNC_INTERVAL` seconds (thirty minutes) the server pulls tracker state into the playstate table for each configuration with a tracker chosen that a client signed in to within `JELLYFIN_PLAYSTATE_SYNC_ACTIVE_HOURS`, starting `JELLYFIN_PLAYSTATE_SYNC_DELAY` seconds after boot. It works on `JELLYFIN_PLAYSTATE_SYNC_CONCURRENCY` configurations at once, waits at most `JELLYFIN_PLAYSTATE_SYNC_USER_TIMEOUT` seconds on any one, and stops at `JELLYFIN_PLAYSTATE_SYNC_BUDGET` seconds; the configurations a run does not reach go first in the next, a minute later. The table wins on anything it already holds:
 
 - a paused title the table has never seen takes the tracker's position and date;
 - a title the table holds at a position is only marked finished when the tracker dates the watch after that position, since an older watch is the earlier viewing this one is a rewatch of;
@@ -203,7 +207,7 @@ The watchlist is the client's favourites. Marking a title favourite adds it to t
 
 **Watchlist** on a user card picks which shelves are read and written: each connected tracker offers its shelves (MDBList movies and series, Simkl movies, series and anime, AniList and MyAnimeList anime), and picking none means every connected one. A write goes to every picked shelf that takes the title's kind, so an anime lands on Simkl's anime shelf and AniList, not on the movies shelf. Entries are matched to titles by IMDb, TMDB, TVDB, Kitsu and MyAnimeList ids, so the same title on two catalogs shows one heart. The picked shelves are the favourites. A heart set or cleared through the client shows at once and stands until the shelves' cached catalogs can have caught up with it, their longest cache TTL; after that the trackers decide, so a heart cleared long ago never hides a title the tracker lists again. **This server only** shows the hearts set through this server and nothing else.
 
-**Each shelf is read through its watchlist catalog**, the same one the addon serves: `mdblist.watchlist` (or `mdblist.watchlist.movies` and `mdblist.watchlist.series`), `trakt.watchlist.movies` and `trakt.watchlist.series`, Simkl's Plan to Watch catalogs, AniList's Planning and MyAnimeList's Plan to Watch, and the PublicMetaDB watchlist list. The favourites are therefore as fresh as that catalog's cache: a title added or removed in the tracker's own app shows up once the catalog's cache TTL has run out, then `JELLYFIN_WATCHLIST_MEMO_TTL`. A watchlist catalog in your catalogs uses its own **Cache TTL**; one you never added uses the instance **Catalog Cache TTL**, a day by default. To see tracker-side changes sooner, add the watchlist catalog from the tracker's integration (use **Remove from Home** on it if you don't want the row) and give it a short cache TTL. With both MDBList shelves picked, the unified `mdblist.watchlist` is read in one request, unless your catalogs hold only the separate movies and series catalogs, in which case those are read so their cache is shared. **Jellyfin Playstate Sync Interval** has no effect here; it covers watched state.
+**Each shelf is read through its watchlist catalog**, the same one the addon serves: `mdblist.watchlist` (or `mdblist.watchlist.movies` and `mdblist.watchlist.series`), Simkl's Plan to Watch catalogs, AniList's Planning and MyAnimeList's Plan to Watch, and the PublicMetaDB watchlist list. The favourites are therefore as fresh as that catalog's cache: a title added or removed in the tracker's own app shows up once the catalog's cache TTL has run out, then `JELLYFIN_WATCHLIST_MEMO_TTL`. A watchlist catalog in your catalogs uses its own **Cache TTL**; one you never added uses the instance **Catalog Cache TTL**, a day by default. To see tracker-side changes sooner, add the watchlist catalog from the tracker's integration (use **Remove from Home** on it if you don't want the row) and give it a short cache TTL. With both MDBList shelves picked, the unified `mdblist.watchlist` is read in one request, unless your catalogs hold only the separate movies and series catalogs, in which case those are read so their cache is shared. **Jellyfin Playstate Sync Interval** has no effect here; it covers watched state.
 
 ## AIOMetadata inside AIOStreams' Jellyfin server
 
@@ -271,10 +275,15 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | `PLAYBACK_MARK_REPEAT_WINDOW` | `300` | A repeated mark within this window is not sent to the trackers again. |
 | `JELLYFIN_PLAYSTATE_SYNC_INTERVAL` | `1800` | Seconds between pulls of tracker state into the playstate table. |
 | `JELLYFIN_PLAYSTATE_SYNC_DELAY` (env) | `120` | Seconds after boot before the first pull. |
-| `JELLYFIN_RESUME_TTL` (env) | `60` | How long paused positions read from a tracker are kept. |
+| `JELLYFIN_PLAYSTATE_SYNC_ACTIVE_HOURS` | `48` | Only configurations a client signed in to within this many hours are pulled; 0 pulls all seen within the active days. |
+| `JELLYFIN_PLAYSTATE_SYNC_CONCURRENCY` | `3` | Configurations a pull works on at once. |
+| `JELLYFIN_PLAYSTATE_SYNC_BUDGET` | `600` | Seconds one pull may run; what it does not reach follows a minute later. |
+| `JELLYFIN_PLAYSTATE_SYNC_USER_TIMEOUT` | `120` | Seconds a pull waits on one configuration before moving on. |
+| `JELLYFIN_WATCHED_REFRESH` | `30` | How old the watched state a request answers from may be before a refresh from the tracker follows behind it. |
+| `JELLYFIN_RESUME_TTL` (env) | `60` | How long paused positions read from a tracker are kept before its activity is checked; PublicMetaDB's are read again after this. |
+| `JELLYFIN_RESUME_MAX_AGE` | `21600` | The longest Simkl's or MDBList's paused positions are kept while their activity shows no change. |
 | `JELLYFIN_RESUME_TIMEOUT_MS` (env) | `10000` | How long a tracker read may take. |
-| `JELLYFIN_WATCHED_TTL` (env) | `3600` | How long the watched snapshot is kept. |
-| `JELLYFIN_WATCHED_MAX_PAGES` | `50` | Pages of a thousand read from MDBList history when the snapshot is rebuilt. |
+| `JELLYFIN_WATCHED_MAX_PAGES` | `50` | Pages of a thousand read from MDBList history on the first copy, or when MDBList asks for a full read. |
 | `JELLYFIN_NEXTUP_MDBLIST_PAGES` | `5` | Pages of a hundred read from MDBList's Up Next. |
 | `JELLYFIN_NEXTUP_OWN_DAYS` | `120` | How far back Next Up looks for episodes finished through this server. |
 | `JELLYFIN_UPCOMING_DAYS` | `90` | How far ahead Upcoming looks. |
@@ -310,7 +319,7 @@ Clients differ in what they ask for, and a few things are worth knowing when a r
 
 **A show sits at episode one in Next Up although it was never started.** On Simkl, only shows in Watching are offered; move the show out of Plan to Watch on Simkl or start it. On MDBList, Next Up is MDBList's own list.
 
-**Watched ticks are missing after switching trackers.** The snapshot is kept `JELLYFIN_WATCHED_TTL` seconds; a play through the server refreshes it immediately, or wait it out.
+**Watched ticks are missing after switching trackers.** A tracker read for the first time is copied in full before its ticks show, which for a large MDBList or PublicMetaDB history can take a minute; later reads only fetch what changed.
 
 **"No watched history"** in the log at debug level is not an error; the tracker has nothing yet.
 

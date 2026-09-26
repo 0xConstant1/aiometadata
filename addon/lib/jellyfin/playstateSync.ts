@@ -46,7 +46,8 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   // tracker's last word on it is the watch. A watch older than the point, or
   // one the tracker cannot date, is the earlier viewing this row is a rewatch of.
   const paused = new Set(resume.map((row) => row.videoId));
-  const watched = await watchedSnapshot(userUUID, config);
+  const { allWatched } = require('./watched');
+  const watched = await allWatched(await watchedSnapshot(userUUID, config));
   const finished = [...watched.episodes, ...watched.movies];
   const known = await getPlaystatesAcross(userUUID, finished);
   for (const videoId of finished) {
@@ -100,58 +101,127 @@ export async function runtimeFromMeta(userUUID: string, row: any): Promise<numbe
 }
 
 let running = false;
-const lastSync = { startedAt: 0, finishedAt: 0, configurations: 0, added: 0 };
+const lastSync = { startedAt: 0, finishedAt: 0, configurations: 0, added: 0, reached: 0, total: 0, timedOut: 0, complete: true };
+// Where the last run stopped, so one cut short by its budget carries on from there.
+let cursor = 0;
+let followUp: NodeJS.Timeout | null = null;
+
+const TIMED_OUT = Symbol('timed out');
 
 export function syncStatus() {
   return { ...lastSync, running };
 }
 
+/** What the sync is doing, for a note beside an event loop stall. */
+export function syncActivity(): string | null {
+  return running ? `playstate sync running (${lastSync.reached} of ${lastSync.total} configurations reached)` : null;
+}
+
+function withinTime<T>(work: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  let timer: NodeJS.Timeout;
+  const late = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), ms);
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+/** One configuration's tracker positions and watches, then its Next Up index. */
+async function syncConfiguration(userUUID: string): Promise<{ added: number } | null> {
+  let config: any;
+  try {
+    config = await database.getUserConfig(userUUID);
+  } catch {
+    return null;
+  }
+  if (!config || !sourceFor(config)) return null;
+
+  let added = 0;
+  try {
+    const result = await runWithRequestContext(userUUID, () => syncPlaystateFor(userUUID, config));
+    added = result.added;
+  } catch (error: any) {
+    logger.debug(`Playstate sync failed for ${userUUID}: ${error?.message || error}`);
+  }
+  // Keeps the Next Up episode index warm off the request path.
+  try {
+    const { warmNextUpIndex } = require('./episodeIndex');
+    const built = await runWithRequestContext(userUUID, () => warmNextUpIndex(userUUID, config));
+    if (built) logger.debug(`Episode index built for ${built} show(s) of ${userUUID}`);
+  } catch (error: any) {
+    logger.debug(`Episode index warm failed for ${userUUID}: ${error?.message || error}`);
+  }
+  return { added };
+}
+
+/**
+ * Configurations used lately, a few at a time, within a budget. What a run does not reach
+ * goes first in the next, which comes a minute later rather than a whole interval; one
+ * configuration whose tracker hangs gives up its place after a while.
+ */
 export async function syncAllPlaystate(): Promise<void> {
   if (running) return;
   running = true;
-  lastSync.startedAt = Date.now();
+  const started = Date.now();
+  const deadline = started + envInt('JELLYFIN_PLAYSTATE_SYNC_BUDGET', 600, 30) * 1000;
+  const concurrency = envInt('JELLYFIN_PLAYSTATE_SYNC_CONCURRENCY', 3, 1);
+  const perConfigurationMs = envInt('JELLYFIN_PLAYSTATE_SYNC_USER_TIMEOUT', 120, 10) * 1000;
+  const activeHours = envInt('JELLYFIN_PLAYSTATE_SYNC_ACTIVE_HOURS', 48, 0);
+  Object.assign(lastSync, { startedAt: started, reached: 0, total: 0, timedOut: 0 });
 
   try {
-    const { seenConfigurations } = require('./context');
-    const uuids: string[] = (await seenConfigurations()) ?? (await database.getAllUserUUIDs());
+    const { seenConfigurations, seenConfigurationsSince } = require('./context');
+    const seen: string[] | null = activeHours > 0
+      ? await seenConfigurationsSince(started - activeHours * 60 * 60 * 1000)
+      : await seenConfigurations();
+    const uuids: string[] = seen ?? (await database.getAllUserUUIDs());
+    const from = uuids.length ? cursor % uuids.length : 0;
+    const order = [...uuids.slice(from), ...uuids.slice(0, from)];
+    lastSync.total = order.length;
+
+    let next = 0;
     let users = 0;
     let added = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, order.length) }, async () => {
+        while (next < order.length && Date.now() < deadline) {
+          const userUUID = order[next++];
+          lastSync.reached = next;
+          await new Promise((resolve) => setImmediate(resolve));
+          const outcome = await withinTime(syncConfiguration(userUUID), perConfigurationMs);
+          if (outcome === TIMED_OUT) {
+            lastSync.timedOut += 1;
+            logger.warn(`Playstate sync gave up waiting on ${userUUID} after ${Math.round(perConfigurationMs / 1000)}s`);
+          } else if (outcome) {
+            users += 1;
+            added += outcome.added;
+          }
+        }
+      })
+    );
 
-    for (const userUUID of uuids) {
-      await new Promise((resolve) => setImmediate(resolve));
-      let config: any;
-      try {
-        config = await database.getUserConfig(userUUID);
-      } catch {
-        continue;
-      }
-      if (!config || !sourceFor(config)) continue;
-
-      try {
-        const result = await runWithRequestContext(userUUID, () => syncPlaystateFor(userUUID, config));
-        users += 1;
-        added += result.added;
-      } catch (error: any) {
-        logger.debug(`Playstate sync failed for ${userUUID}: ${error?.message || error}`);
-      }
-      // Keeps the Next Up episode index warm off the request path.
-      try {
-        const { warmNextUpIndex } = require('./episodeIndex');
-        const built = await runWithRequestContext(userUUID, () => warmNextUpIndex(userUUID, config));
-        if (built) logger.debug(`Episode index built for ${built} show(s) of ${userUUID}`);
-      } catch (error: any) {
-        logger.debug(`Episode index warm failed for ${userUUID}: ${error?.message || error}`);
-      }
+    const complete = next >= order.length;
+    cursor = complete ? 0 : (from + next) % Math.max(1, uuids.length);
+    const seconds = Math.round((Date.now() - started) / 1000);
+    if (!complete) {
+      logger.info(`Playstate sync reached ${next} of ${order.length} configuration(s) in its ${seconds}s budget; the rest follow in a minute`);
+      if (followUp) clearTimeout(followUp);
+      followUp = setTimeout(() => {
+        followUp = null;
+        syncAllPlaystate().catch(() => undefined);
+      }, 60 * 1000);
+      followUp.unref?.();
+    } else if (added) {
+      logger.info(`Playstate sync: ${added} title(s) taken from trackers across ${users} configuration(s) in ${seconds}s`);
     }
-
-    if (added) logger.info(`Playstate sync: ${added} title(s) taken from trackers across ${users} configuration(s)`);
-    Object.assign(lastSync, { finishedAt: Date.now(), configurations: users, added });
+    Object.assign(lastSync, { finishedAt: Date.now(), configurations: users, added, complete });
   } finally {
     running = false;
   }
 }
 
 export function startPlaystateSync(): void {
+  const { registerStallActivity } = require('../eventLoopLag');
+  registerStallActivity(syncActivity);
   const intervalMs = envInt('JELLYFIN_PLAYSTATE_SYNC_INTERVAL', 30 * 60, 60) * 1000;
   const initialDelayMs = envInt('JELLYFIN_PLAYSTATE_SYNC_DELAY', 2 * 60, 0) * 1000;
 

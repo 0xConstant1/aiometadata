@@ -404,23 +404,16 @@ async function tellTrackers(
     userUUID
   );
 
-  // The trackers now hold state this server just changed, so the snapshots the
-  // resume shelf and the watched ticks read from are dropped rather than left
-  // serving what they cached before the event.
-  const { invalidateResume } = require('./resume');
-  const { invalidateWatched, applyLocalWatch } = require('./watched');
-  invalidateResume(userUUID);
-
-  // A finished stop or a mark changes what the tracker holds, such as a show's
-  // next episode; a batch of marks drops the snapshot once, after the batch.
+  // The trackers are told later, so what this server just recorded shows in the
+  // held snapshot now; the snapshots are read again once the writes land.
   if ((event === 'stop' && played === true) || (refreshWatched && (event === 'played' || event === 'unplayed'))) {
+    const { applyLocalWatch } = require('./watched');
     await applyLocalWatch(config, {
       videoId: session.videoId,
       metaId: session.descriptor.i,
       kind: session.descriptor.k === 'episode' ? 'episode' : 'movie',
       played: event !== 'unplayed',
     }).catch(() => undefined);
-    await invalidateWatched(config).catch(() => undefined);
   }
 }
 
@@ -497,7 +490,7 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
     }, config, userUUID).catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
     return;
   }
-  const { invalidateWatched, applyLocalWatch } = require('./watched');
+  const { applyLocalWatch } = require('./watched');
   mapWithConcurrency(sessions, 3, (session: ResolvedSession) => tellTrackers(userUUID, config, session, event, 0, played, false))
     .then(async () => {
       for (const session of sessions) {
@@ -509,7 +502,6 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed'): Prom
         }).catch(() => undefined);
       }
     })
-    .then(() => invalidateWatched(config))
     .catch((error: any) => logger.debug(`Mark report failed for ${itemId}: ${error?.message || error}`));
 }
 
@@ -637,13 +629,12 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
   // Cleared here means cleared on the trackers too, or their copy would come
   // back through the shelf on any device reading them directly.
   if (positionMs === 0 && tellsTrackers(config)) {
-    const { parseMediaId, clearResumePoint } = require('../subtitleHandler');
-    const parsed = parseMediaId(session.videoId);
-    if (parsed) {
-      clearResumePoint(parsed, config).catch((error: any) =>
-        logger.debug(`Clearing the resume point on trackers failed for ${session.videoId}: ${error?.message || error}`)
-      );
-    }
+    const { enqueueTrackerWrites, hasCredential } = require('../trackerOutbox');
+    const services = (['simkl', 'mdblist', 'publicmetadb'] as const).filter((service) => hasCredential(config, service));
+    await enqueueTrackerWrites(userUUID, config, services.map((service) => ({
+      service, op: 'clearResume', item: session.descriptor.i, coalesce: `resume:${session.videoId}`,
+      payload: { type: session.stremioType, id: session.videoId },
+    }))).catch((error: any) => logger.debug(`Clearing the resume point on trackers failed for ${session.videoId}: ${error?.message || error}`));
   }
 
   const database: any = require('../database');

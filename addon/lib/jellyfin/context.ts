@@ -3,6 +3,7 @@ import { readTokenSession } from './tokens';
 import { scopeConfigToProfile } from './profiles';
 import { normaliseJellyfinId } from './idsCodec';
 import { LRUCache } from 'lru-cache';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const redis: any = require('../redisClient');
 const { envInt } = require('../../utils/envNumber');
@@ -19,7 +20,7 @@ function markSeen(userUUID: string): void {
   seenRecently.set(userUUID, true);
   const ttl = envInt('JELLYFIN_ACTIVE_DAYS', 7, 1) * 24 * 60 * 60;
   redis.multi()
-    .hsetex(SEEN_KEY, 'EX', ttl, 'FIELDS', 1, userUUID, '1')
+    .hsetex(SEEN_KEY, 'EX', ttl, 'FIELDS', 1, userUUID, String(Date.now()))
     .expire(SEEN_KEY, ttl, 'NX')
     .expire(SEEN_KEY, ttl, 'GT')
     .exec()
@@ -31,6 +32,25 @@ export async function seenConfigurations(): Promise<string[] | null> {
   if (!redis) return null;
   try {
     return await redis.hkeys(SEEN_KEY);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The configurations a client signed in to since a time, to the hour a sign-in is
+ * noted at. One noted before the time was kept holds no time, and counts.
+ */
+export async function seenConfigurationsSince(since: number): Promise<string[] | null> {
+  if (!redis) return null;
+  try {
+    const all: Record<string, string> = await redis.hgetall(SEEN_KEY);
+    return Object.entries(all)
+      .filter(([, at]) => {
+        const time = Number(at);
+        return !Number.isFinite(time) || time < 1e12 || time >= since;
+      })
+      .map(([uuid]) => uuid);
   } catch {
     return [];
   }
@@ -79,6 +99,20 @@ export function extractToken(req: any): string | undefined {
     (typeof req.query?.ApiKey === 'string' ? req.query.ApiKey : undefined) ||
     undefined
   );
+}
+
+// Pelagica shows a watchlist beside favourites, through the like a title carries. Other
+// clients have favourites alone, so the watchlist is what they are shown as favourites.
+const OWN_WATCHLIST_CLIENT = /^pelagica\b/i;
+const clientStore = new AsyncLocalStorage<{ ownWatchlist: boolean }>();
+
+export function runWithClient<T>(req: any, fn: () => T): T {
+  return clientStore.run({ ownWatchlist: OWN_WATCHLIST_CLIENT.test(clientInfo(req).client) }, fn);
+}
+
+/** Whether the client asking keeps a watchlist apart from favourites. */
+export function clientHasOwnWatchlist(): boolean {
+  return clientStore.getStore()?.ownWatchlist === true;
 }
 
 export function clientInfo(req: any): { client: string; device: string; deviceId: string; version: string } {

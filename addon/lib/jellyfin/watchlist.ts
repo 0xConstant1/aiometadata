@@ -1,6 +1,7 @@
 import { fetchMeta, metaToBaseItem } from './items';
+import { clientHasOwnWatchlist } from './context';
 import { profileKey, writesTrackers } from './profiles';
-import { shelfCacheWindowMs, trackerWatchlist, watchlistPicks, writeWatchlist, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
+import { shelfCacheWindowMs, trackerWatchlist, watchlistPicks, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
@@ -76,12 +77,13 @@ export async function watchlistEntries(userUUID: string, config: any, need = Num
   return { entries: [...out.values()].sort((a, b) => b.addedAt - a.addedAt), exhausted: held.exhausted, complete: held.complete };
 }
 
-export async function watchlistItems(userUUID: string, config: any, serverId: string, entries: WatchlistEntry[], concurrency: number): Promise<any[]> {
+/** The titles of a shelf, marked as it is to the client: a favourite, or a liked title for a watchlist. */
+export async function watchlistItems(userUUID: string, config: any, serverId: string, entries: WatchlistEntry[], concurrency: number, mark: 'IsFavorite' | 'Likes' = 'IsFavorite'): Promise<any[]> {
   const built = await mapWithConcurrency(entries, concurrency, async (entry: WatchlistEntry) => {
     const meta = await fetchMeta(userUUID, entry.mediaType === 'movie' ? 'movie' : 'series', entry.metaId);
     if (!meta) return null;
     const item = metaToBaseItem(meta, entry.mediaType, serverId, null);
-    item.UserData = { ...item.UserData, IsFavorite: true };
+    item.UserData = { ...item.UserData, [mark]: true };
     return item;
   });
   return built.filter(Boolean);
@@ -106,12 +108,38 @@ export async function applyWatchlistState(items: any[], userUUID: string, config
   if (!titles.length) return;
 
   const listed = new Set((await watchlistEntries(userUUID, config)).entries.map((entry) => entry.metaId));
-  for (const item of titles) {
-    const own = String(descriptors.get(String(item.Id)).i);
-    if (listed.has(own) || listedKeys(item).some((key) => listed.has(key))) {
-      item.UserData = { ...item.UserData, IsFavorite: true };
+  const inSet = (set: Set<string>, item: any) =>
+    set.has(String(descriptors.get(String(item.Id)).i)) || listedKeys(item).some((key) => set.has(key));
+
+  if (!clientHasOwnWatchlist()) {
+    for (const item of titles) {
+      if (inSet(listed, item)) item.UserData = { ...item.UserData, IsFavorite: true };
     }
+    return;
   }
+  // A dropped show keeps its dislike over the watchlist's like.
+  const favourites = new Set((await favouriteEntries(userUUID, config)).map((entry) => entry.metaId));
+  for (const item of titles) {
+    if (inSet(listed, item) && item.UserData.Likes !== false) item.UserData = { ...item.UserData, Likes: true };
+    item.UserData = { ...item.UserData, IsFavorite: inSet(favourites, item) };
+  }
+}
+
+/** Favourites kept for a client with a watchlist of its own, newest first. */
+export async function favouriteEntries(userUUID: string, config: any): Promise<WatchlistEntry[]> {
+  const rows: any[] = await database.listFavourites(userUUID, profileKey(config)).catch(() => []);
+  return rows.map((row) => {
+    const mediaType = row.media_type === 'movie' ? 'movie' : row.media_type === 'anime' ? 'anime' : 'series';
+    return { metaId: String(row.meta_id), mediaType, kind: mediaType === 'movie' ? 'movies' : mediaType, addedAt: Number(row.updated_at) || 0 };
+  });
+}
+
+export async function setFavourite(userUUID: string, config: any, descriptor: any, favourite: boolean): Promise<boolean> {
+  if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'series')) return false;
+  const meta = await fetchMeta(userUUID, descriptor.k === 'movie' ? 'movie' : 'series', descriptor.i);
+  if (!meta) return false;
+  await database.setFavourite(userUUID, profileKey(config), String(meta.id), descriptor.t, favourite);
+  return true;
 }
 
 export function idsFor(meta: any, stremioType: 'movie' | 'series'): WatchlistIds {
@@ -146,7 +174,12 @@ export async function setWatchlisted(userUUID: string, config: any, descriptor: 
   await database.setWatchlisted(userUUID, profileKey(config), String(meta.id), descriptor.t, listed);
   invalidateWatchlist(userUUID);
   if (writesTrackers(config)) {
-    writeWatchlist(config, userUUID, idsFor(meta, stremioType), stremioType === 'movie' ? 'movie' : 'show', listed).catch(() => undefined);
+    const { enqueueTrackerWrites, hasCredential } = require('../trackerOutbox');
+    const services = (['mdblist', 'simkl', 'publicmetadb', 'anilist', 'mal'] as const).filter((service) => hasCredential(config, service));
+    const payload = { ids: idsFor(meta, stremioType), kind: stremioType === 'movie' ? 'movie' : 'show', listed };
+    await enqueueTrackerWrites(userUUID, config, services.map((service) => ({
+      service, op: 'watchlist', item: String(meta.id), coalesce: `watchlist:${meta.id}`, payload,
+    })));
   }
   return true;
 }

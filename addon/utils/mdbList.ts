@@ -958,60 +958,6 @@ type EpisodeIdInput =
     tvdb?: number | string;
   };
 
-// Watch history types
-interface WatchHistoryMovieEntry {
-  last_watched_at: string;
-  movie: {
-    title: string;
-    year: number;
-    ids: {
-      trakt?: number;
-      imdb?: string;
-      tmdb?: number;
-      kitsu?: number;
-      mdblist?: string;
-    };
-  };
-}
-
-interface WatchHistoryEpisodeEntry {
-  last_watched_at: string;
-  episode: {
-    season: number;
-    number: number;
-    name: string;
-    ids: {
-      tmdb?: number;
-    };
-    show: {
-      title: string;
-      year: number;
-      ids: {
-        tmdb?: number;
-        trakt?: number;
-        imdb?: string;
-        mdblist?: string;
-      };
-    };
-  };
-}
-
-interface WatchHistoryResponse {
-  movies: WatchHistoryMovieEntry[];
-  seasons: any[];
-  episodes: WatchHistoryEpisodeEntry[];
-  pagination: {
-    offset?: number;
-    limit?: number;
-    total_movies?: number;
-    total_shows?: number;
-    total_seasons?: number;
-    total_episodes?: number;
-    has_more?: boolean;
-    next_cursor?: string;
-  };
-}
-
 function formatIdSummary(ids: Record<string, string | number>) {
   return Object.entries(ids)
     .map(([key, value]) => `${key}:${value}`)
@@ -1081,308 +1027,6 @@ function normalizeEpisodeIdInput(input: EpisodeIdInput | null | undefined) {
   if (tvdb !== undefined) ids.tvdb = tvdb;
 
   return Object.keys(ids).length > 0 ? ids : null;
-}
-
-/**
- * Fetch user's watch history from MDBList API
- */
-/** Bounded so a very large library cannot spend the whole rate limit on one read. */
-const MAX_WATCH_HISTORY_PAGES = parseInt(process.env.MDBLIST_WATCH_HISTORY_PAGES || '6', 10);
-
-async function fetchWatchHistory(apiKey: string): Promise<WatchHistoryResponse | null> {
-  if (!apiKey) {
-    logger.debug('[Watch Tracking] Missing API key for fetchWatchHistory');
-    return null;
-  }
-
-  try {
-    // Without `offset` the endpoint answers in cursor mode, capped at 100 rows,
-    // and reports no totals — which silently truncated a library of hundreds to
-    // whatever fitted in the first page. Passing an offset switches it to the
-    // paged mode, which returns 1000 at a time and says how many there are.
-    const merged: WatchHistoryResponse = {
-      movies: [], seasons: [], episodes: [], pagination: {},
-    };
-
-    let offset = 0;
-    for (let page = 0; page < MAX_WATCH_HISTORY_PAGES; page += 1) {
-      const url = `https://api.mdblist.com/sync/watched?apikey=${apiKey}&offset=${offset}`;
-      const response: any = await makeRateLimitedRequest(
-        () => httpGet(url, { dispatcher: mdblistDispatcher }),
-        apiKey,
-        `MDBList fetchWatchHistory (offset ${offset})`
-      );
-
-      const body = response.data as WatchHistoryResponse;
-      if (!body) break;
-
-      merged.movies.push(...(body.movies || []));
-      merged.seasons.push(...(body.seasons || []));
-      merged.episodes.push(...(body.episodes || []));
-      merged.pagination = body.pagination || {};
-
-      const returned = (body.movies?.length || 0) + (body.seasons?.length || 0) + (body.episodes?.length || 0);
-      if (!body.pagination?.has_more || returned === 0) break;
-      offset += body.pagination.limit || returned;
-    }
-
-    logger.debug(
-      `[Watch Tracking] Read ${merged.movies.length} movies and ${merged.episodes.length} episodes `
-      + `of ${merged.pagination.total_movies ?? '?'} / ${merged.pagination.total_episodes ?? '?'}`
-    );
-    return merged;
-  } catch (error: any) {
-    logger.error(`[Watch Tracking] Failed to fetch watch history: ${error.message}`);
-    return null;
-  }
-}
-
-/**
- * Check if a movie was recently watched (within the last 30 days)
- */
-function isMovieRecentlyWatched(
-  normalizedIds: Record<string, string | number>,
-  watchHistory: WatchHistoryResponse
-): boolean {
-  const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-
-  for (const entry of watchHistory.movies) {
-    const movieIds = entry.movie.ids;
-
-    // Check if any of our normalized IDs match any ID in the history entry
-    for (const [key, value] of Object.entries(normalizedIds)) {
-      const historyValue = (movieIds as any)[key];
-      if (historyValue !== undefined && String(historyValue) === String(value)) {
-        // Found a match - check if watched within the last month
-        const watchedAt = new Date(entry.last_watched_at).getTime();
-        if (now - watchedAt < ONE_MONTH_MS) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
-}
-
-/**
- * Check if an episode was recently watched (within the last 30 days)
- */
-function isEpisodeRecentlyWatched(
-  normalizedIds: Record<string, string | number>,
-  season: number,
-  episode: number,
-  watchHistory: WatchHistoryResponse
-): boolean {
-  const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-
-  for (const entry of watchHistory.episodes) {
-    const showIds = entry.episode.show.ids;
-    const episodeSeason = entry.episode.season;
-    const episodeNumber = entry.episode.number;
-
-    // Check if any of our normalized IDs match any ID in the show's history entry
-    for (const [key, value] of Object.entries(normalizedIds)) {
-      const historyValue = (showIds as any)[key];
-      if (historyValue !== undefined && String(historyValue) === String(value)) {
-        // Found a match - check if season and episode also match
-        if (episodeSeason === season && episodeNumber === episode) {
-          // Check if watched within the last month
-          const watchedAt = new Date(entry.last_watched_at).getTime();
-          if (now - watchedAt < ONE_MONTH_MS) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-
-  return false;
-}
-
-async function markMovieAsWatched(idInput: MovieIdInput, apiKey: string): Promise<boolean> {
-  const normalizedIds = normalizeMovieIdInput(idInput);
-
-  if (!normalizedIds || !apiKey) {
-    logger.debug('[Watch Tracking] Missing ID or API key for markMovieAsWatched', {
-      id: idInput,
-      hasApiKey: !!apiKey
-    });
-    return false;
-  }
-
-  try {
-    // Check if movie was recently watched before sending the request
-    const watchHistory = await fetchWatchHistory(apiKey);
-    if (watchHistory && isMovieRecentlyWatched(normalizedIds, watchHistory)) {
-      logger.debug(
-        `[Watch Tracking] Skipped marking ${formatIdSummary(normalizedIds)} because it's already watched`
-      );
-      return true; // Return true since the movie is already marked as watched
-    }
-
-    const url = `https://api.mdblist.com/sync/watched?apikey=${apiKey}`;
-    const watchedAt = new Date().toISOString();
-
-    const payload = {
-      movies: [
-        {
-          ids: normalizedIds,
-          watched_at: watchedAt
-        }
-      ]
-    };
-
-    logger.debug(
-      `[Watch Tracking] Marking movie as watched - ids: ${formatIdSummary(normalizedIds)}, timestamp: ${watchedAt}`
-    );
-
-    await makeRateLimitedRequest(
-      () =>
-        httpPost(url, payload, {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000,
-          dispatcher: mdblistDispatcher
-        }),
-      apiKey,
-      `MDBList markMovieAsWatched (${formatIdSummary(normalizedIds)})`
-    );
-
-    logger.info('[Watch Tracking] Movie marked as watched', {
-      ids: normalizedIds
-    });
-    return true;
-  } catch (error: any) {
-    logger.error(
-      `[Watch Tracking] Failed to mark movie as watched - ids: ${formatIdSummary(normalizedIds)}, error: ${error.message}`,
-      {
-        stack: error.stack
-      }
-    );
-
-    if (error.response) {
-      logger.error(
-        `[Watch Tracking] MDBList API error response - status: ${error.response.status}, statusText: ${
-          error.response.statusText || 'N/A'
-        }`,
-        {
-          responseData: error.response.data,
-          headers: error.response.headers
-        }
-      );
-    } else if (error.code) {
-      logger.error(`[Watch Tracking] Network error - code: ${error.code}`, {
-        errno: error.errno,
-        syscall: error.syscall
-      });
-    }
-
-    return false;
-  }
-}
-
-async function markEpisodeAsWatched(
-  idInput: EpisodeIdInput,
-  season: number,
-  episode: number,
-  apiKey: string
-): Promise<boolean> {
-  const normalizedIds = normalizeEpisodeIdInput(idInput);
-
-  if (!normalizedIds || !apiKey || season < 1 || episode < 1) {
-    logger.warn('[Watch Tracking] Invalid parameters for markEpisodeAsWatched', {
-      id: idInput,
-      season,
-      episode,
-      hasApiKey: !!apiKey
-    });
-    return false;
-  }
-
-  try {
-    // Check if episode was recently watched before sending the request
-    const watchHistory = await fetchWatchHistory(apiKey);
-    if (watchHistory && isEpisodeRecentlyWatched(normalizedIds, season, episode, watchHistory)) {
-      logger.debug(
-        `[Watch Tracking] Skipped marking ${formatIdSummary(normalizedIds)} S${season}E${episode} because it's already watched`
-      );
-      return true; // Return true since the episode is already marked as watched
-    }
-
-    const url = `https://api.mdblist.com/sync/watched?apikey=${apiKey}`;
-    const watchedAt = new Date().toISOString();
-
-    const payload = {
-      shows: [
-        {
-          ids: normalizedIds,
-          seasons: [
-            {
-              number: season,
-              episodes: [
-                {
-                  number: episode,
-                  watched_at: watchedAt
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    };
-
-    logger.debug(
-      `[Mdblist Watch Tracking] Marking episode as watched - ids: ${formatIdSummary(normalizedIds)}, S${season}E${episode}, timestamp: ${watchedAt}`
-    );
-
-    await makeRateLimitedRequest(
-      () =>
-        httpPost(url, payload, {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000,
-          dispatcher: mdblistDispatcher
-        }),
-      apiKey,
-      `MDBList markEpisodeAsWatched (${formatIdSummary(normalizedIds)}, S${season}E${episode})`
-    );
-
-    logger.info('[Watch Tracking] Episode marked as watched', {
-      ids: normalizedIds,
-      season,
-      episode
-    });
-    return true;
-  } catch (error: any) {
-    logger.error(
-      `[Watch Tracking] Failed to mark episode as watched - ids: ${formatIdSummary(normalizedIds)}, S${season}E${episode}, error: ${error.message}`,
-      {
-        stack: error.stack
-      }
-    );
-
-    if (error.response) {
-      logger.error(
-        `[Watch Tracking] MDBList API error response - status: ${error.response.status}, statusText: ${error.response.statusText || 'N/A'}`,
-        {
-          responseData: error.response.data,
-          headers: error.response.headers
-        }
-      );
-    } else if (error.code) {
-      logger.error(`[Watch Tracking] Network error - code: ${error.code}`, {
-        errno: error.errno,
-        syscall: error.syscall
-      });
-    }
-
-    return false;
-  }
 }
 
 /**
@@ -1953,8 +1597,26 @@ async function fetchMDBListCatalog(
   }, ttl, { upstream: true, sourceList: true });
 }
 
+/**
+ * MDBList's activity digest for one key, shared by everything that asks whether the
+ * key's library moved: the watch mirror, the paused-titles gate and the hide-watched
+ * filter. A watch recorded here clears it.
+ */
+async function fetchMdblistLastActivities(apiKey: string): Promise<any> {
+  const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
+  return cacheWrapGlobal(
+    `mdblist_last_activities:${keyHash}`,
+    async () => {
+      const response = await makeRateLimitedMDBListRequest(`https://api.mdblist.com/sync/last_activities?apikey=${apiKey}`, apiKey, 'MDBList activities');
+      return response?.data ?? {};
+    },
+    envInt('MDBLIST_ACTIVITIES_TTL', 300, 30),
+    { upstream: true }
+  );
+}
+
 export {
-  fetchWatchHistory,
+  fetchMdblistLastActivities,
   fetchMDBListItems,
   fetchMDBListExternalItems,
   usesMdblistExternalItemsEndpoint,

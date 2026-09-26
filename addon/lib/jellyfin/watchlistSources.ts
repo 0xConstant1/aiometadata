@@ -1,6 +1,5 @@
 import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
-import { httpPost } from '../../utils/httpClient';
 import { credentialFor } from './trackerSource';
 
 const logger = consola.withTag('Jellyfin');
@@ -18,13 +17,12 @@ export interface WatchlistEntry {
 export type WatchlistIds = { imdb?: string; tmdb?: number | string; tvdb?: number | string; kitsu?: number | string; mal?: number | string };
 
 
-export type WatchlistService = 'mdblist' | 'trakt' | 'simkl' | 'anilist' | 'mal' | 'publicmetadb';
+export type WatchlistService = 'mdblist' | 'simkl' | 'anilist' | 'mal' | 'publicmetadb';
 /** The pick that says a client's favourites are the hearts set here, and nothing else. */
 export const WATCHLIST_NONE = 'none';
-export const WATCHLIST_SERVICES: WatchlistService[] = ['mdblist', 'trakt', 'simkl', 'anilist', 'mal', 'publicmetadb'];
+export const WATCHLIST_SERVICES: WatchlistService[] = ['mdblist', 'simkl', 'anilist', 'mal', 'publicmetadb'];
 export const SERVICE_KINDS: Record<WatchlistService, WatchlistKind[]> = {
   mdblist: ['movies', 'series'],
-  trakt: ['movies', 'series'],
   simkl: ['movies', 'series', 'anime'],
   anilist: ['anime'],
   mal: ['anime'],
@@ -70,7 +68,6 @@ export function watchlistServices(config: any): WatchlistService[] {
 
 const SHELF_CATALOGS: Record<WatchlistService, Partial<Record<WatchlistKind, { type: string; id: string }>>> = {
   mdblist: { movies: { type: 'movie', id: 'mdblist.watchlist.movies' }, series: { type: 'series', id: 'mdblist.watchlist.series' } },
-  trakt: { movies: { type: 'movie', id: 'trakt.watchlist.movies' }, series: { type: 'series', id: 'trakt.watchlist.series' } },
   simkl: {
     movies: { type: 'movie', id: 'simkl.watchlist.movies.plantowatch' },
     series: { type: 'series', id: 'simkl.watchlist.shows.plantowatch' },
@@ -174,19 +171,15 @@ export async function trackerWatchlist(config: any, userUUID: string, need = Num
   };
 }
 
-export function traktHeaders(accessToken: string): Record<string, string> {
-  return { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': process.env.TRAKT_CLIENT_ID || '', Authorization: `Bearer ${accessToken}` };
-}
-
-export async function writeWatchlist(config: any, userUUID: string, ids: WatchlistIds, kind: 'movie' | 'show', listed: boolean): Promise<void> {
+export async function writeWatchlist(config: any, userUUID: string, ids: WatchlistIds, kind: 'movie' | 'show', listed: boolean, only?: string): Promise<void> {
   const { shouldTrackServiceMediaType } = require('../watchTracking');
   const mediaType = kind === 'movie' ? 'movie' : 'series';
   const body = kind === 'movie' ? { movies: [{ ids }] } : { shows: [{ ids }] };
   const picks = watchlistPicks(config);
   const anime = Boolean(ids.kitsu || ids.mal);
   const shelf: WatchlistKind = kind === 'movie' ? 'movies' : 'series';
-  // MDBList and Trakt file anime with films and shows; Simkl, AniList and MAL keep it apart.
-  const takes = (service: WatchlistService, own: WatchlistKind) => picks.get(service)?.has(own) ?? false;
+  // MDBList files anime with films and shows; Simkl, AniList and MAL keep it apart.
+  const takes = (service: WatchlistService, own: WatchlistKind) => (!only || only === service) && (picks.get(service)?.has(own) ?? false);
 
   if (takes('mdblist', shelf) && shouldTrackServiceMediaType(config, 'mdblist', mediaType) && config?.apiKeys?.mdblist) {
     try {
@@ -197,32 +190,23 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     }
   }
 
-  if (takes('trakt', shelf) && shouldTrackServiceMediaType(config, 'trakt', mediaType) && config?.apiKeys?.traktTokenId) {
-    try {
-      const { getTraktToken } = require('../../utils/traktUtils');
-      const token = await getTraktToken(config.apiKeys.traktTokenId);
-      const accessToken = token?.access_token ?? token;
-      if (accessToken) {
-        await httpPost(`https://api.trakt.tv/sync/watchlist${listed ? '' : '/remove'}`, body, { headers: traktHeaders(accessToken), timeout: 10000 });
-      }
-    } catch (error: any) {
-      logger.warn(`Trakt watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);
-    }
-  }
-
   if (takes('simkl', anime ? 'anime' : shelf) && shouldTrackServiceMediaType(config, 'simkl', mediaType) && config?.apiKeys?.simklTokenId) {
     try {
-      const { getSimklToken, fetchSimklAllItems, makeAuthenticatedSimklRequest } = require('../../utils/simklUtils');
+      const { getSimklToken, makeAuthenticatedSimklRequest } = require('../../utils/simklUtils');
       const token = await getSimklToken(config.apiKeys.simklTokenId);
       if (token?.access_token) {
         if (listed) {
           const planned = kind === 'movie' ? { movies: [{ ids, to: 'plantowatch' }] } : { shows: [{ ids, to: 'plantowatch' }] };
           await makeAuthenticatedSimklRequest('https://api.simkl.com/sync/add-to-list', token.access_token, 'Simkl watchlist add', 'POST', planned);
         } else {
-          // Simkl's removal drops the whole entry, history included.
-          const all = await fetchSimklAllItems(token.access_token);
-          const lists = kind === 'movie' ? [all?.movies] : [all?.shows, all?.anime];
-          const planned = lists.flat().some((entry: any) => entry?.status === 'plantowatch' && matches(entry?.movie?.ids ?? entry?.show?.ids ?? {}, ids));
+          // Simkl's removal drops the whole entry, history included, so only a title still
+          // planned is removed; the planned shelf alone is read, not the library.
+          // An anime film is filed with anime, never with movies.
+          const types = kind === 'movie' ? (anime ? ['movies', 'anime'] : ['movies']) : ['shows', 'anime'];
+          const shelves = await Promise.all(types.map((type) =>
+            makeAuthenticatedSimklRequest(`https://api.simkl.com/sync/all-items/${type}/plantowatch?extended=ids_only`, token.access_token, 'Simkl watchlist check').then((response: any) => response?.data?.[type] ?? [])
+          ));
+          const planned = shelves.flat().some((entry: any) => matches(entry?.movie?.ids ?? entry?.show?.ids ?? {}, ids));
           if (planned) await makeAuthenticatedSimklRequest('https://api.simkl.com/sync/history/remove', token.access_token, 'Simkl watchlist remove', 'POST', body);
         }
       }

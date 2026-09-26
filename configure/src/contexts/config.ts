@@ -153,7 +153,6 @@ export interface SearchConfig {
 }
 
 export type WatchTrackingService =
-  | 'trakt'
   | 'simkl'
   | 'anilist'
   | 'mal'

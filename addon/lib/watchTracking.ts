@@ -1,7 +1,6 @@
 import type { UserConfig } from '../types';
 
 export type WatchTrackingService =
-  | 'trakt'
   | 'simkl'
   | 'anilist'
   | 'mal'
@@ -11,7 +10,6 @@ export type WatchTrackingService =
 export type WatchTrackingMediaType = 'movie' | 'series';
 
 type WatchTrackingMasterKey =
-  | 'traktWatchTracking'
   | 'simklWatchTracking'
   | 'anilistWatchTracking'
   | 'malWatchTracking'
@@ -24,7 +22,6 @@ interface WatchTrackingServiceDefinition {
 }
 
 export const WATCH_TRACKING_SERVICES: WatchTrackingService[] = [
-  'trakt',
   'simkl',
   'anilist',
   'mal',
@@ -36,10 +33,6 @@ const SERVICE_DEFINITIONS: Record<
   WatchTrackingService,
   WatchTrackingServiceDefinition
 > = {
-  trakt: {
-    masterKey: 'traktWatchTracking',
-    hasCredential: (config) => !!config.apiKeys?.traktTokenId,
-  },
   simkl: {
     masterKey: 'simklWatchTracking',
     hasCredential: (config) => !!config.apiKeys?.simklTokenId,

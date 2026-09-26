@@ -9,6 +9,8 @@ import {
   loadConfig,
   requireAuth,
   serverIdFor,
+  runWithClient,
+  clientHasOwnWatchlist,
 } from './context';
 import { mintToken, readToken, revokeToken } from './tokens';
 import {
@@ -34,8 +36,8 @@ import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByNa
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
 import { allBoxSets, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
-import { setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
-import { applyWatchedState, isWatched, ownNextUpRows, upcomingFollowed, watchedSnapshot, type NextUpRow } from './watched';
+import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
+import { applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { registerStubs } from './stubs';
 import { recordPlayed, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
@@ -273,6 +275,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   });
 
   router.use(attachJellyfinContext);
+  router.use((req: any, _res: any, next: any) => runWithClient(req, next));
 
   // --- Handshake ---
 
@@ -556,8 +559,24 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const serverId = serverIdFor(userUUID);
 
-    // The watchlist, newest first, is what a client calls favourites.
-    if (filters.includes('IsFavorite') || favouriteFlag) {
+    // The watchlist, newest first, is what a client calls favourites; a client with a
+    // watchlist of its own asks for it by likes, and its favourites are kept apart.
+    const ownWatchlist = clientHasOwnWatchlist();
+    const likesFilter = filters.split(',').map((f) => f.trim()).includes('Likes');
+    if (ownWatchlist && (filters.includes('IsFavorite') || favouriteFlag)) {
+      const wanted = includeItemTypes
+        ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
+        : null;
+      const entries = (await favouriteEntries(userUUID, config)).filter((entry) =>
+        !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
+      );
+      const page = entries.slice(startIndex, startIndex + limit);
+      const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
+      await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+      res.json(itemList(items, entries.length, startIndex));
+      return;
+    }
+    if (ownWatchlist ? likesFilter : filters.includes('IsFavorite') || favouriteFlag) {
       const started = Date.now();
       const wanted = includeItemTypes
         ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
@@ -575,7 +594,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       );
       const listed = Date.now() - started;
       const page = entries.slice(startIndex, startIndex + limit);
-      const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
+      const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency(), ownWatchlist ? 'Likes' : 'IsFavorite');
       await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
       const count = read.exhausted ? entries.length : Math.max(entries.length, startIndex + items.length + limit);
       logger.debug(`Favourites for ${userUUID} from ${clientInfo(req).client}/${clientInfo(req).version}: ${items.length} of ${count}, types ${includeItemTypes ?? 'any'}, from ${startIndex}, in ${Date.now() - started}ms (entries ${listed}ms)`);
@@ -599,12 +618,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
       if (wanted.has('Movie') || wanted.has('Episode')) {
         const kinds = new Set<string>([wanted.has('Movie') ? 'movie' : '', wanted.has('Episode') ? 'episode' : '']);
-        for (const entry of snapshot.history) if (kinds.has(entry.kind)) played.push(entry);
+        played.push(...(await watchedHistory(snapshot, [...kinds].filter(Boolean) as Array<'movie' | 'episode'>, envInt('JELLYFIN_HISTORY_TRACKER_LIMIT', 20000, 1))));
         const database: any = require('../database');
         const rows: any[] = await database.listPlaystatePlayedFor(userUUID, envInt('JELLYFIN_HISTORY_LOCAL_LIMIT', 5000, 1), profile).catch(() => []);
+        const onTracker = await watchedAmong(snapshot, rows.map((row) => String(row.video_id)));
         for (const row of rows) {
           const videoId = String(row.video_id);
-          if (snapshot.episodes.has(videoId) || snapshot.movies.has(videoId)) continue;
+          if (onTracker.has(videoId)) continue;
           const parsed = parseStremioId(videoId);
           if (!parsed) continue;
           const isEpisode = parsed.episode !== null;
@@ -619,11 +639,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
 
       if (wanted.has('Series')) {
-        const shown = new Set<object>();
-        for (const [key, counts] of snapshot.series) {
-          if (shown.has(counts) || !(counts.total > 0 && counts.watched >= counts.total)) continue;
-          shown.add(counts);
-          played.push({ kind: 'series', id: key, mediaType: key.startsWith('kitsu:') ? 'anime' : 'series', at: counts.at ?? 0 });
+        for (const show of await finishedSeries(snapshot)) {
+          played.push({ kind: 'series', id: show.id, mediaType: show.id.startsWith('kitsu:') ? 'anime' : 'series', at: show.at });
         }
       }
 
@@ -1986,6 +2003,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const serverId = serverIdFor(userUUID);
     const window = rows.slice(startIndex, startIndex + limit);
+    const finished = await watchedAmong(watched, window.map((row) => row.videoId));
 
     // One meta per title, not per row: a show with several part-watched
     // episodes is the normal shape of this list.
@@ -2005,7 +2023,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
       if (row.kind === 'movie') {
         const item = metaToBaseItem(meta, row.mediaType, serverId, null);
-        item.UserData = resumeUserData(item.Id, row, item.RunTimeTicks ?? null, isWatched(watched, row.videoId));
+        item.UserData = resumeUserData(item.Id, row, item.RunTimeTicks ?? null, finished.has(row.videoId));
         items.push(item);
         continue;
       }
@@ -2029,7 +2047,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         continue;
       }
 
-      target.UserData = resumeUserData(target.Id, row, target.RunTimeTicks ?? null, isWatched(watched, row.videoId));
+      target.UserData = resumeUserData(target.Id, row, target.RunTimeTicks ?? null, finished.has(row.videoId));
       items.push(target);
     }
 
@@ -2182,10 +2200,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
     }
 
+    const counted = !includeRewatching && !seriesParam ? await seriesCountsAmong(snapshot, scoped.map((row) => row.metaId)) : new Map();
     const rows = scoped.filter((row) => {
       if (resumable && resumable.has(row.metaId)) return false;
       if (!includeRewatching && !seriesParam) {
-        const counts = snapshot.series.get(row.metaId);
+        const counts = counted.get(row.metaId);
         if (counts && counts.total > 0 && counts.watched >= counts.total) return false;
       }
       return true;
@@ -2399,10 +2418,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const { stremioIdFor } = require('./idsCodec');
       const unknown: any[] = [];
       const held: string[] = [];
+      const airedIds = new Map<any, string | null>();
       for (const episode of aired) {
         const d = await decodeJellyfinId(String(episode.Id));
-        const videoId = d ? stremioIdFor(d) : null;
-        if (!videoId || !isWatched(snapshot, videoId)) unknown.push(episode);
+        airedIds.set(episode, d ? stremioIdFor(d) : null);
+      }
+      const onTracker = await watchedAmong(snapshot, [...airedIds.values()].filter(Boolean) as string[]);
+      for (const [episode, videoId] of airedIds) {
+        if (!videoId || !onTracker.has(videoId)) unknown.push(episode);
         else held.push(videoId);
       }
       if (unknown.length) {
@@ -2864,7 +2887,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(404).json({ Message: 'Item not found' });
       return;
     }
-    const changed = await setWatchlisted(userUUID, config, descriptor, listed);
+    const changed = clientHasOwnWatchlist()
+      ? await setFavourite(userUUID, config, descriptor, listed)
+      : await setWatchlisted(userUUID, config, descriptor, listed);
     res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, IsFavorite: changed && listed });
   };
   const ratingHandler = (clear: boolean) => async (req: any, res: any) => {
@@ -2879,7 +2904,17 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const asked = String(req.query.likes ?? req.query.Likes ?? '').toLowerCase();
     const likes = clear ? null : asked === 'true' ? true : asked === 'false' ? false : null;
     const { rateSeries } = require('./dropped');
-    await rateSeries(userUUID, config, descriptor, likes).catch((error: any) => logger.warn(`Rating failed for ${itemId}: ${error?.message || error}`));
+    const undropped = await rateSeries(userUUID, config, descriptor, likes).catch((error: any) => {
+      logger.warn(`Rating failed for ${itemId}: ${error?.message || error}`);
+      return false;
+    });
+    // A like puts the title on the watchlist and a cleared rating takes it off, for a
+    // client that keeps one; a dislike stays a drop, and clearing one only undrops.
+    if (clientHasOwnWatchlist() && likes !== false && !(likes === null && undropped)) {
+      await setWatchlisted(userUUID, config, descriptor, likes === true).catch((error: any) =>
+        logger.warn(`Watchlist change failed for ${itemId}: ${error?.message || error}`)
+      );
+    }
     res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, Likes: likes });
   };
 

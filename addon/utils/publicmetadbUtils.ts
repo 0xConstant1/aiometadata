@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { resolveAllIds } from "../lib/id-resolver.js";
 import { UserConfig } from "../types/index.js";
 import consola from 'consola';
+import { noteTrackerCall } from "./trackerCalls.js";
 
 const logger = consola.withTag('PublicMetaDB');
 
@@ -101,6 +102,7 @@ async function makeRequest(
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
+      noteTrackerCall(url, res.status, undefined, res.headers.get('Retry-After'));
 
       if (res.ok) {
         state.recentRateLimitHits = 0;
@@ -153,6 +155,7 @@ async function makeRequest(
     } catch (err: any) {
       // Network errors (fetch throws)
       if (err.message?.startsWith('PublicMetaDB')) throw err; // re-throw our own errors
+      noteTrackerCall(url, 0);
       if (isLastAttempt) {
         throw new Error(`PublicMetaDB ${method} ${endpoint} failed after ${RATE_LIMIT_CONFIG.maxRetries} attempts: ${err.message}`);
       }

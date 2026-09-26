@@ -2,8 +2,7 @@ import consola from 'consola';
 
 const logger = consola.withTag('Recommendations');
 
-/** A day when Simkl can say whether anything moved, minutes when it cannot. The
- *  docs require gating /sync/all-items on /sync/activities. */
+/** A day when the watch mirrors can say whether anything moved, minutes when a sync failed. */
 const HISTORY_TTL = parseInt(process.env.RECOMMENDATION_HISTORY_TTL || String(24 * 60 * 60), 10);
 
 /** Without a change signal, freshness has to come from the clock. */
@@ -91,7 +90,7 @@ function rowFromSimkl(entry: any, kind: WatchedKind, status: string): WatchedRow
 }
 
 async function collectSimklRows(config: any): Promise<WatchedRow[]> {
-  const { getSimklToken, fetchSimklWatchedItems }: any = require('../simklUtils');
+  const { getSimklToken, fetchSimklWatchlistItems }: any = require('../simklUtils');
   const token = await getSimklToken(config?.apiKeys?.simklTokenId);
   const accessToken = token?.access_token;
   if (!accessToken) return [];
@@ -118,7 +117,8 @@ async function collectSimklRows(config: any): Promise<WatchedRow[]> {
 
   const batches = await Promise.all(wanted.map(async ([type, kind, status]) => {
     try {
-      const items = await fetchSimklWatchedItems(accessToken, type, status);
+      // Every status comes from the one watch mirror, so this is one sync, not a call per list.
+      const { items } = await fetchSimklWatchlistItems(accessToken, type, status, undefined, config);
       return (items || []).map((entry: any) => rowFromSimkl(entry, kind, status)).filter(Boolean) as WatchedRow[];
     } catch (error: any) {
       logger.debug(`Simkl ${type}/${status} unavailable: ${error.message}`);
@@ -138,13 +138,29 @@ async function collectMdblistRows(config: any): Promise<WatchedRow[]> {
   const apiKey = config?.apiKeys?.mdblist;
   if (!apiKey) return [];
 
-  const { fetchWatchHistory }: any = require('../mdbList');
-  const history = await fetchWatchHistory(apiKey);
-  if (!history) return [];
+  // The watch mirror holds the key's history and fetches only what changed since its last
+  // sync, so a profile build no longer reads the whole history.
+  const { syncMirror, mirrorVersion, mirrorRows }: any = require('../../lib/jellyfin/trackerMirror');
+  try {
+    await syncMirror('mdblist', apiKey, config);
+  } catch (error: any) {
+    if (!(await mirrorVersion('mdblist', apiKey))) {
+      logger.debug(`MDBList history unavailable: ${error?.message || error}`);
+      return [];
+    }
+  }
+  const newestFirst = (a: any, b: any) => (Date.parse(b?.last_watched_at ?? '') || 0) - (Date.parse(a?.last_watched_at ?? '') || 0);
+  const history = { movies: [] as any[], episodes: [] as any[] };
+  for (const row of await mirrorRows('mdblist', apiKey)) {
+    if (row.key.startsWith('movie:')) history.movies.push(row.data);
+    else if (row.key.startsWith('ep:')) history.episodes.push(row.data);
+  }
+  history.movies.sort(newestFirst);
+  history.episodes.sort(newestFirst);
 
   const rows: WatchedRow[] = [];
 
-  for (const entry of history.movies || []) {
+  for (const entry of history.movies) {
     const movie = entry?.movie;
     const title = String(movie?.title || '').trim();
     if (!title) continue;
@@ -163,7 +179,7 @@ async function collectMdblistRows(config: any): Promise<WatchedRow[]> {
   }
 
   const shows = new Map<string, WatchedRow>();
-  for (const entry of history.episodes || []) {
+  for (const entry of history.episodes) {
     const show = entry?.episode?.show;
     const title = String(show?.title || '').trim();
     if (!title) continue;
@@ -212,20 +228,17 @@ export function resolveSources(config: any): { simkl: boolean; mdblist: boolean;
   return { simkl: hasSimkl, mdblist: hasMdblist, choice: 'both' };
 }
 
-/** Changes when the Simkl lists do. `completed` per type is enough: a fingerprint
- *  folds in sibling statuses and removals, since a move bumps both ends. */
-async function simklFingerprint(config: any): Promise<string> {
+/**
+ * Changes when either history does: the watch mirrors' versions, which move only when
+ * a sync found something new. Empty when a sync failed, so the clock takes over.
+ */
+async function historyFingerprint(config: any, sources: { simkl: boolean; mdblist: boolean }): Promise<string> {
+  const { syncMirror }: any = require('../../lib/jellyfin/trackerMirror');
   try {
-    const { getSimklToken, getSimklActivityFingerprint }: any = require('../simklUtils');
-    const token = await getSimklToken(config?.apiKeys?.simklTokenId);
-    if (!token?.access_token) return '';
-
-    const parts = await Promise.all((['movies', 'shows', 'anime'] as const)
-      .map(type => getSimklActivityFingerprint(token.access_token, type, 'completed', config)));
-    if (!parts.some(Boolean)) return '';
-
-    const { createHash } = require('crypto');
-    return createHash('sha256').update(parts.join('|')).digest('hex').substring(0, 16);
+    const parts: string[] = [];
+    if (sources.simkl) parts.push(`s${await syncMirror('simkl', config.apiKeys.simklTokenId, config)}`);
+    if (sources.mdblist) parts.push(`m${await syncMirror('mdblist', config.apiKeys.mdblist, config)}`);
+    return parts.join('.');
   } catch {
     return '';
   }
@@ -233,14 +246,11 @@ async function simklFingerprint(config: any): Promise<string> {
 
 export async function collectWatchedRows(config: any, userUUID?: string): Promise<WatchedRow[]> {
   // The profile pass and the ranking pass both need this, and so does every
-  // catalog. Without a hold, one refresh is six Simkl reads and two MDBList
-  // calls for a history that changes a few times a day at most.
+  // catalog, so it is held until one of the histories changes.
   if (!userUUID) return readWatchedRows(config);
 
   const sources = resolveSources(config);
-
-  // MDBList offers nothing equivalent, so a run that reads it keeps the clock.
-  const fingerprint = sources.simkl && !sources.mdblist ? await simklFingerprint(config) : '';
+  const fingerprint = await historyFingerprint(config, sources);
 
   const { cacheWrapGlobal }: any = require('../../lib/getCache');
   return cacheWrapGlobal(
