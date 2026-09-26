@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.2.1](https://github.com/cedya77/aiometadata/compare/v3.2.0...v3.2.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **publicmetadb:** skip episodes already listed as watched when a season is marked ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **recommendations:** fill the anime row whatever language the configuration uses ([aea27e3](https://github.com/cedya77/aiometadata/commit/aea27e3b7dc570f84b44c04f698e29259d69a657))
+* **simkl:** check only the Plan to Watch shelf, anime films included, before removing a watchlist title ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **watch-tracking:** retry a Simkl write refused by its write lock instead of dropping it ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **watch-tracking:** send Simkl and MDBList the TMDB id alongside an IMDb id ([f3bd175](https://github.com/cedya77/aiometadata/commit/f3bd175319bf0781ebfa27d6f244559f54b2ba54))
+* **watch-tracking:** send tracker writes one at a time per account and retry them until they land ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **watch-tracking:** stop treating Trakt as a tracker, so a Trakt sign-in for catalogs no longer hides watched state ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+
+
+### Performance Improvements
+
+* **jellyfin:** answer watched state from an index built from the tracker mirror, a page at a time ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **jellyfin:** bound the playstate sync by active users, time and concurrency, and log event loop stalls ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **jellyfin:** keep each tracker library in the database and queue tracker writes ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **jellyfin:** read paused titles again only when a tracker's activity shows playback moved ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **mdblist:** read hide-watched and recommendations from the watch mirror instead of the whole history ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+* **simkl:** read list catalogs, Up Next, hide-watched and recommendations from the watch mirror ([98eed17](https://github.com/cedya77/aiometadata/commit/98eed17c231b6a18486890fc3e206595a8b46f4e))
+
 ## [3.2.0](https://github.com/cedya77/aiometadata/compare/v3.1.0...v3.2.0) (2026-09-25)
 
 
