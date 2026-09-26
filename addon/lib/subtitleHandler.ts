@@ -267,6 +267,17 @@ function buildIdSummary(ids: Record<string, any>): string {
     .join(', ');
 }
 
+async function withTmdbId(ids: Record<string, any>, mediaType: 'movie' | 'series'): Promise<Record<string, any>> {
+  if (!ids?.imdb || ids.tmdb) return ids;
+  try {
+    const { tmdbIdFrom } = require('../utils/publicmetadbUtils');
+    const tmdbId = await tmdbIdFrom(ids, mediaType);
+    return tmdbId ? { ...ids, tmdb: tmdbId } : ids;
+  } catch {
+    return ids;
+  }
+}
+
 function normalizeIdsForMovie(parsedId: ParsedMediaId): Record<string, any> | null {
   switch (parsedId.provider) {
     case 'imdb':
@@ -441,11 +452,12 @@ async function trackMdblistWatchStatus(
     }
 
     if (parsedId.type === 'movie') {
-      const ids = normalizeIdsForMovie(parsedId);
-      if (!ids) {
+      const normalized = normalizeIdsForMovie(parsedId);
+      if (!normalized) {
         logger.debug(`[Mdblist Watch Tracking] No valid identifiers for movie provider ${parsedId.provider}`);
         return;
       }
+      const ids = await withTmdbId(normalized, 'movie');
 
       logger.debug(`[Mdblist Watch Tracking] Checkin in movie (${buildIdSummary(ids)})`);
       await checkinMovie(ids, apiKey, options);
@@ -459,10 +471,11 @@ async function trackMdblistWatchStatus(
         return;
       }
 
+      const ids = await withTmdbId(resolution.ids, 'series');
       logger.debug(
-        `[Mdblist Watch Tracking] Checkin in for episode (${buildIdSummary(resolution.ids)}) S${resolution.season}E${resolution.episode}`
+        `[Mdblist Watch Tracking] Checkin in for episode (${buildIdSummary(ids)}) S${resolution.season}E${resolution.episode}`
       );
-      await checkinEpisode(resolution.ids, resolution.season, resolution.episode, apiKey, options);
+      await checkinEpisode(ids, resolution.season, resolution.episode, apiKey, options);
       return;
     }
 
@@ -532,11 +545,12 @@ async function eachHistoryService(
 
       if (parsedId.type === 'movie') {
         const ids = normalizeIdsForMovie(parsedId);
-        if (ids) await utils[method](ids, credential);
+        if (ids) await utils[method](service === 'trakt' ? ids : await withTmdbId(ids, 'movie'), credential);
       } else {
         const resolution = await resolveSeriesIds(parsedId, config, service === 'simkl');
         if (resolution) {
-          await utils[method](resolution.ids, credential, resolution.season, resolution.episode);
+          const ids = service === 'trakt' ? resolution.ids : await withTmdbId(resolution.ids, 'series');
+          await utils[method](ids, credential, resolution.season, resolution.episode);
         }
       }
     } catch (error: any) {
@@ -576,8 +590,9 @@ async function markEpisodes(
       for (const id of parsed) {
         const resolution = await resolveSeriesIds(id, config, service === 'simkl');
         if (!resolution) continue;
-        const key = JSON.stringify(resolution.ids);
-        const group = groups.get(key) ?? { ids: resolution.ids, episodes: [] };
+        const ids = service === 'trakt' ? resolution.ids : await withTmdbId(resolution.ids, 'series');
+        const key = JSON.stringify(ids);
+        const group = groups.get(key) ?? { ids, episodes: [] };
         group.episodes.push({ season: resolution.season, episode: resolution.episode });
         groups.set(key, group);
       }
@@ -671,13 +686,13 @@ async function clearMdblistResumePoint(
 
     if (parsedId.type === 'movie') {
       const ids = normalizeIdsForMovie(parsedId);
-      if (ids) await clearScrobbleSession(ids, apiKey);
+      if (ids) await clearScrobbleSession(await withTmdbId(ids, 'movie'), apiKey);
       return;
     }
 
     const resolution = await resolveSeriesIds(parsedId, config, false);
     if (resolution) {
-      await clearScrobbleSession(resolution.ids, apiKey, resolution.season, resolution.episode);
+      await clearScrobbleSession(await withTmdbId(resolution.ids, 'series'), apiKey, resolution.season, resolution.episode);
     }
   } catch (error: any) {
     logger.error(`[MDBList] Clearing the resume point failed: ${error.message}`);
@@ -711,11 +726,12 @@ async function checkinSimkl(
     }
 
     if (parsedId.type === 'movie') {
-      const ids = normalizeIdsForMovie(parsedId);
-      if (!ids) {
+      const normalized = normalizeIdsForMovie(parsedId);
+      if (!normalized) {
         logger.debug(`[Simkl Checkin] No valid identifiers for movie provider ${parsedId.provider}`);
         return;
       }
+      const ids = await withTmdbId(normalized, 'movie');
 
       logger.debug(`[Simkl Checkin] Tracking movie (${buildIdSummary(ids)})`);
       await checkinMovie(ids, accessToken, options);
@@ -729,10 +745,11 @@ async function checkinSimkl(
         return;
       }
 
+      const ids = await withTmdbId(resolution.ids, 'series');
       logger.debug(
-        `[Simkl Checkin] Checkin in episode (${buildIdSummary(resolution.ids)}) S${resolution.season}E${resolution.episode}`
+        `[Simkl Checkin] Checkin in episode (${buildIdSummary(ids)}) S${resolution.season}E${resolution.episode}`
       );
-      await checkinSeries(resolution.ids, resolution.season, resolution.episode, accessToken, resolution.fallbackData, options);
+      await checkinSeries(ids, resolution.season, resolution.episode, accessToken, resolution.fallbackData, options);
       return;
     }
 
