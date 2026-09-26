@@ -287,9 +287,19 @@ async function genreLists(config: any): Promise<Genres> {
   }
 }
 
+/** The anime mappings decide, as they do for metadata. TMDB's genres answer only for a
+ *  title too new to be mapped. */
+function isAnimeTitle(hit: any, kind: 'movie' | 'series', genres: Genres): boolean {
+  const idMapper: any = require('../../lib/id-mapper');
+  const mapped = idMapper.getMappingByTmdbId(String(hit.id), kind)
+    || (kind === 'movie' && idMapper.getTraktAnimeMovieByTmdbId?.(String(hit.id)));
+  if (mapped) return true;
+  const { isAnime }: any = require('../isAnime');
+  return isAnime(hit, kind === 'series' ? genres.series : genres.movie);
+}
+
 async function resolveSuggestion(pick: Suggestion, config: any, genres: Genres): Promise<any | null> {
   const { searchMovie, searchTv }: any = require('../../lib/getTmdb');
-  const { isAnime }: any = require('../isAnime');
   try {
     const params: any = { query: pick.title, include_adult: false };
     if (pick.year) params[pick.kind === 'series' ? 'first_air_date_year' : 'year'] = pick.year;
@@ -304,7 +314,7 @@ async function resolveSuggestion(pick: Suggestion, config: any, genres: Genres):
     return {
       tmdbId: hit.id,
       kind: pick.kind,
-      anime: isAnime(hit, pick.kind === 'series' ? genres.series : genres.movie),
+      anime: isAnimeTitle(hit, pick.kind, genres),
       // Kept from the search we already ran. TMDB counts are a fraction of
       // IMDb's and from a different crowd, but they are free and need no key,
       // so they are the fallback when nothing better can be looked up.
