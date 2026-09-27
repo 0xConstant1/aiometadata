@@ -31,7 +31,7 @@ import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourc
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { isAnimeTitle, showIdentity } from './canonicalIds';
-import { keepsAnimeOnly } from './trackerSource';
+import { keepsAnimeOnly, sourceFor } from './trackerSource';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
@@ -2189,7 +2189,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     // Built once per shelf shape; every page is cut from it.
     const q = (name: string) => String(req.query[name] ?? req.query[name.charAt(0).toLowerCase() + name.slice(1)] ?? '');
     const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
-    const shelfKey = `${userUUID}:${profileKey(config)}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
+    const shelfKey = `${userUUID}:${profileKey(config)}:${sourceFor(config) ?? ''}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
     const memoKey = `${userUUID}:${profileKey(config)}:${digest}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
     const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config), undefined, {
       ms: envInt('JELLYFIN_NEXTUP_DEADLINE_MS', 10000, 1000),
