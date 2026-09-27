@@ -2237,6 +2237,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     await mapWithConcurrency([...new Set(offered.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
       identities.set(metaId, await showIdentity(metaId, config));
     });
+    const trackerTimes = new Map<string, NextUpRow>();
+    for (const row of snapshot.nextUp) if (row.airsAt && !trackerTimes.has(row.metaId)) trackerTimes.set(row.metaId, row);
     const taken = new Set<string>();
     const merged = offered
       .filter((row) => {
@@ -2342,7 +2344,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
       lap.state += Date.now() - ts;
       const nowMs = Date.now();
-      const airedAt = next === target && row.airsAt ? row.airsAt : Date.parse(next?.PremiereDate || '');
+      const borrowed = row.airsAt ? undefined : trackerTimes.get(row.metaId);
+      const airedAt = next === target && row.airsAt
+        ? row.airsAt
+        : borrowed && next && next.IndexNumber === borrowed.episode && (borrowed.season === null || next.ParentIndexNumber === borrowed.season)
+          ? borrowed.airsAt as number
+          : Date.parse(next?.PremiereDate || '');
       if (!next) {
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: every episode from ${target.Name} on is played`);
@@ -2358,6 +2365,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} has no air date`);
         return;
       }
+      if (Number.isFinite(airedAt) && airedAt !== Date.parse(next.PremiereDate || '')) next.PremiereDate = new Date(airedAt).toISOString();
       items[index] = next;
     });
 
