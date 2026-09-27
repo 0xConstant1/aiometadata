@@ -38,16 +38,26 @@ export async function canonicalIds(ids: Record<string, any>, kind: Kind, config:
   };
 }
 
+const ANIME_ID_TYPES = ['kitsu', 'mal', 'anilist', 'anidb'];
+
+/** A show's identity across spellings; anime keeps its own ids. */
+export async function showIdentity(metaId: string, config: any): Promise<string> {
+  const { parseStremioId } = require('./ids');
+  const parsed = parseStremioId(metaId);
+  const base = parsed?.base ?? metaId;
+  if (!parsed || ANIME_ID_TYPES.includes(parsed.idType)) return base;
+  const all = await resolve(base, 'series', config, ['tvdb', 'tmdb']);
+  return all.tvdb ? `tvdb:${all.tvdb}` : all.tmdb ? `tmdb:${all.tmdb}` : base;
+}
+
 /** A video's identity across spellings; anime keeps its own ids. */
 export async function titleIdentity(videoId: string, config: any): Promise<string> {
   const { parseStremioId } = require('./ids');
   const parsed = parseStremioId(videoId);
   if (!parsed) return videoId;
-  if (['kitsu', 'mal', 'anilist', 'anidb'].includes(parsed.idType)) return videoId;
+  if (ANIME_ID_TYPES.includes(parsed.idType)) return videoId;
   const isEpisode = parsed.episode !== null && parsed.episode !== undefined;
-  const all = await resolve(parsed.base, isEpisode ? 'series' : 'movie', config, isEpisode ? ['tvdb', 'tmdb'] : ['tmdb']);
-  const title = isEpisode
-    ? (all.tvdb ? `tvdb:${all.tvdb}` : all.tmdb ? `tmdb:${all.tmdb}` : parsed.base)
-    : (all.tmdb ? `tmdb:${all.tmdb}` : parsed.base);
-  return isEpisode ? `${title}:${parsed.season ?? ''}:${parsed.episode}` : title;
+  if (isEpisode) return `${await showIdentity(parsed.base, config)}:${parsed.season ?? ''}:${parsed.episode}`;
+  const all = await resolve(parsed.base, 'movie', config, ['tmdb']);
+  return all.tmdb ? `tmdb:${all.tmdb}` : parsed.base;
 }

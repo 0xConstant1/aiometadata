@@ -30,6 +30,7 @@ import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stre
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
+import { showIdentity } from './canonicalIds';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
@@ -2195,6 +2196,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       resumable = new Set<string>();
       for (const row of await resumeSnapshot(userUUID, config)) {
         resumable.add(row.metaId);
+        if (row.kind === 'episode') resumable.add(await showIdentity(row.metaId, config));
         for (const alias of await videoIdAliases(row.videoId)) {
           const parsed = parseStremioId(alias);
           if (parsed) resumable.add(parsed.base);
@@ -2207,8 +2209,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const t2 = Date.now();
     const own = (await ownNextUpRows(userUUID, profileKey(config))).filter((row) => !snapshot.dropped.has(row.metaId));
     lap.own = Date.now() - t2;
-    const known = new Set(own.map((row) => row.metaId));
-    const merged = [...own, ...snapshot.nextUp.filter((row) => !known.has(row.metaId) && !snapshot.dropped.has(row.metaId))]
+    // One row per resolved show; the table's newest spelling first.
+    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId))];
+    const identities = new Map<string, string>();
+    await mapWithConcurrency([...new Set(offered.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
+      identities.set(metaId, await showIdentity(metaId, config));
+    });
+    const taken = new Set<string>();
+    const merged = offered
+      .filter((row) => {
+        const identity = identities.get(row.metaId) ?? row.metaId;
+        if (taken.has(identity)) return false;
+        taken.add(identity);
+        return true;
+      })
       .sort((a, b) => b.lastWatchedAt - a.lastWatchedAt);
 
     // A series page asks for its own next episode; an unplayed show starts at the first.
@@ -2229,7 +2243,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const counted = !includeRewatching && !seriesParam ? await seriesCountsAmong(snapshot, scoped.map((row) => row.metaId)) : new Map();
     const rows = scoped.filter((row) => {
-      if (resumable && resumable.has(row.metaId)) return false;
+      if (resumable && (resumable.has(row.metaId) || resumable.has(identities.get(row.metaId) ?? row.metaId))) return false;
       if (!includeRewatching && !seriesParam) {
         const counts = counted.get(row.metaId);
         if (counts && counts.total > 0 && counts.watched >= counts.total) return false;
