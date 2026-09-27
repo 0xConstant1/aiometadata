@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.2.2](https://github.com/cedya77/aiometadata/compare/v3.2.1...v3.2.2) (2026-09-27)
+
+
+### Bug Fixes
+
+* **jellyfin:** ask TMDB once per show when its episode numbering cannot be read ([e87b1de](https://github.com/cedya77/aiometadata/commit/e87b1de2958aa04cd362e30141e1dea4f76b2d6e))
+* **simkl:** load a library with nothing in one of movies, shows or anime ([b4d10c2](https://github.com/cedya77/aiometadata/commit/b4d10c2a1180e783ef1bcc8d562849fb3d39fa3f))
+
 ## [3.2.1](https://github.com/cedya77/aiometadata/compare/v3.2.0...v3.2.1) (2026-09-26)
 
 
