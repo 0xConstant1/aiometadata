@@ -391,8 +391,9 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
 
   const at = new Map<string, number>();
   const history = new Map<string, HistoryEntry>();
+  const { canonicalIds } = require('./canonicalIds');
   for (const entry of movieRows) {
-    const ids = entry?.movie?.ids ?? {};
+    const ids = await canonicalIds(entry?.movie?.ids ?? {}, 'movie', config);
     const seen = Date.parse(entry?.last_watched_at ?? '') || 0;
     if (ids.imdb) movies.add(String(ids.imdb));
     if (ids.tmdb) movies.add(`tmdb:${ids.tmdb}`);
@@ -495,7 +496,11 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
 
 type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb';
 
+// Raised to rebuild indexes written in an older spelling.
+const INDEX_FORMAT = 2;
+
 interface SummaryData {
+  format?: number;
   nextUp: NextUpRow[];
   following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
   dropped: string[];
@@ -523,10 +528,18 @@ async function assembleFromMirror(service: MirroredService, credential: string, 
   const byTime = (field: string) => (a: any, b: any) => (Date.parse(b?.[field] ?? '') || 0) - (Date.parse(a?.[field] ?? '') || 0);
 
   if (service === 'simkl') {
+    const { canonicalIds } = require('./canonicalIds');
     const data: any = { movies: [], shows: [], anime: [] };
     for (const row of rows) {
       const type = row.key.split(':')[0];
-      if (data[type]) data[type].push(row.data);
+      if (!data[type]) continue;
+      let entry = row.data;
+      const media = entry?.movie ?? entry?.show;
+      if (type !== 'anime' && media?.ids) {
+        const ids = await canonicalIds(media.ids, type === 'movies' ? 'movie' : 'series', config);
+        if (ids.imdb !== media.ids.imdb) entry = { ...entry, [entry.movie ? 'movie' : 'show']: { ...media, ids } };
+      }
+      data[type].push(entry);
     }
     return assembleSimkl(data);
   }
@@ -650,14 +663,14 @@ async function buildIndex(service: MirroredService, credential: string, config: 
   const database: any = require('../database');
   const fingerprint = `store:${source}:v${version}`;
   const stored = await database.getWatchSummary(source);
-  if (stored?.version === version) return viewOf(source, fingerprint, stored.data);
+  if (stored?.version === version && stored.data?.format === INDEX_FORMAT) return viewOf(source, fingerprint, stored.data);
 
   const started = Date.now();
   const raw = await assembleFromMirror(service, credential, config);
   const { pendingWatches } = require('../trackerOutbox');
   withPending(raw, await pendingWatches(service, credential).catch(() => []));
   const written = await writeIndex(source, raw);
-  const data: SummaryData = { nextUp: raw.nextUp ?? [], following: raw.following ?? [], dropped: raw.dropped ?? [], droppedUnread: raw.droppedUnread === true };
+  const data: SummaryData = { format: INDEX_FORMAT, nextUp: raw.nextUp ?? [], following: raw.following ?? [], dropped: raw.dropped ?? [], droppedUnread: raw.droppedUnread === true };
   // Written last: an index left half-written by a crash is rebuilt, since its version never lands.
   await database.putWatchSummary(source, version, data);
   logger.debug(`Watch index for ${service} ${source.slice(-8)} at version ${version}: ${raw.episodes.length} episodes, ${raw.movies.length} films, ${written.added} rows written and ${written.removed} removed in ${Date.now() - started}ms`);

@@ -2,6 +2,7 @@ import consola from 'consola';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { type Capable, credentialFor, resumeSourcesFor } from './trackerSource';
+import { canonicalIds } from './canonicalIds';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -90,6 +91,7 @@ export async function videoIdFor(
   config: any = {},
   trace?: ResolveTrace
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
+  ids = await canonicalIds(ids, 'series', config);
   // MDBList and PublicMetaDB number episodes the way TMDB does.
   if (ids.tmdb) {
     const viaTmdb = await fromTmdbNumbering(ids, season, episode, config, trace);
@@ -155,7 +157,7 @@ async function mdblistRows(apiKey: string, config: any): Promise<ResumeRow[]> {
     const runtimeMinutes = Number.isFinite(Number(entry?.runtime)) ? Number(entry.runtime) : null;
 
     if (entry?.movie) {
-      const ids = entry.movie.ids ?? {};
+      const ids = await canonicalIds(entry.movie.ids ?? {}, 'movie', config);
       const base = ids.imdb || (ids.tmdb ? `tmdb:${ids.tmdb}` : null);
       if (!base) continue;
       rows.push({ metaId: base, videoId: base, mediaType: 'movie', kind: 'movie', progress, runtimeMinutes, updatedAt });
@@ -167,7 +169,7 @@ async function mdblistRows(apiKey: string, config: any): Promise<ResumeRow[]> {
     const episode = Number(entry?.episode?.number);
     if (!show || !Number.isFinite(season) || !Number.isFinite(episode)) continue;
 
-    const resolved = await videoIdFor(show.ids ?? {}, season, episode, config);
+    const resolved = await videoIdFor(await canonicalIds(show.ids ?? {}, 'series', config), season, episode, config);
     if (!resolved) {
       logger.debug(`No id for a resume row: ${show.title} S${season}E${episode}`);
       continue;
@@ -182,7 +184,7 @@ async function mdblistRows(apiKey: string, config: any): Promise<ResumeRow[]> {
 // Simkl answers with every id it knows and, for anime, the entry's own episode
 // numbering beside the TVDB one, so a row names itself the way the meta does
 // without going through the anidb pivot MDBList needs.
-async function simklRows(tokenId: string): Promise<ResumeRow[]> {
+async function simklRows(tokenId: string, config: any): Promise<ResumeRow[]> {
   const { getSimklToken, fetchPlaybackSessions } = require('../../utils/simklUtils');
 
   const token = await getSimklToken(tokenId);
@@ -195,9 +197,10 @@ async function simklRows(tokenId: string): Promise<ResumeRow[]> {
 
     const updatedAt = Date.parse(entry?.paused_at ?? '') || 0;
     const container = entry?.anime ?? entry?.show ?? entry?.movie;
-    const ids = container?.ids ?? {};
+    const isMovie = entry?.type === 'movie' || (!entry?.episode && entry?.movie);
+    const ids = entry?.anime ? container?.ids ?? {} : await canonicalIds(container?.ids ?? {}, isMovie ? 'movie' : 'series', config);
 
-    if (entry?.type === 'movie' || (!entry?.episode && entry?.movie)) {
+    if (isMovie) {
       const base = ids.imdb || (ids.tmdb ? `tmdb:${ids.tmdb}` : null);
       if (!base) continue;
       rows.push({ metaId: base, videoId: base, mediaType: 'movie', kind: 'movie', progress, runtimeMinutes: null, updatedAt });
@@ -290,7 +293,7 @@ async function pmdbRows(apiKey: string, config: any): Promise<ResumeRow[]> {
     const season = Number(entry?.season);
     const episode = Number(entry?.episode);
     if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
-    const resolved = await videoIdFor({ tmdb: entry.tmdb_id }, season, episode, config);
+    const resolved = await videoIdFor(await canonicalIds({ tmdb: entry.tmdb_id }, 'series', config), season, episode, config);
     if (resolved) rows.push({ ...resolved, kind: 'episode', progress, runtimeMinutes, updatedAt });
   }
   return rows.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -308,7 +311,7 @@ export async function movieBase(tmdbId: string | number, config: any = {}): Prom
 
 async function rowsFrom(service: Capable, credential: string, config: any): Promise<ResumeRow[]> {
   if (service === 'mdblist') return mdblistRows(credential, config);
-  if (service === 'simkl') return simklRows(credential);
+  if (service === 'simkl') return simklRows(credential, config);
   if (service === 'publicmetadb') return pmdbRows(credential, config);
 
   logger.debug(`Resume source ${service} has no reader yet`);
@@ -376,7 +379,18 @@ export async function resumeSnapshot(userUUID: string, config: any): Promise<Res
   } catch (error: any) {
     logger.debug(`Own playstate rows unavailable: ${error?.message || error}`);
   }
-  return [...own, ...tracker.filter((r) => !known.has(r.videoId))].sort((a, b) => b.updatedAt - a.updatedAt);
+  // A play is written under every id it is known by; one row per resolved title.
+  const { titleIdentity } = require('./canonicalIds');
+  const candidates = [...own, ...tracker.filter((r) => !known.has(r.videoId))];
+  const taken = new Set<string>();
+  const rows: ResumeRow[] = [];
+  for (const row of candidates) {
+    const identity = await titleIdentity(row.videoId, config);
+    if (taken.has(identity)) continue;
+    taken.add(identity);
+    rows.push(row);
+  }
+  return rows.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 // Each connected service is read: a title paused through one app is only on

@@ -21,7 +21,7 @@ function mappingsLoaded(): boolean {
 type Resolved = { metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null;
 
 function episodeKey(ids: Record<string, any>, season: number, episode: number): string {
-  return `ep:${ids?.tmdb ?? ''}:${ids?.tvdb ?? ''}:${ids?.imdb ?? ''}:${season}:${episode}`;
+  return `ep2:${ids?.tmdb ?? ''}:${ids?.tvdb ?? ''}:${ids?.imdb ?? ''}:${season}:${episode}`;
 }
 
 /**
