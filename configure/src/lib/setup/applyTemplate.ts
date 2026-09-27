@@ -1,24 +1,25 @@
 import type { AppConfig, CatalogConfig } from '@/contexts/config';
 import { allCatalogDefinitions } from '@/data/catalogs';
 import { resolveAnimeProfile } from './animeProfiles';
-import { buildLineup } from './lineups';
+import { buildLineup, isSourceAvailable, type LineupSources } from './lineups';
 import type { AnimeSource, ConfigTemplate, ContentChoice, SetupExtras } from './types';
 
 export interface SetupSelection {
   template: ConfigTemplate;
   content: ContentChoice;
   animeSource: AnimeSource;
+  sources: LineupSources;
   extras?: SetupExtras;
 }
 
-function resolveTemplateCatalogs(template: ConfigTemplate, content: ContentChoice): CatalogConfig[] {
+function resolveTemplateCatalogs(template: ConfigTemplate, content: ContentChoice, sources: LineupSources): CatalogConfig[] {
   if (typeof template.lineup === 'string') {
-    return buildLineup(template.lineup, content);
+    return buildLineup(template.lineup, content, sources);
   }
 
   const wanted = new Set(template.lineup.catalogIds);
   return allCatalogDefinitions.map(definition => {
-    const enabled = wanted.has(`${definition.id}:${definition.type}`) || wanted.has(definition.id);
+    const enabled = (wanted.has(`${definition.id}:${definition.type}`) || wanted.has(definition.id)) && isSourceAvailable(definition, sources);
     return {
       id: definition.id,
       name: definition.name,
@@ -46,11 +47,11 @@ function applyDisplayOverrides(
 }
 
 export function buildSetupCatalogs(selection: SetupSelection, previous: AppConfig): CatalogConfig[] {
-  const { template, content, extras } = selection;
+  const { template, content, sources, extras } = selection;
 
   return applyDisplayOverrides(
     [
-      ...resolveTemplateCatalogs(template, content),
+      ...resolveTemplateCatalogs(template, content, sources),
       ...(template.catalogs ?? []),
       ...(extras?.streamingCatalogs ?? []),
       ...(extras?.curatorCatalogs ?? []),

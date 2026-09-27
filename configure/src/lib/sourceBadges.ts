@@ -15,6 +15,7 @@ export const sourceBadgeStyles: Record<string, string> = {
   simkl: "bg-teal-800/80 text-teal-200 border-teal-600/50 hover:bg-teal-800",
   movielens: "bg-amber-800/80 text-amber-200 border-amber-600/50 hover:bg-amber-800",
   publicmetadb: "bg-fuchsia-800/80 text-fuchsia-200 border-fuchsia-600/50 hover:bg-fuchsia-800",
+  lumiere: "bg-rose-800/80 text-rose-200 border-rose-600/50 hover:bg-rose-800",
 };
 
 export const sourceBadgeLabels: Record<string, string> = {

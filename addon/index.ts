@@ -671,7 +671,7 @@ const respond = function (req, res, data, opts?) {
       jellyfinBaseUrl: require('./lib/installUrl').baseUrlFrom(process.env.HOST_NAME, req.get('host')),
       traktSearchEnabled: getSetting('DISABLE_TRAKT_SEARCH') !== 'true',
       simklSearchEnabled: getSetting('DISABLE_SIMKL_SEARCH') !== 'true',
-      lumiereSearchEnabled: !!String(getSetting('LUMIERE_API_BASE') || '').trim(),
+      lumiereEnabled: !!String(getSetting('LUMIERE_API_BASE') || '').trim(),
     };
     
     // No cache to prevent cross-instance contamination
@@ -5089,7 +5089,7 @@ const catalogRoute = async function (req, res) {
     catalogPageSize = parseInt(process.env.MAL_PAGE_SIZE || '25');
   } else if (cleanId === 'anilist.trending' || cleanId.startsWith('anilist.discover')) {
     catalogPageSize = 50;
-  } else if (cleanId.startsWith('simkl.watchlist.') || cleanId.startsWith('simkl.list.') || cleanId.startsWith('simkl.upnext') || cleanId.startsWith('simkl.dvd.') || cleanId.startsWith('simkl.trending.') || cleanId.startsWith('simkl.recipe.') || cleanId.startsWith('stremthru.') || cleanId.startsWith('mdblist.') || cleanId.startsWith('custom.') || cleanId.startsWith('trakt.') || cleanId.startsWith('anilist.') || cleanId.startsWith('letterboxd.') || cleanId.startsWith('movielens.') || (cleanId.startsWith('tvdb.') && !cleanId.startsWith('tvdb.collection.'))) {
+  } else if (cleanId.startsWith('simkl.watchlist.') || cleanId.startsWith('simkl.list.') || cleanId.startsWith('simkl.upnext') || cleanId.startsWith('simkl.dvd.') || cleanId.startsWith('simkl.trending.') || cleanId.startsWith('simkl.recipe.') || cleanId.startsWith('stremthru.') || cleanId.startsWith('mdblist.') || cleanId.startsWith('custom.') || cleanId.startsWith('trakt.') || cleanId.startsWith('anilist.') || cleanId.startsWith('letterboxd.') || cleanId.startsWith('movielens.') || cleanId.startsWith('lumiere.') || (cleanId.startsWith('tvdb.') && !cleanId.startsWith('tvdb.collection.'))) {
     catalogPageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE || '20');
   } else {
     catalogPageSize = 20;
@@ -5239,6 +5239,8 @@ const catalogRoute = async function (req, res) {
         searchPageSize = 25;
       } else if (searchEngine && searchEngine.startsWith('trakt.')) {
         searchPageSize = 30;
+      } else if (searchEngine === 'lumiere.people.search') {
+        searchPageSize = parseInt(getSetting('LUMIERE_PEOPLE_PAGE_SIZE'), 10) || 20;
       }
       const searchPage = extraArgs.skip ? Math.ceil(parseInt(extraArgs.skip) / searchPageSize) + 1 : 1;
 

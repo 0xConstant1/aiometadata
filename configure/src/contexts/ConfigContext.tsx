@@ -32,7 +32,7 @@ interface ConfigContextType {
   hasBuiltInGemini: boolean;
   traktSearchEnabled: boolean;
   simklSearchEnabled: boolean;
-  lumiereSearchEnabled: boolean;
+  lumiereEnabled: boolean;
   aiCatalogMaxPerRequest: number;
   anilistRequiresAuth: boolean;
   catalogTTL: number;
@@ -408,7 +408,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [anilistRequiresAuth, setAnilistRequiresAuth] = useState(true);
   const [traktSearchEnabled, setTraktSearchEnabled] = useState(true);
   const [simklSearchEnabled, setSimklSearchEnabled] = useState(true);
-  const [lumiereSearchEnabled, setLumiereSearchEnabled] = useState(false);
+  const [lumiereEnabled, setLumiereEnabled] = useState(false);
+  const [instanceLoaded, setInstanceLoaded] = useState(false);
   const [aiCatalogMaxPerRequest, setAiCatalogMaxPerRequest] = useState(20);
   const [catalogTTL, setCatalogTTL] = useState(86400); // Default to 24 hours
   const [maxCatalogs, setMaxCatalogs] = useState<number | null>(null);
@@ -436,6 +437,15 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const manifestFingerprint = useRef<string | null>(null);
 
+  useEffect(() => {
+    if (!instanceLoaded || lumiereEnabled) return;
+    if (!config.catalogs.some(c => c.source === 'lumiere' && c.enabled)) return;
+    setConfig(prev => ({
+      ...prev,
+      catalogs: prev.catalogs.map(c => (c.source === 'lumiere' ? { ...c, enabled: false, showInHome: false } : c)),
+    }));
+  }, [instanceLoaded, lumiereEnabled, config.catalogs]);
+
   // --- THIS IS THE CORRECTED EFFECT ---
   useEffect(() => {
     let isMounted = true;
@@ -452,7 +462,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         setAnilistRequiresAuth(envApiKeys.anilistRequiresAuth ?? true);
         setTraktSearchEnabled(envApiKeys.traktSearchEnabled ?? true);
         setSimklSearchEnabled(envApiKeys.simklSearchEnabled ?? true);
-        setLumiereSearchEnabled(envApiKeys.lumiereSearchEnabled ?? false);
+        setLumiereEnabled(envApiKeys.lumiereEnabled ?? false);
+        setInstanceLoaded(true);
         setAiCatalogMaxPerRequest(envApiKeys.aiCatalogMaxPerRequest || 20);
         setCatalogTTL(envApiKeys.catalogTTL || 86400);
         setSimklListMinTTL(envApiKeys.simklListMinTTL);
@@ -529,7 +540,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, lumiereSearchEnabled, aiCatalogMaxPerRequest, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
+    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, lumiereEnabled, aiCatalogMaxPerRequest, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
       {children}
     </ConfigContext.Provider>
   );

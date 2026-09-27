@@ -4077,7 +4077,7 @@ function CatalogsSettingsContent({
   collectionFilter: CollectionFilter;
   setCollectionFilter: React.Dispatch<React.SetStateAction<CollectionFilter>>;
 }) {
-  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini } = useConfig();
+  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini, lumiereEnabled } = useConfig();
   const {
     selectAll,
     deselectAll,
@@ -4278,6 +4278,8 @@ function CatalogsSettingsContent({
       // Filter out TVDB catalogs if no TVDB key is available
       if (cat.source === 'tvdb' && !hasTvdbKey) return false;
 
+      if (cat.source === 'lumiere' && !lumiereEnabled) return false;
+
       // Filter by selected tags (match any)
       if (tagFilters.length > 0 && !tagFilters.some(t => cat.tags?.includes(t))) return false;
 
@@ -4285,7 +4287,7 @@ function CatalogsSettingsContent({
       const serviceId = cat.id.replace("streaming.", "").replace(/ .*/, "");
       return Array.isArray(config.streaming) && config.streaming.includes(serviceId);
     }),
-    [config.catalogs, config.streaming, hideDisabledCatalogs, hasTvdbKey, tagFilters]
+    [config.catalogs, config.streaming, hideDisabledCatalogs, hasTvdbKey, lumiereEnabled, tagFilters]
   );
 
   const collectionCounts = useMemo(() => {
@@ -6262,7 +6264,7 @@ function CatalogsSettingsContent({
 // ...existing code...
 
 export function CatalogsSettings() {
-  const { config, hasBuiltInTvdb, setConfig } = useConfig();
+  const { config, hasBuiltInTvdb, setConfig, lumiereEnabled } = useConfig();
   const [hideDisabledCatalogs, setHideDisabledCatalogs] = useState(config.showDisabledCatalogs ?? false);
   const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [collectionFilter, setCollectionFilter] = useState<CollectionFilter>('all');
@@ -6292,6 +6294,8 @@ export function CatalogsSettings() {
       // Filter out TVDB catalogs if no TVDB key is available
       if (cat.source === 'tvdb' && !hasTvdbKey) return false;
 
+      if (cat.source === 'lumiere' && !lumiereEnabled) return false;
+
       // Filter by selected tags (match any)
       if (tagFilters.length > 0 && !tagFilters.some(t => cat.tags?.includes(t))) return false;
 
@@ -6304,7 +6308,7 @@ export function CatalogsSettings() {
       const serviceId = cat.id.replace("streaming.", "").replace(/ .*/, "");
       return Array.isArray(config.streaming) && config.streaming.includes(serviceId);
     }),
-    [config.catalogs, config.streaming, hideDisabledCatalogs, hasTvdbKey, tagFilters, collectionFilter, collectedKeys]
+    [config.catalogs, config.streaming, hideDisabledCatalogs, hasTvdbKey, lumiereEnabled, tagFilters, collectionFilter, collectedKeys]
   );
 
   return (

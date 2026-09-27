@@ -11,7 +11,7 @@ const FIRST_OPTION_CATALOGS = new Set([
 
 const NONE_PREFIXES = [
   'mdblist.', 'trakt.', 'anilist.', 'letterboxd.', 'flixpatrol.', 'stremthru.', 'custom.',
-  'streaming.', 'simkl.', 'movielens.', 'publicmetadb.', 'tmdb.discover', 'tmdb.collection.',
+  'streaming.', 'simkl.', 'movielens.', 'lumiere.', 'publicmetadb.', 'tmdb.discover', 'tmdb.collection.',
   'tvdb.discover', 'tvdb.list.', 'mal.',
 ];
 

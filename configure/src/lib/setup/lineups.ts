@@ -26,13 +26,21 @@ function isAnime(definition: CatalogDefinition): boolean {
   return definition.type === 'anime' || definition.source === 'mal';
 }
 
+export interface LineupSources {
+  lumiere: boolean;
+}
+
+export function isSourceAvailable(definition: CatalogDefinition, sources: LineupSources): boolean {
+  return definition.source !== 'lumiere' || sources.lumiere;
+}
+
 /** Emits every definition, enabled or not: the Catalogs tab expects the full set. */
-export function buildLineup(kind: LineupKind, content: ContentChoice): CatalogConfig[] {
+export function buildLineup(kind: LineupKind, content: ContentChoice, sources: LineupSources): CatalogConfig[] {
   const wantsAnime = includesAnime(content);
   const shouldEnable = ENABLES[kind];
 
   return allCatalogDefinitions.map(definition => {
-    const enabled = shouldEnable(definition) && (wantsAnime || !isAnime(definition));
+    const enabled = shouldEnable(definition) && (wantsAnime || !isAnime(definition)) && isSourceAvailable(definition, sources);
     return {
       id: definition.id,
       name: definition.name,
@@ -56,12 +64,12 @@ export interface LineupOption extends LineupSpec {
 }
 
 /** Drops a lineup whose enabled set duplicates an earlier one. */
-export function listLineupOptions(content: ContentChoice): LineupOption[] {
+export function listLineupOptions(content: ContentChoice, sources: LineupSources): LineupOption[] {
   const seen = new Set<string>();
   const options: LineupOption[] = [];
 
   for (const spec of LINEUPS) {
-    const catalogs = buildLineup(spec.kind, content);
+    const catalogs = buildLineup(spec.kind, content, sources);
     const signature = catalogs
       .filter(catalog => catalog.enabled)
       .map(catalog => `${catalog.id}:${catalog.type}`)

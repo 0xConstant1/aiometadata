@@ -2,7 +2,7 @@ export interface CatalogDefinition {
   id: string;
   name: string;
   type: 'movie' | 'series' | 'anime';
-  source: 'tmdb' | 'tvdb' | 'mal' | 'tvmaze' | 'mdblist' | 'streaming' | 'stremthru' | 'custom' | 'trakt' | 'anilist' | 'letterboxd' | 'simkl' | 'flixpatrol'; 
+  source: 'tmdb' | 'tvdb' | 'mal' | 'tvmaze' | 'mdblist' | 'streaming' | 'stremthru' | 'custom' | 'trakt' | 'anilist' | 'letterboxd' | 'simkl' | 'flixpatrol' | 'lumiere'; 
   isEnabledByDefault?: boolean;
   showOnHomeByDefault?: boolean;
 }
@@ -26,6 +26,10 @@ export const baseCatalogs: CatalogDefinition[] = [
   { id: 'tvdb.genres', name: 'TVDB Genres', type: 'series', source: 'tvdb', isEnabledByDefault: true, showOnHomeByDefault: false },
   { id: 'tvdb.collections', name: 'TVDB Collections', type: 'movie', source: 'tvdb', isEnabledByDefault: true, showOnHomeByDefault: false },
   { id: 'tvmaze.schedule', name: 'TVmaze Daily Schedule', type: 'series', source: 'tvmaze', isEnabledByDefault: true, showOnHomeByDefault: true },
+  { id: 'lumiere.popular', name: 'LumiereDB Popular', type: 'movie', source: 'lumiere', isEnabledByDefault: true, showOnHomeByDefault: true },
+  { id: 'lumiere.popular', name: 'LumiereDB Popular', type: 'series', source: 'lumiere', isEnabledByDefault: true, showOnHomeByDefault: true },
+  { id: 'lumiere.trending', name: 'LumiereDB Trending', type: 'movie', source: 'lumiere', isEnabledByDefault: true, showOnHomeByDefault: true },
+  { id: 'lumiere.trending', name: 'LumiereDB Trending', type: 'series', source: 'lumiere', isEnabledByDefault: true, showOnHomeByDefault: true },
 ];
 
 // --- Catalogs sourced from MyAnimeList ---
@@ -111,6 +115,7 @@ export const allSearchProviders: SearchProviderDefinition[] = [
   { value: 'tmdb.people.search', label: 'TMDB People Search', mediaType: ['movie', 'series'] },
   { value: 'tvdb.people.search', label: 'TheTVDB People Search', mediaType: ['movie', 'series'] },
   { value: 'trakt.people.search', label: 'Trakt People Search (VIP only)', mediaType: ['movie', 'series'] },
+  { value: 'lumiere.people.search', label: 'LumiereDB People Search', mediaType: ['movie', 'series'] },
 
   // Anime-Specific Providers
   { value: 'mal.search.movie', label: 'MAL (Movies)', mediaType: ['movie', 'anime_movie'] },

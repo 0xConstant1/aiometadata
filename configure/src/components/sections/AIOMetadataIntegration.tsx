@@ -70,6 +70,17 @@ const SOURCE_GROUPS: SourceGroup[] = [
     accent: 'bg-orange-500/15 ring-orange-400/20',
     badgeActive: 'bg-orange-500/20 text-orange-300 border-orange-400/30',
   },
+  {
+    source: 'lumiere',
+    label: 'LumiereDB',
+    description: 'Popular and trending, ranked on IMDb votes',
+    icon: '/tmdb_icon.png',
+    lucideLabel: 'LDB',
+    gradient: 'from-rose-500/10 via-card/80 to-card/80',
+    border: 'border-rose-400/20',
+    accent: 'bg-rose-500/15 ring-rose-400/20',
+    badgeActive: 'bg-rose-500/20 text-rose-300 border-rose-400/30',
+  },
 ];
 
 const allBuiltInCatalogs: CatalogDefinition[] = [...baseCatalogs, ...animeCatalogs];
@@ -82,7 +93,7 @@ const typeLabel = (type: string) => {
 };
 
 export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrationProps) {
-  const { config, setConfig } = useConfig();
+  const { config, setConfig, lumiereEnabled } = useConfig();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const addedSet = useMemo(() => {
@@ -93,14 +104,19 @@ export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrati
     return set;
   }, [config.catalogs]);
 
+  const availableCatalogs = useMemo(
+    () => allBuiltInCatalogs.filter(c => c.source !== 'lumiere' || lumiereEnabled),
+    [lumiereEnabled]
+  );
+
   const groups = useMemo(() => {
     return SOURCE_GROUPS
       .map(sg => ({
         ...sg,
-        catalogs: allBuiltInCatalogs.filter(c => c.source === sg.source),
+        catalogs: availableCatalogs.filter(c => c.source === sg.source),
       }))
       .filter(g => g.catalogs.length > 0);
-  }, []);
+  }, [availableCatalogs]);
 
   const isAdded = (catalog: CatalogDefinition) => addedSet.has(`${catalog.id}::${catalog.type}`);
 
@@ -183,7 +199,7 @@ export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrati
     toast.success(`Removed ${toRemove.length} catalog${toRemove.length !== 1 ? 's' : ''}`);
   };
 
-  const totalAdded = allBuiltInCatalogs.filter(c => isAdded(c)).length;
+  const totalAdded = availableCatalogs.filter(c => isAdded(c)).length;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -202,14 +218,14 @@ export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrati
 
         <div className="flex items-center justify-between px-1 py-2 shrink-0">
           <span className="text-sm text-muted-foreground">
-            {totalAdded} of {allBuiltInCatalogs.length} catalogs in your list
+            {totalAdded} of {availableCatalogs.length} catalogs in your list
           </span>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleAddAllInGroup(allBuiltInCatalogs)}
-              disabled={totalAdded === allBuiltInCatalogs.length}
+              onClick={() => handleAddAllInGroup(availableCatalogs)}
+              disabled={totalAdded === availableCatalogs.length}
               className="h-7 text-xs"
             >
               <Plus className="h-3 w-3 mr-1" />
@@ -218,7 +234,7 @@ export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrati
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleRemoveAllInGroup(allBuiltInCatalogs)}
+              onClick={() => handleRemoveAllInGroup(availableCatalogs)}
               disabled={totalAdded === 0}
               className="h-7 text-xs"
             >

@@ -18,10 +18,12 @@ import * as moviedb from "./getTmdb.js";
 import * as tvdb from './tvdb.js';
 import { to3LetterCode, to3LetterCountryCode } from './language-map.js';
 import { resolveAllIds } from './id-resolver.js';
-import { cacheWrapTvdbApi, cacheWrap, cacheWrapCatalog, cacheWrapAniListCatalog, cacheWrapJikanApi, cacheWrapGlobal, classifyResultAllowEmpty, stableStringify } from './getCache.js';
+import { cacheWrapTvdbApi, cacheWrap, cacheWrapCatalog, cacheWrapAniListCatalog, cacheWrapJikanApi, cacheWrapGlobal, classifyResultAllowEmpty, stableStringify, CATALOG_TTL } from './getCache.js';
 import { isDiscoverCatalogId, applyDiscoverSignature } from './discoverCatalogSignature.js';
 import { getTVDBContentRatingId } from '../utils/tvdbContentRating.js';
 import { getMeta } from './getMeta.js';
+import { fetchLumiereList, lumiereApiBase, lumiereListOf } from '../utils/lumiereLists.js';
+const { getSetting }: any = require('./settingsService');
 import { resolveDynamicTmdbDiscoverParams } from './tmdbDiscoverDateTokens.js';
 import { roundRobinInterleaveTagged, mergedDedupKey, filterMetasByGenre, normalizeGenreKey } from '../utils/mergedCatalog.js';
 const { getTvmazeScheduleCatalog } = require('./tvmazeScheduleCatalog');
@@ -142,6 +144,11 @@ async function getCatalog(type: string, language: string, page: number, id: stri
       logger.debug(`Routing to FlixPatrol catalog handler for id: ${id}`);
       const flixpatrolResults = await getFlixPatrolCatalog(type, id, genre, page, language, config, userUUID, includeVideos);
       return { metas: flixpatrolResults };
+    }
+    else if (id.startsWith('lumiere.')) {
+      logger.debug(`Routing to LumiereDB catalog handler for id: ${id}`);
+      const lumiereResults = await getLumiereCatalog(type, id, genre, page, language, config, includeVideos);
+      return { metas: lumiereResults };
     }
     else if (id.startsWith('publicmetadb.')) {
       logger.debug(`Routing to PublicMetaDB catalog handler for id: ${id}`);
@@ -3338,6 +3345,52 @@ async function getFlixPatrolCatalog(
     const errorLine = err.stack?.split('\n')[1]?.trim() || 'unknown';
     logger.error(`[FlixPatrol] Error processing catalog ${catalogId}: ${err.message}`);
     logger.error(`Error at: ${errorLine}`);
+    return [];
+  }
+}
+
+async function getLumiereCatalog(
+  type: string,
+  catalogId: string,
+  genre: string,
+  page: number,
+  language: string,
+  config: UserConfig,
+  includeVideos: boolean = false
+): Promise<any[]> {
+  try {
+    const list = lumiereListOf(catalogId);
+    const baseUrl = lumiereApiBase();
+    if (!list || !baseUrl || (type !== 'movie' && type !== 'series')) return [];
+
+    const catalogConfig = config.catalogs?.find((c: any) => c.id === catalogId && c.type === type);
+    const ttl = Number.isFinite(catalogConfig?.cacheTTL) && catalogConfig.cacheTTL >= 0 ? catalogConfig.cacheTTL : CATALOG_TTL();
+    const timeoutMs = parseInt(getSetting('LUMIERE_SEARCH_TIMEOUT_MS'), 10) || 5000;
+    const genreSlug = genre && genre.toLowerCase() !== 'none' ? genre.toLowerCase() : '';
+
+    const fetchIds = () => fetchLumiereList(baseUrl, list, type, genreSlug, timeoutMs);
+    const ids: string[] = ttl > 0
+      ? await cacheWrapGlobal(`lumiere-list:${list}:${type}:${genreSlug || 'all'}`, fetchIds, ttl, { resultClassifier: classifyResultAllowEmpty })
+      : await fetchIds();
+
+    const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
+    const pageIds = (ids || []).slice((page - 1) * pageSize, page * pageSize);
+    const metas = await mapWithLimit(pageIds, async (imdbId: string) => {
+      try {
+        const result = await cacheWrapMetaSmart(config.userUUID || '', imdbId, async () => {
+          return await getMeta(type, language, imdbId, config, config.userUUID || '', includeVideos);
+        }, undefined, { enableErrorCaching: true, maxRetries: 2, config }, type as any, includeVideos);
+        return result?.meta || null;
+      } catch (error: any) {
+        logger.error(`[LumiereDB] Error getting meta for ${imdbId}: ${error.message}`);
+        return null;
+      }
+    });
+
+    logger.info(`[LumiereDB] ${catalogId} ${type} page ${page} (genre: ${genreSlug || 'all'}): ${metas.filter(Boolean).length} metas`);
+    return metas.filter(Boolean);
+  } catch (error: any) {
+    logger.error(`[LumiereDB] Catalog ${catalogId} failed: ${error.message}`);
     return [];
   }
 }

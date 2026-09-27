@@ -5,6 +5,7 @@ import { includesAnime } from '@/lib/setup/animeProfiles';
 import { malPreviewParams, tmdbPreviewParams } from '@/lib/setup/previewParams';
 import type { LineupOption } from '@/lib/setup/lineups';
 import { listLineupOptions } from '@/lib/setup/lineups';
+import { useConfig } from '@/contexts/ConfigContext';
 import type { ContentChoice, LineupKind } from '@/lib/setup/types';
 import { cn } from '@/lib/utils';
 import { PosterStrip, type PosterSource } from './PosterStrip';
@@ -125,7 +126,8 @@ export function LineupGallery({
   selectedKind: LineupKind;
   onSelect: (option: LineupOption) => void;
 }) {
-  const options = useMemo(() => listLineupOptions(content), [content]);
+  const { lumiereEnabled } = useConfig();
+  const options = useMemo(() => listLineupOptions(content, { lumiere: lumiereEnabled }), [content, lumiereEnabled]);
 
   return (
     <section className="space-y-4">

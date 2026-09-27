@@ -15,8 +15,10 @@ const jikan: any = require('./mal');
 const DEFAULT_LANGUAGE = "en-US";
 const catalogsTranslations: Record<string, Record<string, string>> = catalogsTranslationsJson;
 const CATALOG_TYPES: Record<string, any> = catalogTypesJson;
-import { cacheWrapJikanApi, cacheWrapGlobal, cacheWrapStremThruGenres } from './getCache';
+import { cacheWrapJikanApi, cacheWrapGlobal, cacheWrapStremThruGenres, cacheWrapLumiereGenres } from './getCache';
 import { mergeGenreOptions } from '../utils/mergedCatalog';
+import { fetchLumiereGenres, lumiereApiBase, lumiereGenreLabel, lumiereListOf } from '../utils/lumiereLists';
+const { getSetting }: any = require('./settingsService');
 import consola from 'consola';
 import { hasAnyWatchTrackingEnabled } from './watchTracking';
 const logger = consola.withTag('Manifest');
@@ -880,6 +882,17 @@ function formatTagSuffix(tags: string[]): string {
   return `${tags.slice(0, 2).join(' + ')} +${tags.length - 2} more`;
 }
 
+async function lumiereGenreOptions(): Promise<Record<'movie' | 'series', string[]>> {
+  try {
+    const timeoutMs = parseInt(getSetting('LUMIERE_SEARCH_TIMEOUT_MS'), 10) || 5000;
+    const genres = await cacheWrapLumiereGenres(() => fetchLumiereGenres(lumiereApiBase(), timeoutMs));
+    return { movie: genres.movie.map(lumiereGenreLabel), series: genres.series.map(lumiereGenreLabel) };
+  } catch (error: any) {
+    logger.warn(`LumiereDB genres unavailable: ${error.message}`);
+    return { movie: [], series: [] };
+  }
+}
+
 async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise<any> {
   const startTime = Date.now();
   logger.start('Starting manifest generation...');
@@ -1105,6 +1118,9 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       if (userCatalog.id.startsWith('movielens.')) {
         return !!config.apiKeys?.movieLensCredId;
       }
+      if (userCatalog.id.startsWith('lumiere.')) {
+        return !!lumiereListOf(userCatalog.id) && !!lumiereApiBase() && (userCatalog.type === 'movie' || userCatalog.type === 'series');
+      }
       if (userCatalog.id.startsWith('tmdb.list.')) {
         return true;
       }
@@ -1181,6 +1197,20 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
             pageSize: parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20,
             extra: [
               ...(userCatalog.showInHome ? [] : [{ name: 'genre', options: ['None'], isRequired: true }]),
+              { name: 'skip' },
+            ],
+            showInHome: userCatalog.showInHome
+          };
+      }
+      if (userCatalog.id.startsWith('lumiere.')) {
+          const genreOptions = (await lumiereGenreOptions())[userCatalog.type as 'movie' | 'series'];
+          return {
+            id: userCatalog.id,
+            type: userCatalog.displayType || userCatalog.type,
+            name: `${showPrefix ? `${prefixName} - ` : ""}${userCatalog.name}`,
+            pageSize: parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20,
+            extra: [
+              { name: 'genre', options: userCatalog.showInHome ? genreOptions : ['None', ...genreOptions], isRequired: !userCatalog.showInHome },
               { name: 'skip' },
             ],
             showInHome: userCatalog.showInHome

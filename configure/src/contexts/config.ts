@@ -39,7 +39,7 @@ export interface CatalogConfig {
   type: 'movie' | 'series' | 'anime' | 'all';
   enabled: boolean;
   tags?: string[];
-  source: 'tmdb' | 'tvdb' | 'mal' | 'tvmaze' | 'mdblist' | 'trakt' | 'streaming' | 'stremthru' | 'custom' | 'anilist' | 'letterboxd' | 'simkl' | 'movielens' | 'flixpatrol' | 'publicmetadb' | 'recommendations' | 'merged'; // Keep source as the display label
+  source: 'tmdb' | 'tvdb' | 'mal' | 'tvmaze' | 'mdblist' | 'trakt' | 'streaming' | 'stremthru' | 'custom' | 'anilist' | 'letterboxd' | 'simkl' | 'movielens' | 'flixpatrol' | 'publicmetadb' | 'recommendations' | 'merged' | 'lumiere'; // Keep source as the display label
   sourceUrl?: string; // Store the actual URL for StremThru and custom catalogs
   showInHome: boolean;
   genres?: string[]; // Optional genres array for catalogs that support genre filtering
@@ -357,8 +357,8 @@ export interface AppConfig {
         series: 'tmdb.search' | 'tvdb.search' | 'tvmaze.search' | 'trakt.search' | 'mdblist.search' | 'imdb.suggestions.search' | 'lumiere.search' | 'simkl.search';
         anime_movie: 'mal.search.movie' | 'kitsu.search.movie' | 'simkl.search.movie';
         anime_series: 'mal.search.series' | 'kitsu.search.series' | 'simkl.search.series';
-        people_search_movie?: 'tmdb.people.search' | 'tvdb.people.search' | 'trakt.people.search';
-        people_search_series?: 'tmdb.people.search' | 'tvdb.people.search' | 'trakt.people.search';
+        people_search_movie?: 'tmdb.people.search' | 'tvdb.people.search' | 'trakt.people.search' | 'lumiere.people.search';
+        people_search_series?: 'tmdb.people.search' | 'tvdb.people.search' | 'trakt.people.search' | 'lumiere.people.search';
     };
     // New: per-engine enable/disable
     engineEnabled?: {

@@ -21,7 +21,8 @@ import { hasAgeRatingCap } from '../utils/ageRating';
 const { cacheWrapMetaSmart, cacheWrapGlobal }: any = require('./getCache');
 const { getSetting }: any = require('./settingsService');
 import { fetchImdbSuggestions, type ImdbSuggestion } from '../utils/imdbSuggestions.js';
-import { fetchLumiereSearch, type LumiereResult } from '../utils/lumiereSearch.js';
+import { fetchLumiereSearch, fetchLumierePeopleSearch, type LumiereResult } from '../utils/lumiereSearch.js';
+import { lumiereApiBase } from '../utils/lumiereLists.js';
 import { mapWithLimit } from '../utils/concurrency.js';
 const wikiMappings: any = require('./wiki-mapper');
 
@@ -775,9 +776,6 @@ async function hydrateImdbIds(type: string, results: Array<{ imdbId: string; tit
   return metas;
 }
 
-function getLumiereApiBase(): string {
-  return String(getSetting('LUMIERE_API_BASE') || '').trim();
-}
 
 /**
  * A self-hosted LumiereDB answers with IMDb ids ranked on how the title matched,
@@ -787,7 +785,7 @@ async function performLumiereSearch(type: string, query: string, language: strin
   const startTime = Date.now();
   logger.info(`Starting LumiereDB search for type "${type}" with query: "${query}"`);
 
-  const baseUrl = getLumiereApiBase();
+  const baseUrl = lumiereApiBase();
   const timeoutMs = parseInt(getSetting('LUMIERE_SEARCH_TIMEOUT_MS'), 10) || 5000;
   const ttl = parseInt(getSetting('LUMIERE_SEARCH_TTL_SECONDS'), 10);
   const limit = parseInt(getSetting('LUMIERE_SEARCH_RESULT_LIMIT'), 10) || 12;
@@ -810,6 +808,37 @@ async function performLumiereSearch(type: string, query: string, language: strin
 
   const metas = await hydrateImdbIds(type, results, language, config);
   logger.info(`LumiereDB search completed in ${Date.now() - startTime}ms, returning ${metas.length} results`);
+  return metas;
+}
+
+async function performLumierePeopleSearch(type: string, query: string, language: string, config: any, page: number = 1): Promise<any[]> {
+  const startTime = Date.now();
+  logger.info(`[People Search] Starting LumiereDB people search for type "${type}" with query: "${query}"`);
+
+  const baseUrl = lumiereApiBase();
+  const timeoutMs = parseInt(getSetting('LUMIERE_SEARCH_TIMEOUT_MS'), 10) || 5000;
+  const ttl = parseInt(getSetting('LUMIERE_SEARCH_TTL_SECONDS'), 10);
+  const pageSize = parseInt(getSetting('LUMIERE_PEOPLE_PAGE_SIZE'), 10) || 20;
+
+  const cacheKey = `lumiere-people:${type}:${query.toLowerCase().trim()}`;
+  let titles: LumiereResult[];
+  try {
+    titles = ttl > 0
+      ? await cacheWrapGlobal(cacheKey, () => fetchLumierePeopleSearch(baseUrl, type, query, timeoutMs), ttl)
+      : await fetchLumierePeopleSearch(baseUrl, type, query, timeoutMs);
+  } catch (error: any) {
+    logger.error(`LumiereDB people search failed for "${query}": ${error.message}`);
+    return [];
+  }
+
+  const pageTitles = (titles || []).slice((page - 1) * pageSize, page * pageSize);
+  if (pageTitles.length === 0) {
+    logger.info(`[People Search] No LumiereDB ${type} results for query: "${query}" (page ${page})`);
+    return [];
+  }
+
+  const metas = await hydrateImdbIds(type, pageTitles, language, config);
+  logger.info(`[People Search] LumiereDB people search completed in ${Date.now() - startTime}ms, returning ${metas.length} results`);
   return metas;
 }
 
@@ -2530,6 +2559,11 @@ async function getSearch(id: string, type: string, language: string, extra: any,
             providerId = config.search?.providers?.people_search_series || 'tmdb.people.search';
           }
 
+          if (providerId === 'lumiere.people.search' && !lumiereApiBase()) {
+            logger.info(`LumiereDB is not configured on this instance, falling back to 'tmdb.people.search' for "${query}"`);
+            providerId = 'tmdb.people.search';
+          }
+
           logger.debug(`Performing people-only search for type '${type}' using provider '${providerId}'`);
 
           switch (providerId) {
@@ -2541,6 +2575,9 @@ async function getSearch(id: string, type: string, language: string, extra: any,
                 break;
               case 'trakt.people.search':
                 metas = await performTraktPeopleSearch(type, query, language, config);
+                break;
+              case 'lumiere.people.search':
+                metas = await performLumierePeopleSearch(type, query, language, config, page);
                 break;
           }
         }
@@ -2583,7 +2620,7 @@ async function getSearch(id: string, type: string, language: string, extra: any,
             }
           }
 
-          if (providerId === 'lumiere.search' && !getLumiereApiBase()) {
+          if (providerId === 'lumiere.search' && !lumiereApiBase()) {
             const fallback = getDefaultProvider(type);
             logger.info(`LumiereDB is not configured on this instance, falling back to '${fallback}' for "${query}"`);
             providerId = fallback;

@@ -165,7 +165,7 @@ function SortableEngineRow(props: EngineRowProps) {
 }
 
 export function SearchSettings() {
-  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini, traktSearchEnabled, simklSearchEnabled, lumiereSearchEnabled } = useConfig();
+  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini, traktSearchEnabled, simklSearchEnabled, lumiereEnabled } = useConfig();
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState('');
@@ -197,7 +197,7 @@ export function SearchSettings() {
     if (p.value === 'simkl.search' && !isSimklSearchEnabled) {
       return false;
     }
-    if (p.value === 'lumiere.search' && !lumiereSearchEnabled) {
+    if (p.value === 'lumiere.search' && !lumiereEnabled) {
       return false;
     }
     return p.mediaType.includes('movie') &&
@@ -213,7 +213,7 @@ export function SearchSettings() {
     if (p.value === 'simkl.search' && !isSimklSearchEnabled) {
       return false;
     }
-    if (p.value === 'lumiere.search' && !lumiereSearchEnabled) {
+    if (p.value === 'lumiere.search' && !lumiereEnabled) {
       return false;
     }
     return p.mediaType.includes('series') &&
@@ -231,6 +231,9 @@ export function SearchSettings() {
 
   const peopleSearchProviders = allSearchProviders.filter(p => {
     if (p.value === 'trakt.people.search' && !isTraktSearchEnabled) {
+      return false;
+    }
+    if (p.value === 'lumiere.people.search' && !lumiereEnabled) {
       return false;
     }
     return p.value.includes('people.search');

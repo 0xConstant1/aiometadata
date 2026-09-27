@@ -1,13 +1,13 @@
 import { resolveAnimeProfile } from './animeProfiles';
-import { listLineupOptions, type LineupOption } from './lineups';
+import { listLineupOptions, type LineupOption, type LineupSources } from './lineups';
 import type { AnimeSource, ConfigTemplate, ContentChoice, RequiredKeyId } from './types';
 
 export interface BuiltInTemplate extends ConfigTemplate {
   lineupOption: LineupOption;
 }
 
-export function listBuiltInTemplates(content: ContentChoice): BuiltInTemplate[] {
-  return listLineupOptions(content).map(option => ({
+export function listBuiltInTemplates(content: ContentChoice, sources: LineupSources): BuiltInTemplate[] {
+  return listLineupOptions(content, sources).map(option => ({
     id: `builtin.${option.kind}`,
     name: option.name,
     tagline: option.tagline,

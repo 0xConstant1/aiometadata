@@ -77,6 +77,7 @@ const TVDB_API_TTL = 12 * 60 * 60;
 const TVMAZE_API_TTL = 12 * 60 * 60;
 const MDBLIST_GENRES_TTL = 30 * 24 * 60 * 60;
 const STREMTHRU_GENRES_TTL = 7 * 24 * 60 * 60;
+const LUMIERE_GENRES_TTL = 30 * 24 * 60 * 60;
 function ANILIST_CATALOG_TTL() { return parseInt(process.env.ANILIST_CATALOG_TTL || String(24 * 60 * 60), 10); }
 
 
@@ -450,7 +451,8 @@ function classifyResult(result: any, error: any = null, cacheKey: string | null 
     cacheKey.includes('stremthru-') ||
     cacheKey.includes('cinemeta-') ||
     cacheKey.includes('flixpatrol-') ||
-    cacheKey.includes('movielens-')
+    cacheKey.includes('movielens-') ||
+    cacheKey.includes('lumiere-')
   );
 
   if (isExternalApi) {
@@ -1543,6 +1545,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     { label: 'custom manifest', matches: idOnly.startsWith('custom.') },
     { label: 'AniList', matches: idOnly.startsWith('anilist.') },
     { label: 'PublicMetaDB', matches: idOnly.startsWith('publicmetadb.') },
+    { label: 'LumiereDB', matches: idOnly.startsWith('lumiere.') },
     { label: 'SimKL', matches: idOnly.startsWith('simkl.') },
     { label: 'discover', matches: isDiscoverCatalog },
   ];
@@ -2424,6 +2427,10 @@ function cacheWrapTraktGenres(genreType: string, method: () => Promise<any>): Pr
   return cacheWrapGlobal(`trakt-genres-${genreType}`, method, MDBLIST_GENRES_TTL, { upstream: true });
 }
 
+function cacheWrapLumiereGenres(method: () => Promise<any>): Promise<any> {
+  return cacheWrapGlobal('lumiere-genres', method, LUMIERE_GENRES_TTL, { upstream: true });
+}
+
 function cacheWrapStremThruGenres(catalogUrl: string, method: () => Promise<any>): Promise<any> {
   const urlKey = Buffer.from(catalogUrl).toString('base64').substring(0, 50);
   cacheLogger.debug(`Caching StremThru genres for catalog ${urlKey}`);
@@ -2594,6 +2601,8 @@ export {
   cacheWrapJikanApi,
   cacheWrapMDBListGenres,
   cacheWrapTraktGenres,
+  cacheWrapLumiereGenres,
+  CATALOG_TTL,
   cacheWrapStremThruGenres,
   cacheWrapStaticCatalog,
   cacheWrapMeta,
@@ -2628,6 +2637,8 @@ module.exports = {
   cacheWrapJikanApi,
   cacheWrapMDBListGenres,
   cacheWrapTraktGenres,
+  cacheWrapLumiereGenres,
+  CATALOG_TTL,
   cacheWrapStremThruGenres,
   cacheWrapStaticCatalog,
   cacheWrapMeta,

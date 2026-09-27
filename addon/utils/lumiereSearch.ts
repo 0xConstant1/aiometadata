@@ -41,3 +41,41 @@ export async function fetchLumiereSearch(
       year: typeof item.startYear === 'number' ? item.startYear : null,
     }));
 }
+
+const PEOPLE_MAX_QUERY_RUNES = 80;
+const PEOPLE_MAX_LIMIT = 200;
+
+export async function fetchLumierePeopleSearch(
+  baseUrl: string,
+  type: string,
+  query: string,
+  timeoutMs: number
+): Promise<LumiereResult[]> {
+  const normalized = Array.from(query.replace(/\s+/g, ' ').trim()).slice(0, PEOPLE_MAX_QUERY_RUNES).join('');
+  if (!normalized) return [];
+
+  const params = new URLSearchParams({
+    query: normalized,
+    type: type === 'movie' ? 'movies' : 'series',
+    limit: String(PEOPLE_MAX_LIMIT),
+  });
+  let response: any;
+  try {
+    response = await httpGet(`${baseUrl.replace(/\/+$/, '')}/search/people?${params}`, { timeout: timeoutMs });
+  } catch (error: any) {
+    if (error?.response?.status === 404) return [];
+    throw error;
+  }
+  const items = response?.data?.items;
+  if (!Array.isArray(items)) {
+    throw new Error(`LumiereDB returned no result list (status ${response?.status})`);
+  }
+
+  return items
+    .filter((item: any) => typeof item?.tconst === 'string' && item.tconst.startsWith('tt'))
+    .map((item: any) => ({
+      imdbId: item.tconst,
+      title: item.primaryTitle || '',
+      year: typeof item.startYear === 'number' ? item.startYear : null,
+    }));
+}

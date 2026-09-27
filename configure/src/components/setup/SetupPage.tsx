@@ -36,7 +36,8 @@ export function SetupPage({
   onApplied?: () => void;
   onExit?: (target: SettingsSectionId) => void;
 }) {
-  const { config, setConfig, hasBuiltInTmdb, hasBuiltInTvdb, catalogTTL } = useConfig();
+  const { config, setConfig, hasBuiltInTmdb, hasBuiltInTvdb, catalogTTL, lumiereEnabled } = useConfig();
+  const sources = useMemo(() => ({ lumiere: lumiereEnabled }), [lumiereEnabled]);
 
   const [content, setContent] = useState<ContentChoice>('with-anime');
   const [animeSource, setAnimeSource] = useState<AnimeSource>(defaultAnimeSource('with-anime'));
@@ -55,7 +56,7 @@ export function SetupPage({
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
 
-  const lineupOptions = useMemo(() => listLineupOptions(content), [content]);
+  const lineupOptions = useMemo(() => listLineupOptions(content, sources), [content, sources]);
   const activeLineup = useMemo(
     () => lineupOptions.find(option => option.kind === lineupKind) ?? lineupOptions[0],
     [lineupOptions, lineupKind]
@@ -96,9 +97,10 @@ export function SetupPage({
       },
       content,
       animeSource,
+      sources,
       extras: { ...extras, apiKeys: enteredKeys },
     }),
-    [imported, activeLineup, content, animeSource, extras, enteredKeys]
+    [imported, activeLineup, content, animeSource, sources, extras, enteredKeys]
   );
 
   const previewCatalogs = useMemo(
