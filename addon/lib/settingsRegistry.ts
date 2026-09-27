@@ -1408,6 +1408,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_RESUME_ECHO_PERCENT',
+    envVar: 'JELLYFIN_RESUME_ECHO_PERCENT',
+    label: 'Tracker Resume Match Margin (%)',
+    description: "A tracker's paused position replaces this server's when it is newer and differs by more than this many percent. Within it, the tracker is taken to be holding this server's own position.",
+    category: 'Features',
+    type: 'number',
+    default: 2,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_RESUME_TTL',
     envVar: 'JELLYFIN_RESUME_TTL',
     label: 'Jellyfin Tracker Read Memory (seconds)',

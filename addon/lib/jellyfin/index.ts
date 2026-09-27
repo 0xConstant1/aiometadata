@@ -2144,7 +2144,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const episodesConfig = await loadConfig(req);
     if (episodesConfig) {
-      await applyWatchedState(page, await watchedSnapshot(req.params.userUUID, episodesConfig), req.params.userUUID, profileKey(episodesConfig));
+      await applyWatchedState(page, await watchedSnapshot(req.params.userUUID, episodesConfig), req.params.userUUID, profileKey(episodesConfig), episodesConfig);
     }
     res.json(itemList(page, episodes.length - from, startIndex - from));
   });
@@ -2651,7 +2651,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
       const episodeConfig = await loadConfig(req);
       if (episodeConfig) {
-        await applyWatchedState([episode], await watchedSnapshot(userUUID, episodeConfig), userUUID, profileKey(episodeConfig));
+        await applyWatchedState([episode], await watchedSnapshot(userUUID, episodeConfig), userUUID, profileKey(episodeConfig), episodeConfig);
       }
 
       res.json(episode);

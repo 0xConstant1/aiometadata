@@ -1255,6 +1255,11 @@ export async function applyWatchedState(
     }
   }
 
+  const { trackerPositions, trackerPositionWins } = require('./resume');
+  const paused: Map<string, any> = userUUID && config && [...descriptors.values()].some((d) => d.k === 'movie' || d.k === 'episode')
+    ? await trackerPositions(userUUID, config).catch(() => new Map())
+    : new Map();
+
   const ownPlayed = userUUID && [...descriptors.values()].some((d) => d.k === 'series')
     ? await ownPlayedEpisodes(userUUID, profile)
     : new Set<string>();
@@ -1324,6 +1329,20 @@ export async function applyWatchedState(
       // The most recent action wins: a watch the tracker dates after this row's
       // last change was made elsewhere since, so it answers instead of the row.
       const trackerAt = watched.get(stremioId) ?? 0;
+      const pause = paused.get(stremioId);
+      if (pause && pause.updatedAt > trackerAt && trackerPositionWins(pause, record)) {
+        const runtime = Number(item.RunTimeTicks) || (pause.runtimeMinutes ? pause.runtimeMinutes * 60 * 1000 * 10000 : 0);
+        const played = Boolean(record?.played) || watched.has(stremioId);
+        item.UserData = {
+          ...item.UserData,
+          Played: played,
+          PlayCount: Math.max(played ? 1 : 0, Number(record?.play_count) || 0),
+          PlaybackPositionTicks: Math.round((runtime * pause.progress) / 100),
+          PlayedPercentage: pause.progress,
+          LastPlayedDate: new Date(pause.updatedAt).toISOString(),
+        };
+        return;
+      }
       if (record && trackerAt > (Number(record.updated_at) || 0)) {
         item.UserData = {
           ...item.UserData,

@@ -368,8 +368,6 @@ export async function resumeSnapshot(userUUID: string, config: any): Promise<Res
   const database: any = require('../database');
   const profile = profileKey(config);
 
-  // A tracker only adds what this server never saw, such as another device. A
-  // video the table knows at all is the table's call, finished or not.
   const own = await ownRows(userUUID, profile);
   const tracker = readsTrackers(config) ? await trackerSnapshot(userUUID, config) : [];
   let known = new Map<string, any>();
@@ -381,7 +379,8 @@ export async function resumeSnapshot(userUUID: string, config: any): Promise<Res
   }
   // A play is written under every id it is known by; one row per resolved title.
   const { titleIdentity } = require('./canonicalIds');
-  const candidates = [...own, ...tracker.filter((r) => !known.has(r.videoId))];
+  const overrides = tracker.filter((row) => known.has(row.videoId) && trackerPositionWins(row, known.get(row.videoId)));
+  const candidates = [...overrides, ...own, ...tracker.filter((r) => !known.has(r.videoId))];
   const taken = new Set<string>();
   const rows: ResumeRow[] = [];
   for (const row of candidates) {
@@ -391,6 +390,39 @@ export async function resumeSnapshot(userUUID: string, config: any): Promise<Res
     rows.push(row);
   }
   return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** A tracker position newer than the table's row, and not this server's own echoed back, replaces it. */
+export function trackerPositionWins(row: ResumeRow, held: any): boolean {
+  if (!held) return true;
+  if (row.updatedAt <= (Number(held.updated_at) || 0)) return false;
+  const runtimeMs = Number(held.runtime_ms) || 0;
+  const heldProgress = runtimeMs > 0 ? ((Number(held.position_ms) || 0) / runtimeMs) * 100 : 0;
+  return Math.abs(row.progress - heldProgress) > envInt('JELLYFIN_RESUME_ECHO_PERCENT', 2, 0);
+}
+
+const positionMemo = new LRUCache<string, Map<string, ResumeRow>>({
+  max: envInt('JELLYFIN_RESUME_CACHE_MAX', 500, 1),
+  ttl: envInt('JELLYFIN_RESUME_TTL', 60, 1) * 1000,
+});
+
+/** Tracker paused positions under every spelling of their video. */
+export async function trackerPositions(userUUID: string, config: any): Promise<Map<string, ResumeRow>> {
+  const { profileKey, readsTrackers } = require('./profiles');
+  if (!readsTrackers(config)) return new Map();
+  const key = `${userUUID}:${profileKey(config)}:${generationOf(userUUID)}`;
+  const held = positionMemo.get(key);
+  if (held) return held;
+  const { videoIdAliases } = require('./aliases');
+  const { titleIdentity } = require('./canonicalIds');
+  const out = new Map<string, ResumeRow>();
+  for (const row of await trackerSnapshot(userUUID, config)) {
+    for (const spelling of [row.videoId, ...(await videoIdAliases(row.videoId)), await titleIdentity(row.videoId, config)]) {
+      if (!out.has(spelling)) out.set(spelling, row);
+    }
+  }
+  positionMemo.set(key, out);
+  return out;
 }
 
 // Each connected service is read: a title paused through one app is only on
