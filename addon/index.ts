@@ -4797,7 +4797,9 @@ const catalogRoute = async function (req, res) {
   if (!storedConfig) {
     return res.status(404).send({ error: "User configuration not found" });
   }
-  const config = applyRatingOverrides(storedConfig, req, userUUID);
+  const { viewerConfigFor } = require('./lib/accounts');
+  // Set only by the Jellyfin server's in-process reads, never from the request.
+  const config = applyRatingOverrides(viewerConfigFor(storedConfig, req.params.accountOwner, id), req, userUUID);
   config.userUUID = userUUID;
 
   {
