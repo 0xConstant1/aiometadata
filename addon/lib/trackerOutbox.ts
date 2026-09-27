@@ -1,5 +1,6 @@
 import consola from 'consola';
 import { createHash } from 'crypto';
+import { credentialOf } from './accounts';
 import { envInt } from '../utils/envNumber';
 import { recordingTrackerCalls, type TrackerCall } from '../utils/trackerCalls';
 import type { WatchTrackingService } from './watchTracking';
@@ -54,17 +55,6 @@ const maxAgeMs = (): number => envInt('TRACKER_OUTBOX_MAX_AGE_HOURS', 72, 1) * 6
 
 /** How long a "now watching" stays worth sending. */
 export const startWindowSeconds = (): number => envInt('TRACKER_OUTBOX_START_WINDOW', 600, 30);
-
-function credentialOf(config: any, service: WatchTrackingService): string | undefined {
-  const keys = config?.apiKeys ?? {};
-  switch (service) {
-    case 'simkl': return keys.simklTokenId;
-    case 'mdblist': return keys.mdblist;
-    case 'publicmetadb': return keys.publicmetadb;
-    case 'anilist': return keys.anilistTokenId;
-    case 'mal': return keys.malTokenId;
-  }
-}
 
 export function hasCredential(config: any, service: WatchTrackingService): boolean {
   return Boolean(credentialOf(config, service));

@@ -1,18 +1,12 @@
+import { ACCOUNT_SERVICES, credentialOf, trackerConfig } from '../accounts';
+
 /** Services that store a playback position or a watch history we can read. */
 export const CAPABLE = ['mdblist', 'simkl', 'publicmetadb'] as const;
 
 export type Capable = (typeof CAPABLE)[number];
 
 export function credentialFor(config: any, service: Capable): string | undefined {
-  const keys = config?.apiKeys ?? {};
-  switch (service) {
-    case 'mdblist':
-      return config?.mdblistWatchTracking !== false ? keys.mdblist : undefined;
-    case 'simkl':
-      return config?.simklWatchTracking !== false ? keys.simklTokenId : undefined;
-    case 'publicmetadb':
-      return config?.publicmetadbWatchTracking !== false ? keys.publicmetadb : undefined;
-  }
+  return trackerConfig(config, service)?.[ACCOUNT_SERVICES[service].master] !== false ? credentialOf(config, service) : undefined;
 }
 
 /**

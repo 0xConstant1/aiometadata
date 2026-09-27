@@ -1,5 +1,6 @@
 import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
+import { ACCOUNT_SERVICES, credentialOf, trackerConfig } from '../accounts';
 import { credentialFor } from './trackerSource';
 
 const logger = consola.withTag('Jellyfin');
@@ -30,11 +31,10 @@ export const SERVICE_KINDS: Record<WatchlistService, WatchlistKind[]> = {
 };
 
 function connected(config: any, service: WatchlistService): boolean {
-  switch (service) {
-    case 'anilist': return Boolean(config?.apiKeys?.anilistTokenId) && config?.anilistWatchTracking !== false;
-    case 'mal': return Boolean(config?.apiKeys?.malTokenId) && config?.malWatchTracking !== false;
-    default: return Boolean(credentialFor(config, service));
+  if (service === 'anilist' || service === 'mal') {
+    return Boolean(credentialOf(config, service)) && trackerConfig(config, service)?.[ACCOUNT_SERVICES[service].master] !== false;
   }
+  return Boolean(credentialFor(config, service));
 }
 
 /**
