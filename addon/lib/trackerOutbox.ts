@@ -252,7 +252,7 @@ function judge(calls: TrackerCall[], error: any): Outcome {
   const { status, body } = last;
   if ((status >= 200 && status < 300) || status === 409) return { kind: 'done' };
   // Simkl's write lock clears once the write holding it finishes.
-  if (status === 400 && last.host === 'api.simkl.com' && /RATE_LIMIT/.test(body ?? '')) {
+  if (status === 400 && last.host === 'api.simkl.com' && /rate_limit/i.test(body ?? '')) {
     return { kind: 'retry', at: Date.now() + 5000 + Math.random() * 5000, reason: 'Simkl write lock' };
   }
   if (status === 0 || status === 408 || status === 429 || status >= 500) {
