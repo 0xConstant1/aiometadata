@@ -73,15 +73,26 @@ export const generationOf = (userUUID: string): number => generations.get(userUU
  * The anidb pivot is what the meta path itself uses, so ids come back matching
  * the items already in the library rather than a second, parallel identity.
  */
+/**
+ * What went wrong while resolving: an answer reached around a lookup that failed is
+ * not the answer, so it is not kept for everyone. Shows TMDB failed for are not asked
+ * again by the same holder.
+ */
+export interface ResolveTrace {
+  failed?: boolean;
+  tmdbDown?: Set<string>;
+}
+
 export async function videoIdFor(
   ids: Record<string, any>,
   season: number,
   episode: number,
-  config: any = {}
+  config: any = {},
+  trace?: ResolveTrace
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
   // MDBList and PublicMetaDB number episodes the way TMDB does.
   if (ids.tmdb) {
-    const viaTmdb = await fromTmdbNumbering(ids, season, episode, config);
+    const viaTmdb = await fromTmdbNumbering(ids, season, episode, config, trace);
     if (viaTmdb) return viaTmdb;
   }
 
@@ -233,9 +244,14 @@ async function fromTmdbNumbering(
   ids: Record<string, any>,
   season: number,
   episode: number,
-  config: any = {}
+  config: any = {},
+  trace?: ResolveTrace
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
   const tmdb = String(ids.tmdb);
+  if (trace?.tmdbDown?.has(tmdb)) {
+    trace.failed = true;
+    return null;
+  }
   try {
     if (idMapper.getMappingByTmdbId(tmdb, 'series')) {
       const kitsu = await idMapper.resolveKitsuEpisodeFromTmdb(Number(tmdb), season, episode, config);
@@ -249,6 +265,10 @@ async function fromTmdbNumbering(
     return { metaId: base, videoId: `${base}:${season}:${position}`, mediaType: 'series' };
   } catch (error: any) {
     logger.debug(`TMDB numbering for ${tmdb} S${season}E${episode} failed: ${error?.message}`);
+    if (trace) {
+      trace.failed = true;
+      (trace.tmdbDown ??= new Set()).add(tmdb);
+    }
     return null;
   }
 }

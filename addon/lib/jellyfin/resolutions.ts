@@ -1,5 +1,5 @@
 import { envInt } from '../../utils/envNumber';
-import { movieBase, videoIdFor } from './resume';
+import { movieBase, videoIdFor, type ResolveTrace } from './resume';
 
 const database: any = require('../database');
 const DAY = 24 * 60 * 60 * 1000;
@@ -31,6 +31,9 @@ function episodeKey(ids: Record<string, any>, season: number, episode: number): 
 export class Resolutions {
   private held = new Map<string, any>();
   private found = new Map<string, any>();
+  // Answered around a failed lookup: used for this build, never saved for everyone.
+  private unsaved = new Set<string>();
+  private tmdbDown = new Set<string>();
 
   async preload(episodes: Array<[Record<string, any>, number, number]>, movies: Array<string | number>): Promise<void> {
     const keys = [
@@ -57,8 +60,10 @@ export class Resolutions {
     const key = episodeKey(ids, season, episode);
     if (this.held.has(key)) return this.held.get(key);
     if (this.found.has(key)) return this.found.get(key);
-    const resolved = await videoIdFor(ids, season, episode, config);
+    const trace: ResolveTrace = { tmdbDown: this.tmdbDown };
+    const resolved = await videoIdFor(ids, season, episode, config, trace);
     this.found.set(key, resolved ?? null);
+    if (trace.failed) this.unsaved.add(key);
     return resolved;
   }
 
@@ -74,7 +79,9 @@ export class Resolutions {
 
   async save(): Promise<void> {
     if (!this.found.size || !mappingsLoaded()) return;
-    const entries = [...this.found].map(([key, value]) => ({ key, value: JSON.stringify(value) }));
-    await database.putIdResolutions(entries).catch(() => undefined);
+    const entries = [...this.found]
+      .filter(([key]) => !this.unsaved.has(key))
+      .map(([key, value]) => ({ key, value: JSON.stringify(value) }));
+    if (entries.length) await database.putIdResolutions(entries).catch(() => undefined);
   }
 }

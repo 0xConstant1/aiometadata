@@ -2256,19 +2256,16 @@ async function applyTmdbEpisodeNumbers(map, config = {}) {
   }
 }
 
+// A failed read is thrown, not answered with the episode number: that answer reads as
+// "numbered the same", and the caller would keep it.
 async function tmdbEpisodePosition(tmdbId, seasonNumber, episodeNumber, config = {}) {
-  try {
-    const { seasonInfo } = require('./getTmdb.js');
-    const season = await seasonInfo({ id: tmdbId, season_number: seasonNumber, language: 'en-US' }, config);
-    const episodes = Array.isArray(season?.episodes) ? season.episodes : [];
-    const index = episodes.findIndex((episode) => episode?.episode_number === episodeNumber);
-    if (index >= 0) return index + 1;
-    const first = episodes[0]?.episode_number;
-    return Number.isInteger(first) && first > 1 ? episodeNumber - first + 1 : episodeNumber;
-  } catch (error) {
-    logger.debug(`[ID Mapper] Season details unavailable for TMDB ${tmdbId} S${seasonNumber}: ${error?.message || error}`);
-    return episodeNumber;
-  }
+  const { seasonInfo } = require('./getTmdb.js');
+  const season = await seasonInfo({ id: tmdbId, season_number: seasonNumber, language: 'en-US' }, config);
+  const episodes = Array.isArray(season?.episodes) ? season.episodes : [];
+  const index = episodes.findIndex((episode) => episode?.episode_number === episodeNumber);
+  if (index >= 0) return index + 1;
+  const first = episodes[0]?.episode_number;
+  return Number.isInteger(first) && first > 1 ? episodeNumber - first + 1 : episodeNumber;
 }
 
 // The Kitsu-to-TMDB walk in reverse.
