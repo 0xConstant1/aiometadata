@@ -608,10 +608,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         res.json(itemList([], 0, startIndex));
         return;
       }
-      // A shelf is read one page deeper than asked for, so a client paging the
-      // row keeps its count without the whole watchlist being built up front.
-      const need = startIndex + limit * 2;
-      const read = await watchlistEntries(userUUID, config, need);
+      const read = await watchlistEntries(userUUID, config);
       const entries = read.entries.filter((entry) =>
         !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
       );
