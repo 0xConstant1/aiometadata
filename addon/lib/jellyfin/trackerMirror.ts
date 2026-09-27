@@ -117,8 +117,9 @@ async function syncSimkl(key: string, tokenId: string, config: any, watermark: a
   const token = await getSimklToken(tokenId);
   const accessToken = token?.access_token;
   if (!accessToken) throw new Error('No Simkl token');
+  // A failed call throws. An answer of null or {} is Simkl's way of saying there is nothing to list.
   const get = async (path: string) =>
-    (await makeAuthenticatedSimklRequest(`https://api.simkl.com${path}`, accessToken, 'Simkl mirror'))?.data;
+    (await makeAuthenticatedSimklRequest(`https://api.simkl.com${path}`, accessToken, 'Simkl mirror'))?.data ?? {};
 
   const activities = await fetchSimklLastActivities(accessToken, config);
   if (!activities?.all) throw new Error('Simkl activities could not be read');
@@ -128,7 +129,6 @@ async function syncSimkl(key: string, tokenId: string, config: any, watermark: a
     const rows: MirrorRow[] = [];
     for (const type of SIMKL_TYPES) {
       const data = await get(`/sync/all-items/${type}?${SIMKL_FLAGS}`);
-      if (!data) throw new Error(`The Simkl ${type} library could not be read`);
       rows.push(...simklRows(type, data?.[type]));
     }
     await replaceMirror(key, rows, (itemKey) => SIMKL_TYPES.some((type) => itemKey.startsWith(`${type}:`)));
@@ -137,8 +137,8 @@ async function syncSimkl(key: string, tokenId: string, config: any, watermark: a
   if (activities.all === watermark.all) return { changed: false, watermark, full: false };
 
   // A changed show comes back whole, episodes and all, so an unmarked episode goes with it.
+  // Empty when what moved was a rating or a removal rather than an item.
   const delta = await get(`/sync/all-items?date_from=${encodeURIComponent(watermark.all)}&${SIMKL_FLAGS}`);
-  if (!delta) throw new Error('The Simkl changes could not be read');
   const rows = SIMKL_TYPES.flatMap((type) => simklRows(type, delta?.[type]));
   if (rows.length) await database.upsertTrackerMirror(key, rows);
 
@@ -150,7 +150,9 @@ async function syncSimkl(key: string, tokenId: string, config: any, watermark: a
   );
   if (departed) {
     const ids = await get('/sync/all-items?extended=simkl_ids_only');
-    if (ids) {
+    // An empty answer would clear the whole mirror; a library does not empty in one go often
+    // enough to risk that on a bad read, so it is left for the next full import.
+    if (SIMKL_TYPES.some((type) => Array.isArray(ids?.[type]) && ids[type].length)) {
       const present = new Set(SIMKL_TYPES.flatMap((type) => simklRows(type, ids?.[type]).map((row) => row.key)));
       const gone = (await database.listTrackerMirrorKeys(key))
         .map((row: any) => String(row.item_key))
