@@ -134,6 +134,29 @@ function sessionProfile(req: any, config: any): Profile {
   return profileById(config, req.params.userUUID, req.jellyfin?.profileId ?? null);
 }
 
+/** A request's played filter, in either spelling a client sends it. */
+function playedFilter(req: any): 'played' | 'unplayed' | null {
+  const filters = String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim().toLowerCase());
+  const flag = String(req.query.IsPlayed ?? req.query.isPlayed ?? '').toLowerCase();
+  if (filters.includes('isplayed') || flag === 'true') return 'played';
+  if (filters.includes('isunplayed') || flag === 'false') return 'unplayed';
+  return null;
+}
+
+async function playedPick(req: any, userUUID: string, config: any, type: string, serverId: string, parentId: string): Promise<{ pick?: (metas: any[]) => Promise<any[]>; key: string }> {
+  const played = playedFilter(req);
+  if (!played) return { key: '' };
+  const snapshot = await watchedSnapshot(userUUID, config);
+  return {
+    key: `|${played}`,
+    pick: async (metas: any[]) => {
+      const built = metas.map((meta: any) => metaToBaseItem(meta, type, serverId, parentId));
+      await applyWatchedState(built, snapshot, userUUID, profileKey(config));
+      return metas.filter((_: any, i: number) => (built[i].UserData?.Played === true) === (played === 'played'));
+    },
+  };
+}
+
 function userFor(profile: Profile, serverId: string, configuration?: any): any {
   const user = userDto(profile.userId, serverId, profile.name, avatarTag(profile));
   if (configuration && typeof configuration === 'object') user.Configuration = { ...user.Configuration, ...configuration };
@@ -878,7 +901,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           (String(req.query.Recursive ?? req.query.recursive ?? '').toLowerCase() === 'true' &&
             String(includeItemTypes ?? '').split(',').map((t) => t.trim()).includes('Episode'));
 
-        const filters = String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim());
+        const played = playedFilter(req);
+        const filters = [
+          ...String(req.query.Filters ?? req.query.filters ?? '').split(',').map((f) => f.trim()),
+          ...(played === 'played' ? ['IsPlayed'] : played === 'unplayed' ? ['IsUnplayed'] : []),
+        ];
         const sortBy = String(req.query.SortBy ?? req.query.sortBy ?? '');
         const descending = String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase() === 'descending';
         const applyState = async (items: any[]) =>
@@ -972,6 +999,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const pageCap = envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20);
     const pageLimit = limit > pageCap * 2 ? pageCap : limit;
 
+    const played = await playedPick(req, userUUID, config, catalog.type, serverId, String(parentId));
     const window = await fetchWindow(
       userUUID,
       catalog,
@@ -980,7 +1008,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       extras,
       includeTypesFilter(catalog.type, includeItemTypes ? String(includeItemTypes) : undefined),
       profileTags(config),
-      includeItemTypes ? String(includeItemTypes) : ''
+      `${includeItemTypes ? String(includeItemTypes) : ''}${played.key}`,
+      played.pick
     );
     const hasMore = window.hasMore;
 
@@ -1958,7 +1987,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const serverId = serverIdFor(userUUID);
-    const window = await fetchWindow(userUUID, catalog, 0, limit, {}, undefined, profileTags(config));
+    const played = await playedPick(req, userUUID, config, catalog.type, serverId, String(parentId));
+    const window = await fetchWindow(userUUID, catalog, 0, limit, {}, undefined, profileTags(config), played.key, played.pick);
     const items = window.items
       .filter((meta: any) => meta && meta.id)
       .map((meta: any) => metaToBaseItem(meta, catalog.type, serverId, String(parentId)));

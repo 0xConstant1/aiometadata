@@ -285,13 +285,15 @@ export async function fetchWindow(
   extras: Record<string, string> = {},
   keep?: (meta: any) => boolean,
   tags: string[] = [],
-  keepKey = ''
+  keepKey = '',
+  pick?: (metas: any[]) => Promise<any[]>
 ): Promise<Window> {
+  const filtering = !!keep || !!pick;
   const lengthKey = lengthKeyFor(userUUID, catalog, extras, tags, keepKey);
   const pageKey = lengthKeyFor(userUUID, catalog, extras, tags);
   let pageLength = pageLengths.get(pageKey);
 
-  if (!pageLength && startIndex > 0 && !keep) {
+  if (!pageLength && startIndex > 0 && !filtering) {
     const probe = await fetchCatalogPage(userUUID, catalog.type, catalog.id, extras, tags);
     if (probe && probe.length > 0) {
       pageLength = probe.length;
@@ -302,7 +304,7 @@ export async function fetchWindow(
   const cursor = pageLength && startIndex > 0 ? walkCursors.get(`${lengthKey}@${startIndex}`) : undefined;
   const minRaw = cursor ? cursor.raw : 0;
 
-  const alignedSkip = cursor ? Math.floor(cursor.raw / pageLength!) * pageLength! : keep ? 0 : pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
+  const alignedSkip = cursor ? Math.floor(cursor.raw / pageLength!) * pageLength! : filtering ? 0 : pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
   let offset = cursor ? 0 : startIndex - alignedSkip;
 
   const collected: any[] = [];
@@ -312,11 +314,11 @@ export async function fetchWindow(
   let pages = 0;
   let exhausted = false;
   let failed = false;
-  let budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength || 0);
+  let budget = maxPages((offset + limit) * (filtering ? 2 : 1), pageLength || 0);
 
   // A length counts what a client was shown, which runs behind the catalog's own
   // positions a cursor walks by, so it would end that walk early.
-  const knownLength = keep || cursor ? undefined : catalogLengths.get(lengthKey);
+  const knownLength = filtering || cursor ? undefined : catalogLengths.get(lengthKey);
   const minPage = envInt('JELLYFIN_CATALOG_MIN_PAGE', 10, 1);
   let stop = false;
 
@@ -356,9 +358,10 @@ export async function fetchWindow(
       if (first && i === 0 && !pageLength && page.length >= minPage) {
         pageLength = page.length;
         rememberLength('page', pageKey, pageLength);
-        budget = maxPages((offset + limit) * (keep ? 2 : 1), pageLength);
+        budget = maxPages((offset + limit) * (filtering ? 2 : 1), pageLength);
       }
 
+      const candidates: Array<{ meta: any; at: number }> = [];
       for (let j = 0; j < page.length; j++) {
         const meta = page[j];
         if (skips[i] + j < minRaw) continue;
@@ -366,8 +369,13 @@ export async function fetchWindow(
         if (!key || seen.has(key)) continue;
         seen.add(key);
         if (keep && !keep(meta)) continue;
-        collected.push(meta);
-        rawAt.push(skips[i] + j);
+        candidates.push({ meta, at: skips[i] + j });
+      }
+      const picked = pick && candidates.length ? new Set(await pick(candidates.map((c) => c.meta))) : null;
+      for (const candidate of candidates) {
+        if (picked && !picked.has(candidate.meta)) continue;
+        collected.push(candidate.meta);
+        rawAt.push(candidate.at);
       }
 
       skip = skips[i] + page.length;
@@ -388,7 +396,7 @@ export async function fetchWindow(
 
   // Only a window placed exactly may leave a cursor: one mapped from a page number
   // is off by the repeats before it, and would carry that into every later page.
-  const exact = !!keep || startIndex === 0 || !!cursor;
+  const exact = filtering || startIndex === 0 || !!cursor;
   if (exact && items.length > 0) {
     const shown = [...(cursor?.seen ?? []), ...collected.slice(0, offset + items.length).map((meta) => String(meta.id))];
     if (shown.length <= WALK_CURSOR_MAX_IDS) {
