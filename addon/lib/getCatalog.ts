@@ -3422,7 +3422,8 @@ async function getPublicMetaDBCatalog(
     }
 
     if (catalogId.startsWith('publicmetadb.list.')) {
-      const listId = catalogId.replace('publicmetadb.list.', '');
+      const { pmdbListIdFor } = require('./accounts');
+      const listId = pmdbListIdFor(config, catalogId);
       const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
       const [data, listType] = await Promise.all([
         fetchListItems(apiKey, listId, page, pageSize).catch((error: any) => {

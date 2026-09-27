@@ -11,6 +11,7 @@ import catalogTypesJson from "../static/catalog-types.json";
 import { PLAYBACK_MANIFEST_EVENTS, WATCH_STATE_PUSH_EVENTS, WATCH_STATE_VERSION } from "./playbackHandler";
 import { watchStatePullTtl } from "./watchState";
 import { collectionCatalogs, collectionsServed, COLLECTION_META_PREFIX } from "./collectionBuilder/aiostreamsCollections";
+import { servesCatalog } from "./accounts";
 const jikan: any = require('./mal');
 const DEFAULT_LANGUAGE = "en-US";
 const catalogsTranslations: Record<string, Record<string, string>> = catalogsTranslationsJson;
@@ -908,7 +909,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   const tags = Array.isArray(opts.tags) ? opts.tags.filter(Boolean) : [];
   const tagSet = new Set(tags.map((t: string) => t.toLowerCase()));
   const enabledCatalogs = userCatalogs.filter((c: any) =>
-    c.enabled && (tagSet.size === 0 || (Array.isArray(c.tags) && c.tags.some((t: any) => tagSet.has(String(t).toLowerCase()))))
+    c.enabled && servesCatalog(config, c) && (tagSet.size === 0 || (Array.isArray(c.tags) && c.tags.some((t: any) => tagSet.has(String(t).toLowerCase()))))
   );
 
   // Absorbed merge sources must be built (even if disabled) so their genres feed the parent.

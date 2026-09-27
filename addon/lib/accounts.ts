@@ -51,3 +51,38 @@ export function trackerConfig(config: any, only?: AccountService): any {
 export function credentialOf(config: any, service: AccountService): string | undefined {
   return trackerConfig(config, service)?.apiKeys?.[ACCOUNT_SERVICES[service].key] || undefined;
 }
+
+const SLOTS: Array<[AccountService, RegExp]> = [
+  ['mdblist', /^mdblist\.(watchlist(\.(movies|series))?|upnext|recommended\..+)$/],
+  ['simkl', /^simkl\.(watchlist\..+|upnext(\.anime)?|calendar\..+)$/],
+  ['mal', /^mal\.(userlist\..+|suggestions)$/],
+  ['anilist', /^anilist\.(?!trending$)[^.]+$/],
+  ['publicmetadb', /^publicmetadb\.upnext$/],
+];
+
+/** The service a catalog belongs to as "this account's own list"; null for public and named lists. */
+export function slotServiceOf(catalog: { id?: string; metadata?: any } | null | undefined): AccountService | null {
+  const id = String(catalog?.id ?? '').replace(/_(movie|series|anime|all)$/, '');
+  if (id.startsWith('publicmetadb.list.') && catalog?.metadata?.listType === 'watchlist') return 'publicmetadb';
+  for (const [service, pattern] of SLOTS) if (pattern.test(id)) return service;
+  return null;
+}
+
+export function servesCatalog(config: any, catalog: any): boolean {
+  const service = slotServiceOf(catalog);
+  if (!service) return true;
+  const holder = Boolean(config?.jellyfinAccounts);
+  if (!holder && catalog?.metadata?.accountsOnly !== true) return true;
+  if (!credentialOf(config, service)) return false;
+  if (holder && String(catalog?.id ?? '').startsWith('publicmetadb.list.')) return Boolean(config.jellyfinAccounts.publicmetadbWatchlist);
+  return true;
+}
+
+export function pmdbListIdFor(config: any, catalogId: string): string {
+  const own = config?.jellyfinAccounts?.publicmetadbWatchlist;
+  if (own && catalogId.startsWith('publicmetadb.list.')) {
+    const entry = (config.catalogs ?? []).find((c: any) => c?.id === catalogId);
+    if (slotServiceOf(entry ?? { id: catalogId }) === 'publicmetadb') return String(own);
+  }
+  return catalogId.replace('publicmetadb.list.', '');
+}

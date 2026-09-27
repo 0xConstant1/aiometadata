@@ -220,7 +220,8 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
       const { publicMetaDBWatchlistCatalog, setListItem } = require('../../utils/publicmetadbUtils');
       const catalog = await publicMetaDBWatchlistCatalog(config);
       if (catalog) {
-        await setListItem(config.apiKeys.publicmetadb, catalog.id.slice('publicmetadb.list.'.length), ids.tmdb, kind === 'movie' ? 'movie' : 'tv', listed);
+        const { pmdbListIdFor } = require('../accounts');
+        await setListItem(config.apiKeys.publicmetadb, pmdbListIdFor(config, catalog.id), ids.tmdb, kind === 'movie' ? 'movie' : 'tv', listed);
       }
     } catch (error: any) {
       logger.warn(`PublicMetaDB watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);
