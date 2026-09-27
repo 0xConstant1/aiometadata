@@ -7,6 +7,7 @@ import { EMPTY_USER_DATA } from './dto';
 import { placeholderSources } from './streams';
 import redis from '../redisClient';
 import type { CatalogRef } from './views';
+import { viewerAccountOwner } from './viewer';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -156,20 +157,27 @@ export async function fetchCatalogPage(
   const profile = tags.length ? `?${tags.map((t) => `tag=${encodeURIComponent(t)}`).join('&')}` : '';
   const url = `/stremio/${encodeURIComponent(userUUID)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraSegment}.json${profile}`;
 
-  if (failedPages.has(url)) return null;
+  const owner = viewerAccountOwner();
+  const memo = owner ? `${url}#${owner}` : url;
+
+  if (failedPages.has(memo)) return null;
   try {
     const { invokeRoute } = require('../inProcessRoutes');
-    const params = { userUUID, type, id: catalogId, ...(parts.length ? { extra: decodeParam(parts.join('&')) } : {}) };
+    const params = {
+      userUUID, type, id: catalogId,
+      ...(parts.length ? { extra: decodeParam(parts.join('&')) } : {}),
+      ...(owner ? { accountOwner: owner } : {}),
+    };
     const reply = await invokeRoute('catalog', url, params, routeTimeout());
     if (reply.status < 200 || reply.status >= 300) {
-      failedPages.set(url, true);
+      failedPages.set(memo, true);
       logger.debug(`Catalog ${type}/${catalogId} returned ${reply.status}`);
       return null;
     }
     const body: any = reply.body;
     return Array.isArray(body?.metas) ? body.metas : [];
   } catch (error: any) {
-    failedPages.set(url, true);
+    failedPages.set(memo, true);
     logger.warn(`Catalog ${type}/${catalogId} failed: ${error?.message || error}; not asked again for ${envInt('JELLYFIN_CATALOG_RETRY', 60, 1)}s`);
     return null;
   }
@@ -211,7 +219,8 @@ const catalogLengths = new LRUCache<string, number>({
 });
 
 function lengthKeyFor(userUUID: string, catalog: CatalogRef, extras: Record<string, string>, tags: string[], keepKey = ''): string {
-  return `${userUUID}|${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}|${keepKey}`;
+  const owner = viewerAccountOwner();
+  return `${userUUID}|${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}|${keepKey}${owner ? `|@${owner}` : ''}`;
 }
 
 export function knownCatalogLength(userUUID: string, catalog: CatalogRef, extras: Record<string, string> = {}, tags: string[] = [], keepKey = ''): number | undefined {

@@ -4,6 +4,7 @@ import { encodeJellyfinId } from './ids';
 import { collectionFolder, EMPTY_USER_DATA } from './dto';
 import { fetchWindow, includeTypesFilter, knownCatalogLength, metaToBaseItem, rememberImages } from './items';
 import { getCatalogs, type CatalogRef } from './views';
+import { viewerAccountOwner } from './viewer';
 import { profileTags } from './profiles';
 import { findFolder, subFolders, type CollectionDraft, type FolderDraft, type SourceDraft } from '../collectionBuilder/types';
 
@@ -207,7 +208,7 @@ export async function boxSetMembers(
     typeof source.genre === 'string' && source.genre && source.genre !== 'None' ? { genre: source.genre } : {};
 
   const cursorKey = JSON.stringify([
-    userUUID, collection.id, folder.id, includeItemTypes ?? '', tags,
+    userUUID, collection.id, folder.id, includeItemTypes ?? '', tags, viewerAccountOwner(),
     sources.map(({ source, catalog }) => [catalog.type, catalog.id, String(source.genre ?? '')]),
   ]);
   const held = memberCursors.get(cursorKey);
