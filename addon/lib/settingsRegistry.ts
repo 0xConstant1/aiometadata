@@ -515,6 +515,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     max: 20,
   },
   {
+    key: 'JELLYFIN_PLAYSTATE_SYNC_RECHECK_HOURS',
+    envVar: 'JELLYFIN_PLAYSTATE_SYNC_RECHECK_HOURS',
+    label: 'Jellyfin Playstate Sync Recheck',
+    description: "A configuration whose tracker reports no change since its last pass is skipped by the background sync; this is how many hours it may be skipped before it is passed again anyway.",
+    category: 'Features',
+    type: 'number',
+    default: 24,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_PLAYSTATE_SYNC_BUDGET',
     envVar: 'JELLYFIN_PLAYSTATE_SYNC_BUDGET',
     label: 'Jellyfin Playstate Sync Budget',

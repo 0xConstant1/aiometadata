@@ -10,14 +10,25 @@ const { runWithRequestContext }: any = require('../logBuffer');
 
 // Pulls tracker state into the playstate table. The table wins on anything it
 // already holds; only titles it has never seen are taken from the tracker.
-export async function syncPlaystateFor(userUUID: string, config: any): Promise<{ added: number; skipped: number }> {
+export async function syncPlaystateFor(userUUID: string, config: any): Promise<{ added: number; skipped: number; unchanged?: boolean }> {
   const { trackerSnapshot } = require('./resume');
-  const { watchedSnapshot } = require('./watched');
+  const { watchedSnapshot, allWatched } = require('./watched');
 
   let added = 0;
   let skipped = 0;
 
   const resume = await trackerSnapshot(userUUID, config);
+  const snapshot = await watchedSnapshot(userUUID, config);
+
+  // A pass only takes in what the tracker says, and the table wins over anything it has
+  // already seen, so a tracker unchanged since the last pass has nothing new to give.
+  const { createHash } = require('crypto');
+  const { readGlobalCache, writeGlobalCache } = require('../getCache');
+  const digest = snapshot.fingerprint
+    ? createHash('sha256').update(`${snapshot.fingerprint}|${resume.map((row: any) => `${row.videoId}:${row.progress}:${row.updatedAt}`).join(',')}`).digest('hex').substring(0, 16)
+    : '';
+  const passKey = `jellyfin_playstate_pass_v1:${userUUID}`;
+  if (digest && (await readGlobalCache(passKey))?.digest === digest) return { added, skipped, unchanged: true };
   for (const row of resume) {
     // The most recent action wins: a point the tracker set after this row's last
     // change replaces it, whether the row is a point, a mark or a rewatch; an
@@ -46,8 +57,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   // tracker's last word on it is the watch. A watch older than the point, or
   // one the tracker cannot date, is the earlier viewing this row is a rewatch of.
   const paused = new Set(resume.map((row) => row.videoId));
-  const { allWatched } = require('./watched');
-  const watched = await allWatched(await watchedSnapshot(userUUID, config));
+  const watched = await allWatched(snapshot);
   const finished = [...watched.episodes, ...watched.movies];
   const known = await getPlaystatesAcross(userUUID, finished);
   for (const videoId of finished) {
@@ -72,6 +82,8 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
     added += 1;
   }
 
+  // Passed again at least this often, whatever the tracker says, in case a pass was cut short.
+  if (digest) await writeGlobalCache(passKey, { digest }, envInt('JELLYFIN_PLAYSTATE_SYNC_RECHECK_HOURS', 24, 1) * 60 * 60);
   return { added, skipped };
 }
 
