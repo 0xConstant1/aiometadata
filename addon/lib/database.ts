@@ -163,6 +163,7 @@ class Database {
     }
     await this.ensureAccountColumns();
     await this.ensurePlaystateProfile();
+    await this.ensureTrackerOutboxProfile();
   }
 
   /** The profile is part of the key, which neither dialect can add in place. */
@@ -228,6 +229,21 @@ class Database {
       } catch (error: any) {
         logger.warn(`Could not add accounts.${name}: ${error.message}`);
       }
+    }
+  }
+
+  async ensureTrackerOutboxProfile(): Promise<void> {
+    try {
+      if (this.type === 'sqlite') {
+        const existing = await this.allQuery(`PRAGMA table_info(tracker_outbox)`);
+        if (existing.some((column: any) => column.name === 'profile')) return;
+        await this.runQuery(`ALTER TABLE tracker_outbox ADD COLUMN profile TEXT NOT NULL DEFAULT ''`);
+        logger.info('Migrated tracker_outbox: rows keyed by profile');
+      } else {
+        await this.runQuery(`ALTER TABLE tracker_outbox ADD COLUMN IF NOT EXISTS profile TEXT NOT NULL DEFAULT ''`);
+      }
+    } catch (error: any) {
+      logger.warn(`Could not add tracker_outbox.profile: ${error.message}`);
     }
   }
 
@@ -324,6 +340,7 @@ class Database {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         lane TEXT NOT NULL,
         user_uuid TEXT NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
         service TEXT NOT NULL,
         op TEXT NOT NULL,
         item_key TEXT NOT NULL DEFAULT '',
@@ -537,6 +554,7 @@ class Database {
         id BIGSERIAL PRIMARY KEY,
         lane VARCHAR(64) NOT NULL,
         user_uuid VARCHAR(64) NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
         service VARCHAR(32) NOT NULL,
         op VARCHAR(32) NOT NULL,
         item_key TEXT NOT NULL DEFAULT '',
@@ -1327,7 +1345,7 @@ class Database {
   }
 
   // Writes waiting for a tracker, delivered in order per account and retried until they land.
-  async enqueueTrackerOutbox(rows: Array<{ lane: string; userUUID: string; service: string; op: string; item: string; coalesce: string | null; payload: any; expiresAt: number }>): Promise<void> {
+  async enqueueTrackerOutbox(rows: Array<{ lane: string; userUUID: string; profile: string; service: string; op: string; item: string; coalesce: string | null; payload: any; expiresAt: number }>): Promise<void> {
     const sqlite = this.type === 'sqlite';
     const now = Date.now();
     for (const row of rows) {
@@ -1342,16 +1360,16 @@ class Database {
       }
       await this.runQuery(
         sqlite
-          ? `INSERT INTO tracker_outbox (lane, user_uuid, service, op, item_key, coalesce_key, payload, next_at, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          : `INSERT INTO tracker_outbox (lane, user_uuid, service, op, item_key, coalesce_key, payload, next_at, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [row.lane, row.userUUID, row.service, row.op, row.item, row.coalesce, JSON.stringify(row.payload), now, Math.round(row.expiresAt), now]
+          ? `INSERT INTO tracker_outbox (lane, user_uuid, profile, service, op, item_key, coalesce_key, payload, next_at, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          : `INSERT INTO tracker_outbox (lane, user_uuid, profile, service, op, item_key, coalesce_key, payload, next_at, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [row.lane, row.userUUID, row.profile || '', row.service, row.op, row.item, row.coalesce, JSON.stringify(row.payload), now, Math.round(row.expiresAt), now]
       );
     }
   }
 
   async listTrackerOutbox(limit: number): Promise<any[]> {
     const rows = await this.allQuery(
-      `SELECT id, lane, user_uuid, service, op, item_key, payload, attempts, next_at, expires_at, claimed_until, created_at FROM tracker_outbox ORDER BY id LIMIT ${this.type === 'sqlite' ? '?' : '$1'}`,
+      `SELECT id, lane, user_uuid, profile, service, op, item_key, payload, attempts, next_at, expires_at, claimed_until, created_at FROM tracker_outbox ORDER BY id LIMIT ${this.type === 'sqlite' ? '?' : '$1'}`,
       [limit]
     );
     // Postgres hands BIGINT back as a string.

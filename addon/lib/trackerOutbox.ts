@@ -1,6 +1,6 @@
 import consola from 'consola';
 import { createHash } from 'crypto';
-import { credentialOf } from './accounts';
+import { accountOwner, credentialOf, trackerConfig } from './accounts';
 import { envInt } from '../utils/envNumber';
 import { recordingTrackerCalls, type TrackerCall } from '../utils/trackerCalls';
 import type { WatchTrackingService } from './watchTracking';
@@ -126,6 +126,7 @@ export async function enqueueTrackerWrites(userUUID: string | undefined, config:
       await database.enqueueTrackerOutbox(rows.map(({ job, lane }) => ({
         lane,
         userUUID,
+        profile: accountOwner(config),
         service: job.service,
         op: job.op,
         item: job.item,
@@ -141,7 +142,7 @@ export async function enqueueTrackerWrites(userUUID: string | undefined, config:
   }
 
   for (const { job } of rows) {
-    await executors[job.op](job.service, job.payload, config, userUUID ?? '').catch((error: any) =>
+    await executors[job.op](job.service, job.payload, trackerConfig(config, job.service), userUUID ?? '').catch((error: any) =>
       logger.error(`${job.service} ${job.op} failed: ${error?.message || error}`)
     );
   }
@@ -267,13 +268,20 @@ async function deliver(row: any): Promise<void> {
   let config: any;
   try {
     const stored = await require('./configApi').loadSharedConfig(row.user_uuid);
-    config = { ...stored, userUUID: row.user_uuid };
+    const { scopeConfigToProfile } = require('./jellyfin/profiles');
+    config = { ...scopeConfigToProfile(stored, row.user_uuid, row.profile || null), userUUID: row.user_uuid };
   } catch (error: any) {
     if (error?.code === 'CONFIG_NOT_FOUND') {
       await database.deleteTrackerOutbox(row.id);
       return;
     }
     await database.retryTrackerOutbox(row.id, row.attempts + 1, Date.now() + backoffMs(row.attempts + 1), `configuration: ${error?.message || error}`);
+    return;
+  }
+
+  if (row.profile && (accountOwner(config) !== row.profile || !credentialOf(config, row.service))) {
+    await database.deleteTrackerOutbox(row.id);
+    logger.warn(`Dropping ${label}: user ${row.profile} no longer holds a ${row.service} account`);
     return;
   }
 
@@ -284,7 +292,7 @@ async function deliver(row: any): Promise<void> {
   }
 
   const payload = JSON.parse(row.payload);
-  const { calls, error } = await recordingTrackerCalls(() => executor(row.service, payload, config, row.user_uuid));
+  const { calls, error } = await recordingTrackerCalls(() => executor(row.service, payload, trackerConfig(config, row.service), row.user_uuid));
   const outcome = judge(calls, error);
 
   if (outcome.kind === 'done') {
@@ -321,18 +329,19 @@ function settle(userUUID: string, config: any, ops: OutboxOp[]): void {
   const watched = ops.some((op) => CHANGES_WATCHED.has(op));
   const resume = ops.some((op) => CHANGES_RESUME.has(op));
   if (!watched && !resume) return;
-  const pending = settling.get(userUUID);
+  const key = `${userUUID}:${accountOwner(config)}`;
+  const pending = settling.get(key);
   if (pending) clearTimeout(pending.timer);
   const entry = {
     watched: watched || Boolean(pending?.watched),
     resume: resume || Boolean(pending?.resume),
     config,
     timer: setTimeout(() => {
-      settling.delete(userUUID);
+      settling.delete(key);
       if (entry.resume) require('./jellyfin/resume').invalidateResume(userUUID);
       if (entry.watched) require('./jellyfin/watched').invalidateWatched(entry.config).catch(() => undefined);
     }, 1500),
   };
   entry.timer.unref?.();
-  settling.set(userUUID, entry);
+  settling.set(key, entry);
 }
