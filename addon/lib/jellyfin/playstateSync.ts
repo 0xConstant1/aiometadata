@@ -2,6 +2,9 @@ import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
 import { sourceFor } from './trackerSource';
 import { getPlaystatesAcross, upsertPlaystateEverywhere } from './aliases';
+import { profileKey, scopeConfigToProfile } from './profiles';
+import { accountOwner, holderCards } from '../accounts';
+import { runAsAccountOwner } from './viewer';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -16,6 +19,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
 
   let added = 0;
   let skipped = 0;
+  const profile = profileKey(config);
 
   const resume = await trackerSnapshot(userUUID, config);
   const snapshot = await watchedSnapshot(userUUID, config);
@@ -27,13 +31,13 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   const digest = snapshot.fingerprint
     ? createHash('sha256').update(`${snapshot.fingerprint}|${resume.map((row: any) => `${row.videoId}:${row.progress}:${row.updatedAt}`).join(',')}`).digest('hex').substring(0, 16)
     : '';
-  const passKey = `jellyfin_playstate_pass_v1:${userUUID}`;
+  const passKey = `jellyfin_playstate_pass_v1:${userUUID}${profile ? `:${profile}` : ''}`;
   if (digest && (await readGlobalCache(passKey))?.digest === digest) return { added, skipped, unchanged: true };
   for (const row of resume) {
     // The most recent action wins: a point the tracker set after this row's last
     // change replaces it, whether the row is a point, a mark or a rewatch; an
     // older one is what the row already replaced.
-    const existing = await database.getPlaystate(userUUID, row.videoId);
+    const existing = await database.getPlaystate(userUUID, row.videoId, profile);
     if (existing && !((row.updatedAt || 0) > Number(existing.updated_at))) {
       skipped += 1;
       continue;
@@ -48,7 +52,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
       positionMs: Math.round((runtimeMs * row.progress) / 100),
       runtimeMs,
       lastPlayedAt: row.updatedAt || null,
-    });
+    }, profile);
     added += 1;
   }
 
@@ -59,12 +63,12 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   const paused = new Set(resume.map((row) => row.videoId));
   const watched = await allWatched(snapshot);
   const finished = [...watched.episodes, ...watched.movies];
-  const known = await getPlaystatesAcross(userUUID, finished);
+  const known = await getPlaystatesAcross(userUUID, finished, profile);
   for (const videoId of finished) {
     const row = known.get(videoId);
     // An import written without a date takes the tracker's once it has one.
     if (row && row.played && !row.last_played_at && !Number(row.position_ms) && watched.at.get(videoId)) {
-      await upsertPlaystateEverywhere(userUUID, videoId, { lastPlayedAt: watched.at.get(videoId) });
+      await upsertPlaystateEverywhere(userUUID, videoId, { lastPlayedAt: watched.at.get(videoId) }, profile);
       added += 1;
       continue;
     }
@@ -78,7 +82,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
       skipped += 1;
       continue;
     }
-    await upsertPlaystateEverywhere(userUUID, videoId, row ? { positionMs: 0, played: true } : { positionMs: 0, played: true, lastPlayedAt: watched.at.get(videoId) ?? null });
+    await upsertPlaystateEverywhere(userUUID, videoId, row ? { positionMs: 0, played: true } : { positionMs: 0, played: true, lastPlayedAt: watched.at.get(videoId) ?? null }, profile);
     added += 1;
   }
 
@@ -137,30 +141,38 @@ function withinTime<T>(work: Promise<T>, ms: number): Promise<T | typeof TIMED_O
   return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
-/** One configuration's tracker positions and watches, then its Next Up index. */
+/** One configuration and each user holding its own accounts: tracker positions and watches, then Next Up. */
 async function syncConfiguration(userUUID: string): Promise<{ added: number } | null> {
-  let config: any;
+  let stored: any;
   try {
-    config = await database.getUserConfig(userUUID);
+    stored = await database.getUserConfig(userUUID);
   } catch {
     return null;
   }
-  if (!config || !sourceFor(config)) return null;
+  if (!stored) return null;
+  const targets = [stored, ...holderCards(stored).map((card: any) => scopeConfigToProfile(stored, userUUID, card.id))]
+    .filter((config: any) => sourceFor(config));
+  if (!targets.length) return null;
 
   let added = 0;
-  try {
-    const result = await runWithRequestContext(userUUID, () => syncPlaystateFor(userUUID, config));
-    added = result.added;
-  } catch (error: any) {
-    logger.debug(`Playstate sync failed for ${userUUID}: ${error?.message || error}`);
-  }
-  // Keeps the Next Up episode index warm off the request path.
-  try {
-    const { warmNextUpIndex } = require('./episodeIndex');
-    const built = await runWithRequestContext(userUUID, () => warmNextUpIndex(userUUID, config));
-    if (built) logger.debug(`Episode index built for ${built} show(s) of ${userUUID}`);
-  } catch (error: any) {
-    logger.debug(`Episode index warm failed for ${userUUID}: ${error?.message || error}`);
+  for (const config of targets) {
+    const owner = accountOwner(config);
+    const who = owner ? `${userUUID} (${owner})` : userUUID;
+    await runAsAccountOwner(owner, async () => {
+      try {
+        added += (await runWithRequestContext(userUUID, () => syncPlaystateFor(userUUID, config))).added;
+      } catch (error: any) {
+        logger.debug(`Playstate sync failed for ${who}: ${error?.message || error}`);
+      }
+      // Keeps the Next Up episode index warm off the request path.
+      try {
+        const { warmNextUpIndex } = require('./episodeIndex');
+        const built = await runWithRequestContext(userUUID, () => warmNextUpIndex(userUUID, config));
+        if (built) logger.debug(`Episode index built for ${built} show(s) of ${who}`);
+      } catch (error: any) {
+        logger.debug(`Episode index warm failed for ${who}: ${error?.message || error}`);
+      }
+    });
   }
   return { added };
 }
