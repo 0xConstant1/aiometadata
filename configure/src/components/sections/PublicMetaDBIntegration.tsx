@@ -323,6 +323,7 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader className="shrink-0">
           <div className="flex items-center gap-3">
+            <img src="/pmdb_icon.svg" alt="PublicMetaDB" className="h-6 w-6 object-contain" />
             <DialogTitle>PublicMetaDB Integration</DialogTitle>
           </div>
           <DialogDescription>
