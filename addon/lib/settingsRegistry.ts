@@ -1239,6 +1239,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_EPISODE_INDEX_MEMORY_MB',
+    envVar: 'JELLYFIN_EPISODE_INDEX_MEMORY_MB',
+    label: 'Episode Index Memory (MB)',
+    description: 'The most memory the in-memory episode indexes may take. Long-running shows are large, so the oldest are dropped past this; Redis still holds them.',
+    category: 'Cache',
+    type: 'number',
+    default: 64,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_ID_CACHE_MAX',
     envVar: 'JELLYFIN_ID_CACHE_MAX',
     label: 'Item Id Cache Size',
