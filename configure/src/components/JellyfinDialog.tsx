@@ -68,7 +68,7 @@ interface UserRowProps {
   user?: JellyfinUser;
   allTags: TagDef[];
   catalogCount: number;
-  trackerOptions: Array<{ value: string; label: string }>;
+  trackerOptions: Array<{ value: string; label: string; animeOnly?: boolean }>;
   watchlistOptions: WatchlistOption[];
   hasPmdb: boolean;
   onChange: (patch: Partial<JellyfinUser>) => void;
@@ -261,16 +261,20 @@ function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: s
   );
 }
 
-function resumeSourceCaption(value: string, options: Array<{ value: string; label: string }>): string {
+function resumeSourceCaption(value: string, options: Array<{ value: string; label: string; animeOnly?: boolean }>): string {
   if (value === 'off') {
     return 'This server only: Continue Watching, Next Up and the watched ticks come from what you play through this server, on this configuration. Nothing watched elsewhere appears, and nothing is read from your trackers; plays are still reported to them. Favourites follow the watchlist picks below, which have their own "This server only".';
   }
   if (value === 'auto') {
-    const names = options.map((o) => o.label);
+    const names = options.filter((o) => !o.animeOnly).map((o) => o.label);
     const list = names.length ? names.join(' and ') : 'a connected tracker';
-    return `Automatic: Continue Watching merges the paused titles of every connected tracker (${list}), newest first. The watched ticks, Next Up and Upcoming come from one of them, the first connected in the order MDBList, Trakt, Simkl, PublicMetaDB.`;
+    return `Automatic: Continue Watching merges the paused titles of every connected tracker (${list}), newest first. The watched ticks, Next Up and Upcoming come from one of them, the first connected in the order MDBList, Simkl, PublicMetaDB. AniList and MyAnimeList are only read when picked.`;
   }
-  const name = options.find((o) => o.value === value)?.label ?? 'that tracker';
+  const option = options.find((o) => o.value === value);
+  if (option?.animeOnly) {
+    return `${option.label} only: the watched ticks, Next Up and Upcoming come from your ${option.label} anime list, on top of what you play here. It covers anime alone, so other shows only appear from your plays here, and it keeps no positions, so Continue Watching is what you pause here.`;
+  }
+  const name = option?.label ?? 'that tracker';
   return `${name} only: Continue Watching, the watched ticks, Next Up and Upcoming all come from ${name}, on top of what you play here. Pick this when two trackers disagree and you want one to win.`;
 }
 
@@ -363,19 +367,25 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   // Only services that store a playback position can answer the Continue
   // Watching row, and only when they are connected and tracking is on.
   const resumeSourceOptions = useMemo(() => {
-    const candidates: Array<{ value: string; label: string; ready: boolean }> = [
+    const candidates: Array<{ value: string; label: string; ready: boolean; animeOnly?: boolean }> = [
       { value: 'mdblist', label: 'MDBList', ready: Boolean(config.apiKeys?.mdblist) && config.mdblistWatchTracking !== false },
       { value: 'simkl', label: 'Simkl', ready: Boolean(config.apiKeys?.simklTokenId) && config.simklWatchTracking !== false },
       { value: 'publicmetadb', label: 'PublicMetaDB', ready: Boolean(config.apiKeys?.publicmetadb) && config.publicmetadbWatchTracking !== false },
+      { value: 'anilist', label: 'AniList', ready: Boolean(config.apiKeys?.anilistTokenId) && config.anilistWatchTracking !== false, animeOnly: true },
+      { value: 'mal', label: 'MyAnimeList', ready: Boolean(config.apiKeys?.malTokenId) && config.malWatchTracking !== false, animeOnly: true },
     ];
     return candidates.filter((c) => c.ready);
   }, [
     config.apiKeys?.mdblist,
     config.apiKeys?.simklTokenId,
     config.apiKeys?.publicmetadb,
+    config.apiKeys?.anilistTokenId,
+    config.apiKeys?.malTokenId,
     config.mdblistWatchTracking,
     config.simklWatchTracking,
     config.publicmetadbWatchTracking,
+    config.anilistWatchTracking,
+    config.malWatchTracking,
   ]);
 
   const approveQuickConnect = async () => {

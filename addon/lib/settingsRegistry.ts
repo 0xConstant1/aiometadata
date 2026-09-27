@@ -959,6 +959,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_ANIME_LIST_TTL',
+    envVar: 'JELLYFIN_ANIME_LIST_TTL',
+    label: 'AniList / MyAnimeList Tracker Refresh (seconds)',
+    description: 'How long an AniList or MyAnimeList list picked as the Jellyfin tracker is kept before it is read again. Neither says what changed, so each read is the whole list; a play sent from here reads it again at once.',
+    category: 'Features',
+    type: 'number',
+    default: 900,
+    min: 60,
+  },
+  {
     key: 'JELLYFIN_CALENDAR_PAST_DAYS',
     envVar: 'JELLYFIN_CALENDAR_PAST_DAYS',
     label: 'Jellyfin Calendar Past Window (days)',

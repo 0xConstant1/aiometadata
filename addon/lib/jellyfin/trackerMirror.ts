@@ -5,7 +5,7 @@ import { envInt } from '../../utils/envNumber';
 const logger = consola.withTag('Jellyfin');
 const database: any = require('../database');
 
-export type MirrorService = 'simkl' | 'mdblist' | 'publicmetadb';
+export type MirrorService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';
 
 /**
  * A tracker account, hashed. The mirror is kept per account, so configurations and
@@ -71,7 +71,9 @@ async function runSync(service: MirrorService, key: string, credential: string, 
     ? await syncSimkl(key, credential, config, watermark)
     : service === 'mdblist'
       ? await syncMdblist(key, credential, watermark)
-      : await syncPmdb(key, credential, watermark);
+      : service === 'publicmetadb'
+        ? await syncPmdb(key, credential, watermark)
+        : await syncAnimeList(service, key, credential, watermark);
 
   if (outcome.changed) version += 1;
   await database.setTrackerSync(key, service, {
@@ -360,6 +362,37 @@ async function syncPmdb(key: string, apiKey: string, watermark: any): Promise<Sy
     await database.upsertTrackerMirror(key, [{ key: 'dropped', data: await fetchPmdbDropped(apiKey) }]);
   }
   return { changed: true, watermark: { head: headValue }, full };
+}
+
+// --- AniList and MyAnimeList --------------------------------------------------------
+
+export function animeListCacheKey(service: 'anilist' | 'mal', tokenId: string): string {
+  return `${service}_list:${credentialHash(tokenId)}`;
+}
+
+async function readAnimeList(service: 'anilist' | 'mal', tokenId: string): Promise<any[]> {
+  const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
+  return cacheWrapGlobal(
+    animeListCacheKey(service, tokenId),
+    async () => {
+      const tracker: any = service === 'anilist' ? require('../anilistTracker') : require('../malTracker');
+      const accessToken = await tracker.getAccessTokenById(tokenId);
+      if (!accessToken) throw new Error(`No ${service} token`);
+      return tracker.fetchAnimeList(accessToken);
+    },
+    envInt('JELLYFIN_ANIME_LIST_TTL', 900, 60),
+    { upstream: true, resultClassifier: classifyResultAllowEmpty }
+  );
+}
+
+async function syncAnimeList(service: 'anilist' | 'mal', key: string, tokenId: string, watermark: any): Promise<SyncOutcome> {
+  const entries = await readAnimeList(service, tokenId);
+  if (!Array.isArray(entries)) throw new Error(`${service} list could not be read`);
+  const digest = createHash('sha256').update(JSON.stringify(entries)).digest('hex').substring(0, 32);
+  if (watermark?.digest === digest) return { changed: false, watermark, full: false };
+  const rows: MirrorRow[] = entries.map((entry) => ({ key: `entry:${entry.anilist ?? entry.mal}`, data: entry }));
+  await replaceMirror(key, rows, (itemKey) => itemKey.startsWith('entry:'));
+  return { changed: true, watermark: { digest }, full: true };
 }
 
 /** A mirror's rows, parsed, for the snapshot builders. */

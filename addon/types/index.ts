@@ -10,7 +10,7 @@ export interface UserConfig {
   /** Password a Jellyfin client signs in with, for accounts that have no configuration password. */
   jellyfinAppPassword?: string;
   /** Tracker the Jellyfin resume shelf reads from. `auto` picks a capable one. */
-  jellyfinResumeSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
+  jellyfinResumeSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb' | 'anilist' | 'mal';
   /** Name and picture of the main Jellyfin user, the configuration itself. */
   jellyfinUserName?: string;
   jellyfinUserAvatar?: string;

@@ -26,7 +26,7 @@ export interface JellyfinUser {
   /** Whether this user is the same person as the account, sharing its watch history and trackers. */
   trackers?: boolean;
   /** Absent follows the main user. */
-  trackerSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
+  trackerSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb' | 'anilist' | 'mal';
   skipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
   watchlistServices?: string[];
   /** Overrides the configuration's stream addon for this user. */
@@ -411,7 +411,7 @@ export interface AppConfig {
   /** Password a Jellyfin client signs in with, for accounts that have no configuration password. */
   jellyfinAppPassword?: string;
   /** Tracker the Jellyfin resume shelf reads from. `auto` picks a capable one. */
-  jellyfinResumeSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb';
+  jellyfinResumeSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb' | 'anilist' | 'mal';
   /** Name and picture of the main Jellyfin user, the configuration itself. */
   jellyfinUserName?: string;
   jellyfinUserAvatar?: string;

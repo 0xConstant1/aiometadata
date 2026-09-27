@@ -1,7 +1,9 @@
 /** Services that store a playback position or a watch history we can read. */
-export const CAPABLE = ['mdblist', 'simkl', 'publicmetadb'] as const;
+export const CAPABLE = ['mdblist', 'simkl', 'publicmetadb', 'anilist', 'mal'] as const;
 
 export type Capable = (typeof CAPABLE)[number];
+
+const POSITIONAL: readonly Capable[] = ['mdblist', 'simkl', 'publicmetadb'];
 
 export function credentialFor(config: any, service: Capable): string | undefined {
   const keys = config?.apiKeys ?? {};
@@ -12,6 +14,10 @@ export function credentialFor(config: any, service: Capable): string | undefined
       return config?.simklWatchTracking !== false ? keys.simklTokenId : undefined;
     case 'publicmetadb':
       return config?.publicmetadbWatchTracking !== false ? keys.publicmetadb : undefined;
+    case 'anilist':
+      return config?.anilistWatchTracking !== false ? keys.anilistTokenId : undefined;
+    case 'mal':
+      return config?.malWatchTracking !== false ? keys.malTokenId : undefined;
   }
 }
 
@@ -32,7 +38,7 @@ export function sourceFor(config: any): Capable | null {
   if (choice !== 'auto') {
     return credentialFor(config, choice as Capable) ? (choice as Capable) : null;
   }
-  return CAPABLE.find((service) => credentialFor(config, service)) ?? null;
+  return POSITIONAL.find((service) => credentialFor(config, service)) ?? null;
 }
 
 /** Every service the resume shelf reads under Automatic; a named choice is that one alone. */
@@ -40,7 +46,12 @@ export function resumeSourcesFor(config: any): Capable[] {
   const choice = choiceOf(config);
   if (choice === 'off') return [];
   if (choice !== 'auto') {
-    return credentialFor(config, choice as Capable) ? [choice as Capable] : [];
+    return POSITIONAL.includes(choice as Capable) && credentialFor(config, choice as Capable) ? [choice as Capable] : [];
   }
-  return CAPABLE.filter((service) => credentialFor(config, service));
+  return POSITIONAL.filter((service) => credentialFor(config, service));
+}
+
+export function keepsAnimeOnly(config: any): boolean {
+  const service = sourceFor(config);
+  return service === 'anilist' || service === 'mal';
 }

@@ -30,7 +30,8 @@ import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stre
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
-import { showIdentity } from './canonicalIds';
+import { isAnimeTitle, showIdentity } from './canonicalIds';
+import { keepsAnimeOnly } from './trackerSource';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
@@ -2045,7 +2046,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const startIndex = Math.max(0, qInt(req, 'StartIndex', 0));
     const limit = Math.min(Math.max(1, qInt(req, 'Limit', 20)), 100);
     const watched = await watchedSnapshot(userUUID, config);
-    const rows = (await resumeSnapshot(userUUID, config)).filter((row) => row.kind === 'movie' || !watched.dropped.has(row.metaId));
+    const animeOnly = keepsAnimeOnly(config);
+    const rows = (await resumeSnapshot(userUUID, config))
+      .filter((row) => row.kind === 'movie' || !watched.dropped.has(row.metaId))
+      .filter((row) => !animeOnly || isAnimeTitle(row.metaId, row.kind === 'movie' ? 'movie' : 'series'));
     if (!rows.length) {
       res.json(itemList([], 0, startIndex));
       return;
@@ -2232,7 +2236,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const own = (await ownNextUpRows(userUUID, profileKey(config))).filter((row) => !snapshot.dropped.has(row.metaId));
     lap.own = Date.now() - t2;
     // One row per resolved show; the table's newest spelling first.
-    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId))];
+    const animeOnly = keepsAnimeOnly(config) && !(req.query.SeriesId ?? req.query.seriesId ?? req.query.ParentId ?? req.query.parentId);
+    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId))]
+      .filter((row) => !animeOnly || isAnimeTitle(row.metaId, 'series'));
     const identities = new Map<string, string>();
     await mapWithConcurrency([...new Set(offered.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
       identities.set(metaId, await showIdentity(metaId, config));
@@ -2421,7 +2427,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       shows.set(row.metaId, row.mediaType);
       local += 1;
     }
-    return { snapshot, caughtUp, followed: [...shows.entries()] };
+    const followed = [...shows.entries()].filter(([metaId]) => !keepsAnimeOnly(config) || isAnimeTitle(metaId, 'series'));
+    return { snapshot, caughtUp, followed };
   };
 
   const buildCalendar = async (userUUID: string, config: any, from: number, to: number): Promise<any[]> => {
@@ -2573,6 +2580,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       for (const meta of window.items) {
         const item = metaToBaseItem(meta, catalog.type, serverId, null);
         if (item.Type === 'Movie' && within(premiereAt(item)) && !seen.has(item.Id)) {
+          if (keepsAnimeOnly(config) && !isAnimeTitle(String(meta.id), 'movie')) continue;
           seen.add(item.Id);
           films.push(item);
         }
