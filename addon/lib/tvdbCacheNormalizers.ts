@@ -11,7 +11,7 @@ const GENRE_KEYS = ['id', 'name', 'slug'];
 const CONTENT_RATING_KEYS = ['id', 'name', 'country', 'contentType', 'description'];
 const TRAILER_KEYS = ['id', 'name', 'url', 'language', 'runtime', 'thumbnail'];
 const STATUS_KEYS = ['id', 'name', 'recordType', 'keepUpdated'];
-const SEASON_KEYS = ['id', 'name', 'slug', 'number', 'image', 'year'];
+const SEASON_KEYS = ['id', 'name', 'slug', 'number', 'image', 'year', 'posters'];
 const SEASON_TYPE_KEYS = ['id', 'name', 'type', 'alternateName'];
 const FIRST_RELEASE_KEYS = ['Date', 'date', 'country', 'releaseDate'];
 const EPISODE_RESPONSE_KEYS = ['pageInfo'];
@@ -143,9 +143,9 @@ function normalizeTvdbSeasonForCache(season: any) {
 }
 
 const SEASON_POSTER_ARTWORK_TYPE = 7;
+const SEASON_POSTER_KEYS = ['image', 'language', 'score'];
 
-// TVDB sometimes points a season's image at its background or banner; swap in the season's best poster.
-function withSeasonPosterImages(seasons: any[], artworks: any[] | undefined) {
+function withSeasonPosters(seasons: any[], artworks: any[] | undefined) {
   if (!Array.isArray(artworks)) return seasons;
 
   const postersBySeason = new Map<number, any[]>();
@@ -157,11 +157,18 @@ function withSeasonPosterImages(seasons: any[], artworks: any[] | undefined) {
   }
 
   return seasons.map(season => {
-    const posters = season?.image ? postersBySeason.get(season.id) : undefined;
-    if (!posters || posters.some(poster => poster.image === season.image)) return season;
+    const posters = season?.type?.type === 'official' ? postersBySeason.get(season.id) : undefined;
+    if (!posters) return season;
 
-    const best = posters.reduce((top, poster) => ((poster.score ?? 0) > (top.score ?? 0) ? poster : top));
-    return { ...season, image: best.image };
+    const byLanguage = new Map<string, any>();
+    for (const poster of posters) {
+      const key = poster.language ?? 'null';
+      const held = byLanguage.get(key);
+      if (!held || (held.image !== season.image && (poster.image === season.image || (poster.score ?? 0) > (held.score ?? 0)))) {
+        byLanguage.set(key, poster);
+      }
+    }
+    return { ...season, posters: Array.from(byLanguage.values(), poster => pickDefined(poster, SEASON_POSTER_KEYS)) };
   });
 }
 
@@ -189,7 +196,7 @@ export function normalizeTvdbSeriesExtendedForCache(series: any) {
     ...(Array.isArray(series.contentRatings) ? { contentRatings: mapIfArray(series.contentRatings, normalizeTvdbContentRatingForCache) } : {}),
     ...(Array.isArray(series.characters) ? { characters: mapIfArray(series.characters.filter(isUsedTvdbCharacter), normalizeTvdbCharacterForCache) } : {}),
     ...(Array.isArray(series.remoteIds) ? { remoteIds: mapIfArray(series.remoteIds, normalizeTvdbRemoteIdForCache) } : {}),
-    ...(Array.isArray(series.seasons) ? { seasons: mapIfArray(withSeasonPosterImages(series.seasons, series.artworks), normalizeTvdbSeasonForCache) } : {}),
+    ...(Array.isArray(series.seasons) ? { seasons: mapIfArray(withSeasonPosters(series.seasons, series.artworks), normalizeTvdbSeasonForCache) } : {}),
     ...(Array.isArray(series.artworks) ? { artworks: mapIfArray(deduplicateArtworks(series.artworks.filter(a => USED_SERIES_ARTWORK_TYPES.has(a?.type))), normalizeTvdbArtworkForCache) } : {}),
     ...(Array.isArray(series.trailers) ? { trailers: mapIfArray(series.trailers, normalizeTvdbTrailerForCache) } : {}),
     ...(series.translations !== undefined ? { translations: normalizeTvdbTranslationsForCache(series.translations) } : {}),

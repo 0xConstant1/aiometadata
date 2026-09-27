@@ -241,6 +241,18 @@ const findArtwork = (artworks, type, lang, config, typeToFind="image") => {
     || artworks?.find(a => a.type === type)?.[typeToFind];
 };
 
+const pickSeasonPoster = (season, lang, config) => {
+  const posters = season?.posters;
+  if (!Array.isArray(posters) || posters.length === 0) return season?.image;
+  const chain = config?.artProviders?.englishArtOnly ? ['eng'] : tvdbLanguageChain(lang);
+  for (const code of chain) {
+    const match = posters.find(p => p.language === code);
+    if (match) return match.image;
+  }
+  if (posters.some(p => p.image === season.image)) return season.image;
+  return posters.reduce((top, p) => ((p.score ?? 0) > (top.score ?? 0) ? p : top)).image;
+};
+
 async function getAnimeArtwork(allIds, config, fallbackPosterUrl, fallbackBackgroundUrl, type) {
   const [background, poster, logo, imdbRatingValue, landscapePosterUrl] = await Promise.all([
     Utils.getAnimeBg({
@@ -2373,7 +2385,8 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
 
   const seasonPosters = {};
   officialSeasons.forEach(season => {
-    if (season.image) seasonPosters[season.number] = season.image;
+    const poster = pickSeasonPoster(season, langCode3, config);
+    if (poster) seasonPosters[season.number] = poster;
   });
 
   if(includeVideos) {
@@ -2433,8 +2446,9 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
               const season = officialSeasons.find(s => s.number === episode.seasonNumber);
               if (background) {
                 thumbnailUrl = background;
-              } else if (season?.image) {
-                thumbnailUrl = season.image.startsWith('http') ? season.image : `${TVDB_IMAGE_BASE}${season.image}`;
+              } else if (seasonPosters[season?.number]) {
+                const seasonPoster = seasonPosters[season.number];
+                thumbnailUrl = seasonPoster.startsWith('http') ? seasonPoster : `${TVDB_IMAGE_BASE}${seasonPoster}`;
               } else {
                 thumbnailUrl = null;
               }
