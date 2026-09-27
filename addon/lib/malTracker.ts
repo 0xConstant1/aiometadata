@@ -319,11 +319,14 @@ const refreshLocks = new Map<string, Promise<string | null>>();
 /**
  * Get a valid access token for a user, refreshing if necessary
  */
-async function getValidAccessToken(userUUID: string): Promise<string | null> {
+async function getValidAccessToken(userUUID: string, tokenId?: string): Promise<string | null> {
   try {
-    const config = await database.getUserConfig(userUUID);
-    const malTokenId = config?.apiKeys?.malTokenId;
-    if (!config || !malTokenId) {
+    let malTokenId = tokenId;
+    if (!malTokenId) {
+      const config = await database.getUserConfig(userUUID);
+      malTokenId = config?.apiKeys?.malTokenId;
+    }
+    if (!malTokenId) {
       logger.debug(`[MAL Tracker] No MAL token ID found for user ${userUUID}`);
       return null;
     }
@@ -596,7 +599,7 @@ async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID
     const { malId, episode: episodeNumber } = resolution;
     logger.debug(`[MAL Tracker] Resolved ${parsedId.provider}:${parsedId.id} to MAL ID ${malId}, episode ${episodeNumber}`);
 
-    const accessToken = await getValidAccessToken(userUUID);
+    const accessToken = await getValidAccessToken(userUUID, config?.apiKeys?.malTokenId);
     if (!accessToken) {
       logger.warn(`[MAL Tracker] No valid access token available for user ${userUUID}`);
       return { success: false, reason: 'no_valid_token', updated: false };

@@ -231,7 +231,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     try {
       const anilist = require('../anilistTracker');
       const idMapper: any = require('../id-mapper');
-      const accessToken = await anilist.getValidAccessToken(userUUID);
+      const accessToken = await anilist.getValidAccessToken(userUUID, config?.apiKeys?.anilistTokenId);
       const anilistId = idMapper.getMappingByKitsuId(Number(ids.kitsu))?.anilist_id;
       if (accessToken && anilistId) await anilist.setPlanning(anilistId, listed, accessToken);
     } catch (error: any) {
@@ -242,7 +242,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
   if (takes('mal', 'anime') && ids.mal) {
     try {
       const mal = require('../malTracker');
-      const accessToken = await mal.getValidAccessToken(userUUID);
+      const accessToken = await mal.getValidAccessToken(userUUID, config?.apiKeys?.malTokenId);
       if (accessToken) await mal.setPlanToWatch(Number(ids.mal), listed, accessToken);
     } catch (error: any) {
       logger.warn(`MAL watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);

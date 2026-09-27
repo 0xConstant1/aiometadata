@@ -87,13 +87,15 @@ function isTokenExpired(expiresAt) {
  * @param {string} userUUID - User's UUID
  * @returns {Promise<string|null>} Valid access token or null if unavailable
  */
-async function getValidAccessToken(userUUID) {
+async function getValidAccessToken(userUUID, tokenId) {
   try {
-    // Get user config to find the anilistTokenId
-    const config = await database.getUserConfig(userUUID);
-    // Token ID is stored in apiKeys.anilistTokenId by the frontend
-    const anilistTokenId = config?.apiKeys?.anilistTokenId;
-    if (!config || !anilistTokenId) {
+    let anilistTokenId = tokenId;
+    if (!anilistTokenId) {
+      // Token ID is stored in apiKeys.anilistTokenId by the frontend
+      const config = await database.getUserConfig(userUUID);
+      anilistTokenId = config?.apiKeys?.anilistTokenId;
+    }
+    if (!anilistTokenId) {
       logger.debug(`[AniList Tracker] No AniList token ID found for user ${userUUID}`);
       return null;
     }
@@ -677,7 +679,7 @@ async function trackAnimeProgress(parsedId, config, userUUID) {
     logger.debug(`[AniList Tracker] Resolved ${parsedId.provider}:${parsedId.id} to AniList ID ${anilistId}, episode ${episodeNumber}`);
 
     // Step 3: Get valid access token (with auto-refresh)
-    const accessToken = await getValidAccessToken(userUUID);
+    const accessToken = await getValidAccessToken(userUUID, config?.apiKeys?.anilistTokenId);
     if (!accessToken) {
       logger.warn(`[AniList Tracker] No valid access token available for user ${userUUID}`);
       return { success: false, reason: 'no_valid_token', updated: false };

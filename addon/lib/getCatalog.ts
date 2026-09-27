@@ -2586,7 +2586,7 @@ async function getMalUserListCatalog(
       return [];
     }
 
-    const accessToken = await malTracker.getValidAccessToken(userUUID);
+    const accessToken = await malTracker.getValidAccessToken(userUUID, config.apiKeys?.malTokenId);
     if (!accessToken) {
       logger.warn(`[MAL] No valid access token for user ${userUUID} (catalog: ${catalogId})`);
       return [];
