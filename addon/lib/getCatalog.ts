@@ -38,7 +38,7 @@ import redis from './redisClient.js';
 const logger = consola.withTag('Catalog');
 import { cacheWrapMetaSmart } from './getCache.js';
 // @ts-ignore
-import { anilistListUsername, getAnilistAccessToken } from '../utils/anilistUtils';
+import { anilistListAccess, getAnilistAccessToken } from '../utils/anilistUtils';
 import { anilistRequiresAuth } from '../utils/anilistAccess';
 import { UserConfig } from '../types/index.js';
 
@@ -2416,7 +2416,7 @@ async function getAniListCatalog(
     
     // Get the catalog config to retrieve username, list name and custom TTL
     const catalogConfig = config.catalogs?.find(c => c.id === catalogId);
-    const username = await anilistListUsername(config, catalogConfig ?? { id: catalogId });
+    const { username, accessToken } = await anilistListAccess(config, catalogConfig ?? { id: catalogId });
     
     // Prefer explicit listName metadata; fall back to id parsing to support older configs
     const idWithoutPrefix = catalogId.replace('anilist.', '');
@@ -2444,7 +2444,6 @@ async function getAniListCatalog(
     
     logger.debug(`[AniList] Using sort: ${sortBase}, direction: ${sortDirection}, combined: ${sort}`);
     
-    const accessToken = await getAnilistAccessToken(config);
     // A page fetched with a token may include private entries, so it must not
     // be shared with configs that name the same username without one.
     const cacheScope = accessToken && config.apiKeys?.anilistTokenId
