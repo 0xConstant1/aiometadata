@@ -49,6 +49,11 @@ const WATCHED_FILTERS: [string, string][] = [
   ['simklTokenId', 'hideWatchedSimkl'],
 ];
 
+function watchedConfig(config: any): any {
+  const own = trackerConfig(config);
+  return config?.jellyfinAccounts ? { ...own, apiKeys: { ...own.apiKeys, traktTokenId: undefined } } : own;
+}
+
 function catalogFiltersActive({ config, catalogConfig, cleanId }: Omit<CatalogFilterOptions, 'type'>): boolean {
   const isSearch = ['search', 'people_search', 'gemini.search'].includes(cleanId);
 
@@ -67,7 +72,7 @@ function catalogFiltersActive({ config, catalogConfig, cleanId }: Omit<CatalogFi
   if (hideUnreleasedShows) return true;
 
   if (!isHideWatchedExcluded(cleanId)) {
-    const tracked = trackerConfig(config);
+    const tracked = watchedConfig(config);
     for (const [credential, flag] of WATCHED_FILTERS) {
       if (!tracked.apiKeys?.[credential]) continue;
       const catalogHide = catalogConfig?.metadata?.[flag];
@@ -86,7 +91,7 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
   metas = applyAgeRatingFilter(metas, type, config);
   const hideWatchedExcluded = isHideWatchedExcluded(cleanId);
   // A Jellyfin user with accounts of their own hides what they watched, not what you did.
-  const tracked = trackerConfig(config);
+  const tracked = watchedConfig(config);
 
   const catalogHideDigital = catalogConfig?.metadata?.hideUnreleasedDigital;
   const hideUnreleasedDigital = isSearch
