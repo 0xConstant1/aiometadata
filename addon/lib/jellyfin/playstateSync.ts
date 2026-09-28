@@ -72,6 +72,12 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
       added += 1;
       continue;
     }
+    const watchedAt = watched.at.get(videoId) ?? 0;
+    if (row && row.played && Number(row.position_ms) > 0 && !paused.has(videoId) && watchedAt > Number(row.updated_at)) {
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, played: true, lastPlayedAt: watchedAt }, profile);
+      added += 1;
+      continue;
+    }
     if (row && (row.played || paused.has(videoId))) {
       skipped += 1;
       continue;
