@@ -1,6 +1,7 @@
 import consola from 'consola';
 import { createHash } from 'crypto';
 import { accountOwner, credentialOf, trackerConfig } from './accounts';
+import { runInViewerScope } from './jellyfin/viewer';
 import { envInt } from '../utils/envNumber';
 import { recordingTrackerCalls, type TrackerCall } from '../utils/trackerCalls';
 import type { WatchTrackingService } from './watchTracking';
@@ -166,7 +167,8 @@ export function startTrackerOutbox(): void {
 
 function kick(): void {
   started = true;
-  setImmediate(() => { pump().catch((error: any) => logger.warn(`Outbox pass failed: ${error?.message || error}`)); });
+  // A fresh, empty scope: the pump must not inherit whichever request's viewer queued the write.
+  setImmediate(() => { runInViewerScope(false, () => pump()).catch((error: any) => logger.warn(`Outbox pass failed: ${error?.message || error}`)); });
 }
 
 function wakeBy(at: number): void {
