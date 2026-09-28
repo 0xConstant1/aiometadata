@@ -38,8 +38,9 @@ export function collectionCatalogs(config: any, tags: string[]): any[] {
       id: `${COLLECTION_CATALOG_PREFIX}${collection.id}`,
       type: COLLECTION_TYPE,
       name: collection.title,
-      // A required genre keeps it off every home board; AIOStreams reads `None` as no genre.
+      // A required genre keeps it off a home board, and showInHome off one that ignores that; AIOStreams reads `None` as no genre.
       extra: [{ name: 'genre', options: ['None'], isRequired: true }],
+      showInHome: false,
       ...(art ? { poster: art, background: art } : {}),
     };
   });

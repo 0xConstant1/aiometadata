@@ -1012,8 +1012,9 @@ function metaIdentityProfile(ctx: any, config: any): any {
  * id they started from. The alias records that hop.
  *
  * The hash carries idResolution because the anime path leaves
- * useImdbIdForCatalogAndSearch out of the identity profile. It stays out of the
- * component keys, where moving commonHash would orphan every stored component.
+ * useImdbIdForCatalogAndSearch out of the identity profile. The component keys take
+ * it only while it is on, so turning it on cannot leave an anime id reading the
+ * components written for it off, and every key stored with it off stays where it is.
  */
 function buildMetaAliasCacheKey({ config, metaId, type, useShowPoster = false }: { config: any; metaId: string; type: string | null; useShowPoster?: boolean }): string {
   const ctx = getMetaCacheContext(config, metaId, type, useShowPoster);
@@ -1029,7 +1030,10 @@ function buildMetaAliasCacheKey({ config, metaId, type, useShowPoster = false }:
 
 function buildMetaComponentCacheKeys({ config, metaId, type, useShowPoster = false }: { config: any; metaId: string; type: string | null; useShowPoster?: boolean }): Record<string, string> {
   const ctx = getMetaCacheContext(config, metaId, type, useShowPoster);
-  const commonProvider = metaIdentityProfile(ctx, config);
+  const commonProvider = {
+    ...metaIdentityProfile(ctx, config),
+    ...(ctx.isAnime && config.mal?.useImdbIdForCatalogAndSearch ? { resolvesToImdb: true } : {}),
+  };
   const artCommon = {
     ...ctx.base,
     metaProvider: ctx.metaProvider,
@@ -2603,6 +2607,7 @@ export {
   cacheWrapTraktGenres,
   cacheWrapLumiereGenres,
   CATALOG_TTL,
+  getMetaSmartLockContextHash,
   cacheWrapStremThruGenres,
   cacheWrapStaticCatalog,
   cacheWrapMeta,
@@ -2639,6 +2644,7 @@ module.exports = {
   cacheWrapTraktGenres,
   cacheWrapLumiereGenres,
   CATALOG_TTL,
+  getMetaSmartLockContextHash,
   cacheWrapStremThruGenres,
   cacheWrapStaticCatalog,
   cacheWrapMeta,

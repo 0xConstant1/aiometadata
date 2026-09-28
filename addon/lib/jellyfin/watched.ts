@@ -299,6 +299,99 @@ export function assembleSimkl(data: any): RawSnapshot {
   };
 }
 
+export interface AnimeListEntry {
+  anilist?: number;
+  mal?: number;
+  status: 'watching' | 'completed' | 'dropped' | 'paused' | 'planning';
+  progress: number;
+  episodes: number | null;
+  movie: boolean;
+  updatedAt: number;
+  nextAiring?: { episode: number; at: number };
+}
+
+export async function assembleAnimeList(entries: AnimeListEntry[]): Promise<RawSnapshot> {
+  const idMapper: any = require('../id-mapper');
+  const { videoIdAliases } = require('./aliases');
+  const snapshot: Collecting = {
+    episodes: new Set(),
+    movies: new Set(),
+    series: new Map(),
+    nextUp: [],
+    following: [],
+    at: new Map(),
+    dropped: new Set(),
+  };
+  const history = new Map<string, HistoryEntry>();
+
+  for (const entry of entries) {
+    const mapping = (entry.anilist ? idMapper.getMappingByAnilistId(entry.anilist) : null)
+      ?? (entry.mal ? idMapper.getMappingByMalId(entry.mal) : null);
+    const ids: Record<string, any> = {
+      kitsu: mapping?.kitsu_id,
+      mal: entry.mal ?? mapping?.mal_id,
+      anilist: entry.anilist ?? mapping?.anilist_id,
+      imdb: mapping?.imdb_id,
+      tvdb: mapping?.tvdb_id,
+    };
+    const metaId = ids.kitsu ? `kitsu:${ids.kitsu}` : ids.mal ? `mal:${ids.mal}` : null;
+    if (!metaId) continue;
+
+    if (entry.status === 'dropped') for (const key of seriesKeysWithKitsu(ids)) snapshot.dropped.add(key);
+    const watchedCount = entry.status === 'completed' ? Math.max(entry.progress, entry.episodes ?? 0) : entry.progress;
+
+    if (entry.movie) {
+      if (entry.status !== 'completed' && watchedCount < 1) continue;
+      const spellings = [ids.imdb ? String(ids.imdb) : null, ids.kitsu ? `kitsu:${ids.kitsu}` : null, ids.mal ? `mal:${ids.mal}` : null].filter(Boolean) as string[];
+      for (const id of spellings) {
+        snapshot.movies.add(id);
+        if (entry.updatedAt) snapshot.at.set(id, entry.updatedAt);
+      }
+      recordWatch(history, { kind: 'movie', id: spellings[0], mediaType: 'movie', at: entry.updatedAt });
+      continue;
+    }
+
+    for (let number = 1; number <= watchedCount; number += 1) {
+      const videoId = `${metaId}:${number}`;
+      for (const id of [videoId, ...(await videoIdAliases(videoId))]) snapshot.episodes.add(id);
+    }
+    if (watchedCount > 0) {
+      const last = `${metaId}:${watchedCount}`;
+      if (entry.updatedAt) snapshot.at.set(last, entry.updatedAt);
+      recordWatch(history, { kind: 'episode', id: last, metaId, mediaType: 'anime', at: entry.updatedAt });
+    }
+
+    const aired = entry.nextAiring ? entry.nextAiring.episode - 1 : entry.episodes ?? watchedCount;
+    const counts = { watched: watchedCount, total: Math.max(0, aired), at: entry.updatedAt || undefined };
+    for (const key of seriesKeys(ids)) snapshot.series.set(key, counts);
+
+    if (entry.status !== 'watching') continue;
+    snapshot.following.push({ metaId, mediaType: 'anime' });
+    const next = entry.progress + 1;
+    if (entry.episodes && next > entry.episodes) continue;
+    snapshot.nextUp.push({
+      metaId,
+      videoId: `${metaId}:${next}`,
+      season: null,
+      episode: next,
+      mediaType: 'anime',
+      lastWatchedAt: entry.updatedAt,
+      airsAt: entry.nextAiring?.episode === next ? entry.nextAiring.at : null,
+    });
+  }
+
+  return {
+    episodes: [...snapshot.episodes],
+    movies: [...snapshot.movies],
+    history: newestFirst(history),
+    at: [...snapshot.at],
+    series: [...snapshot.series],
+    nextUp: snapshot.nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
+    following: snapshot.following,
+    dropped: [...snapshot.dropped],
+  };
+}
+
 // MDBList pages its watched history and names an episode by its show's ids and
 // a season number, so an anime row needs the same anidb pivot the resume path
 // uses before it matches what the meta publishes.
@@ -494,7 +587,7 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
 // publishes it, and the series counts. A page then asks the index for its own titles,
 // and what is held per account is only Next Up, the followed and the dropped shows.
 
-type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb';
+type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';
 
 // Raised to rebuild indexes written in an older spelling.
 const INDEX_FORMAT = 2;
@@ -558,6 +651,9 @@ async function assembleFromMirror(service: MirroredService, credential: string, 
     episodeRows.sort(byTime('last_watched_at'));
     // MDBList names no followed shows.
     return { ...(await assembleMdblist({ movieRows, episodeRows, upNext, droppedShows: dropped.shows ?? [], droppedUnread: dropped.unread === true }, config)), following: [] };
+  }
+  if (service === 'anilist' || service === 'mal') {
+    return assembleAnimeList(rows.filter((row) => row.key.startsWith('entry:')).map((row) => row.data));
   }
   const plays: any[] = [];
   let dropped: any = { items: [], unread: false };
@@ -1130,7 +1226,7 @@ export async function applyLocalWatch(
 
 export async function invalidateWatched(config: any): Promise<void> {
   const service = sourceFor(config);
-  if (!service || (service !== 'simkl' && service !== 'mdblist' && service !== 'publicmetadb')) return;
+  if (!service) return;
 
   const credential = credentialFor(config, service);
   if (!credential) return;
@@ -1142,6 +1238,12 @@ export async function invalidateWatched(config: any): Promise<void> {
   }
 
   try {
+    if (service === 'anilist' || service === 'mal') {
+      const { animeListCacheKey } = require('./trackerMirror');
+      const redis: any = require('../redisClient');
+      if (redis) await redis.del(`global:${animeListCacheKey(service, credential)}`);
+      return;
+    }
     let seed = credential;
     if (service === 'simkl') {
       const { getSimklToken } = require('../../utils/simklUtils');

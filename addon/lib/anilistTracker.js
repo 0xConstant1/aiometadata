@@ -105,24 +105,26 @@ async function getValidAccessToken(userUUID, tokenId) {
       logger.debug(`[AniList Tracker] No AniList token ID found for user ${userUUID}`);
       return null;
     }
-
-    // Get the OAuth token from database
-    const tokenData = await database.getOAuthToken(anilistTokenId);
-    if (!tokenData) {
-      logger.debug(`[AniList Tracker] No OAuth token found for token ID ${anilistTokenId}`);
-      return null;
-    }
-
-    if (isTokenExpired(tokenData.expires_at)) {
-      logger.warn(`[AniList Tracker] Token expired for user ${userUUID}. AniList does not support refresh tokens — user must re-authenticate.`);
-      return null;
-    }
-
-    return tokenData.access_token;
+    return await getAccessTokenById(anilistTokenId);
   } catch (error) {
     logger.error(`[AniList Tracker] Error getting valid access token for user ${userUUID}:`, error);
     return null;
   }
+}
+
+async function getAccessTokenById(anilistTokenId) {
+  const tokenData = await database.getOAuthToken(anilistTokenId);
+  if (!tokenData) {
+    logger.debug(`[AniList Tracker] No OAuth token found for token ID ${anilistTokenId}`);
+    return null;
+  }
+
+  if (isTokenExpired(tokenData.expires_at)) {
+    logger.warn(`[AniList Tracker] Token ${anilistTokenId} expired. AniList does not support refresh tokens, so the user must sign in again.`);
+    return null;
+  }
+
+  return tokenData.access_token;
 }
 
 
@@ -506,6 +508,50 @@ async function fetchPlanningIds(accessToken) {
   return ids;
 }
 
+const ANILIST_STATUSES = {
+  CURRENT: 'watching',
+  REPEATING: 'watching',
+  COMPLETED: 'completed',
+  DROPPED: 'dropped',
+  PAUSED: 'paused',
+  PLANNING: 'planning',
+};
+
+async function fetchAnimeList(accessToken) {
+  const viewer = await anilistRequest('query { Viewer { id } }', {}, accessToken);
+  const userId = viewer?.Viewer?.id;
+  if (!userId) throw new Error('AniList viewer could not be read');
+  const data = await anilistRequest(
+    `query ($userId: Int) {
+      MediaListCollection(userId: $userId, type: ANIME) {
+        lists { entries { mediaId status progress updatedAt media { idMal format episodes nextAiringEpisode { episode airingAt } } } }
+      }
+    }`,
+    { userId },
+    accessToken
+  );
+  const entries = new Map();
+  for (const list of data?.MediaListCollection?.lists || []) {
+    for (const entry of list?.entries || []) {
+      if (!entry?.mediaId || entries.has(entry.mediaId)) continue;
+      const media = entry.media || {};
+      entries.set(entry.mediaId, {
+        anilist: Number(entry.mediaId),
+        ...(media.idMal ? { mal: Number(media.idMal) } : {}),
+        status: ANILIST_STATUSES[entry.status] || 'planning',
+        progress: Number(entry.progress) || 0,
+        episodes: Number(media.episodes) || null,
+        movie: media.format === 'MOVIE',
+        updatedAt: (Number(entry.updatedAt) || 0) * 1000,
+        ...(media.nextAiringEpisode?.episode
+          ? { nextAiring: { episode: Number(media.nextAiringEpisode.episode), at: Number(media.nextAiringEpisode.airingAt) * 1000 } }
+          : {}),
+      });
+    }
+  }
+  return [...entries.values()];
+}
+
 async function setPlanning(anilistId, listed, accessToken) {
   try {
     if (listed) {
@@ -866,6 +912,8 @@ module.exports = {
   // Token management
   isTokenExpired,
   getValidAccessToken,
+  getAccessTokenById,
+  fetchAnimeList,
   
   // OAuth flow
   getAuthorizationUrl,

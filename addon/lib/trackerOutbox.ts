@@ -45,7 +45,7 @@ const executors: Record<OutboxOp, Executor> = {
 };
 
 // Writes that change what the trackers report as watched, rather than only where playback stands.
-const CHANGES_WATCHED = new Set<OutboxOp>(['scrobble', 'credit', 'unwatch', 'episodes', 'dropped']);
+const CHANGES_WATCHED = new Set<OutboxOp>(['scrobble', 'credit', 'unwatch', 'episodes', 'dropped', 'anime']);
 const CHANGES_RESUME = new Set<OutboxOp>(['scrobble', 'credit', 'unwatch', 'clearResume', 'episodes']);
 
 const LEASE_MS = 5 * 60 * 1000;
@@ -103,6 +103,7 @@ export async function pendingWatches(service: WatchTrackingService, credential: 
     else if (row.op === 'unwatch') note(p.id, false, row.created_at);
     else if (row.op === 'scrobble' && p.report?.event === 'stop' && p.report?.played === true) note(p.id, true, row.created_at);
     else if (row.op === 'episodes') for (const video of p.videos ?? []) note(video, p.method === 'addToHistory', row.created_at);
+    else if (row.op === 'anime') note(p.id, true, row.created_at);
   }
   return [...out.values()];
 }

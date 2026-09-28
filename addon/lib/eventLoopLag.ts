@@ -1,6 +1,7 @@
 import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 import consola from 'consola';
 import { envInt } from '../utils/envNumber';
+import { onStall } from './stallProfiler';
 
 const logger = consola.withTag('EventLoop');
 
@@ -53,7 +54,10 @@ export function startEventLoopMonitor(): void {
     if (window) {
       const worst = Math.round(window.max / 1e6);
       window.reset();
-      if (worst >= envInt('EVENT_LOOP_STALL_LOG_MS', 1000, 100)) logStall(worst);
+      if (worst >= envInt('EVENT_LOOP_STALL_LOG_MS', 1000, 100)) {
+        logStall(worst);
+        onStall(worst);
+      }
     }
     const max = histogram.max / 1e6;
     if (max > lastMax && max >= 1000) stalls += 1;

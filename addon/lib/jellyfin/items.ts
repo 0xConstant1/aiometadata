@@ -164,7 +164,7 @@ export async function fetchCatalogPage(
   try {
     const { invokeRoute } = require('../inProcessRoutes');
     const params = {
-      userUUID, type, id: catalogId,
+      userUUID, type, id: catalogId, forJellyfin: '1',
       ...(parts.length ? { extra: decodeParam(parts.join('&')) } : {}),
       ...(owner ? { accountOwner: owner } : {}),
     };
@@ -656,7 +656,20 @@ export async function fetchMeta(
   stremioType: string,
   id: string
 ): Promise<any | null> {
-  const key = `${userUUID}|${stremioType}|${id}`;
+  return readMeta(userUUID, stremioType, id, false);
+}
+
+export async function fetchMetaBeforeArt(userUUID: string, stremioType: string, id: string): Promise<any | null> {
+  return readMeta(userUUID, stremioType, id, true);
+}
+
+async function readMeta(
+  userUUID: string,
+  stremioType: string,
+  id: string,
+  beforeArt: boolean
+): Promise<any | null> {
+  const key = `${userUUID}|${stremioType}|${id}${beforeArt ? '|raw' : ''}`;
   const held = metaMemo.get(key);
   if (held) return held;
   const running = metaInFlight.get(key);
@@ -666,7 +679,7 @@ export async function fetchMeta(
   const work = (async () => {
     try {
       const { invokeRoute } = require('../inProcessRoutes');
-      const reply = await invokeRoute('meta', url, { userUUID, type: stremioType, id }, routeTimeout());
+      const reply = await invokeRoute('meta', url, { userUUID, type: stremioType, id, ...(beforeArt ? { beforeArt: '1' } : {}) }, routeTimeout());
       if (reply.status < 200 || reply.status >= 300) {
         logger.debug(`Meta ${stremioType}/${id} returned ${reply.status}`);
         return null;
@@ -675,7 +688,7 @@ export async function fetchMeta(
       const meta = body?.meta ?? null;
       if (meta) {
         metaMemo.set(key, meta);
-        if (stremioType === 'series') require('./episodeIndex').rememberSeriesIndex(userUUID, id, meta);
+        if (stremioType === 'series' && !beforeArt) require('./episodeIndex').rememberSeriesIndex(userUUID, id, meta);
       }
       return meta;
     } catch (error: any) {

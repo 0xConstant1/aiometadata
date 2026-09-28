@@ -40,6 +40,18 @@ export async function canonicalIds(ids: Record<string, any>, kind: Kind, config:
 
 const ANIME_ID_TYPES = ['kitsu', 'mal', 'anilist', 'anidb'];
 
+export function isAnimeTitle(id: string, kind: 'movie' | 'series'): boolean {
+  const { parseStremioId } = require('./ids');
+  const base = String(parseStremioId(id)?.base ?? id);
+  const [prefix, value] = base.split(':');
+  if (ANIME_ID_TYPES.includes(prefix)) return true;
+  const idMapper = require('../id-mapper');
+  if (base.startsWith('tt')) return Boolean(idMapper.getMappingByImdbId(base));
+  if (prefix === 'tvdb') return Boolean(idMapper.getMappingByTvdbId(Number(value)));
+  if (prefix === 'tmdb') return Boolean(idMapper.getMappingByTmdbId(Number(value), kind));
+  return false;
+}
+
 /** A show's identity across spellings; anime keeps its own ids. */
 export async function showIdentity(metaId: string, config: any): Promise<string> {
   const { parseStremioId } = require('./ids');

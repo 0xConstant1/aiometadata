@@ -30,7 +30,8 @@ import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stre
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
-import { showIdentity } from './canonicalIds';
+import { isAnimeTitle, showIdentity } from './canonicalIds';
+import { keepsAnimeOnly, sourceFor } from './trackerSource';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
@@ -622,6 +623,28 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.json(itemList(items, count, startIndex));
       return;
     }
+    const minPremiere = Date.parse(String(req.query.MinPremiereDate ?? req.query.minPremiereDate ?? ''));
+    const maxPremiere = Date.parse(String(req.query.MaxPremiereDate ?? req.query.maxPremiereDate ?? ''));
+    const wantsEpisodes = String(includeItemTypes ?? '').split(',').map((t) => t.trim()).includes('Episode');
+    if (!parentId && wantsEpisodes && (Number.isFinite(minPremiere) || Number.isFinite(maxPremiere))) {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const today = Math.floor(Date.now() / dayMs) * dayMs;
+      const earliest = today - envInt('JELLYFIN_CALENDAR_PAST_DAYS', 75, 0) * dayMs;
+      const latest = today + (envInt('JELLYFIN_CALENDAR_FUTURE_DAYS', 365, 1) + 1) * dayMs;
+      const from = Math.max(earliest, Number.isFinite(minPremiere) ? minPremiere : earliest);
+      const to = Math.min(latest, Number.isFinite(maxPremiere) ? maxPremiere : latest);
+      if (from > to) {
+        res.json(itemList([], 0, startIndex));
+        return;
+      }
+      const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
+      const memoKey = `${userUUID}:${profileKey(config)}:calendar:${from}:${to}:${digest}`;
+      const episodes = await memoNextUp(userUUID, memoKey, () => buildCalendar(userUUID, config, from, to));
+      const pageSize = (req.query.Limit ?? req.query.limit) === undefined ? 500 : limit;
+      res.json(itemList(episodes.slice(startIndex, startIndex + pageSize), episodes.length, startIndex));
+      return;
+    }
+
     const playedFlag = String(req.query.IsPlayed ?? req.query.isPlayed ?? '').toLowerCase() === 'true';
     if ((filters.split(',').map((f) => f.trim()).includes('IsPlayed') || playedFlag) && !parentId) {
       const started = Date.now();
@@ -2023,7 +2046,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const startIndex = Math.max(0, qInt(req, 'StartIndex', 0));
     const limit = Math.min(Math.max(1, qInt(req, 'Limit', 20)), 100);
     const watched = await watchedSnapshot(userUUID, config);
-    const rows = (await resumeSnapshot(userUUID, config)).filter((row) => row.kind === 'movie' || !watched.dropped.has(row.metaId));
+    const animeOnly = keepsAnimeOnly(config);
+    const rows = (await resumeSnapshot(userUUID, config))
+      .filter((row) => row.kind === 'movie' || !watched.dropped.has(row.metaId))
+      .filter((row) => !animeOnly || isAnimeTitle(row.metaId, row.kind === 'movie' ? 'movie' : 'series'));
     if (!rows.length) {
       res.json(itemList([], 0, startIndex));
       return;
@@ -2163,7 +2189,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     // Built once per shelf shape; every page is cut from it.
     const q = (name: string) => String(req.query[name] ?? req.query[name.charAt(0).toLowerCase() + name.slice(1)] ?? '');
     const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
-    const shelfKey = `${userUUID}:${profileKey(config)}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
+    const shelfKey = `${userUUID}:${profileKey(config)}:${sourceFor(config) ?? ''}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
     const memoKey = `${userUUID}:${profileKey(config)}:${digest}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
     const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config), undefined, {
       ms: envInt('JELLYFIN_NEXTUP_DEADLINE_MS', 10000, 1000),
@@ -2210,11 +2236,15 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const own = (await ownNextUpRows(userUUID, profileKey(config))).filter((row) => !snapshot.dropped.has(row.metaId));
     lap.own = Date.now() - t2;
     // One row per resolved show; the table's newest spelling first.
-    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId))];
+    const animeOnly = keepsAnimeOnly(config) && !(req.query.SeriesId ?? req.query.seriesId ?? req.query.ParentId ?? req.query.parentId);
+    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId))]
+      .filter((row) => !animeOnly || isAnimeTitle(row.metaId, 'series'));
     const identities = new Map<string, string>();
     await mapWithConcurrency([...new Set(offered.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
       identities.set(metaId, await showIdentity(metaId, config));
     });
+    const trackerTimes = new Map<string, NextUpRow>();
+    for (const row of snapshot.nextUp) if (row.airsAt && !trackerTimes.has(row.metaId)) trackerTimes.set(row.metaId, row);
     const taken = new Set<string>();
     const merged = offered
       .filter((row) => {
@@ -2320,7 +2350,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
       lap.state += Date.now() - ts;
       const nowMs = Date.now();
-      const airedAt = next === target && row.airsAt ? row.airsAt : Date.parse(next?.PremiereDate || '');
+      const borrowed = row.airsAt ? undefined : trackerTimes.get(row.metaId);
+      const airedAt = next === target && row.airsAt
+        ? row.airsAt
+        : borrowed && next && next.IndexNumber === borrowed.episode && (borrowed.season === null || next.ParentIndexNumber === borrowed.season)
+          ? borrowed.airsAt as number
+          : Date.parse(next?.PremiereDate || '');
       if (!next) {
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: every episode from ${target.Name} on is played`);
@@ -2336,6 +2371,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} has no air date`);
         return;
       }
+      if (Number.isFinite(airedAt) && airedAt !== Date.parse(next.PremiereDate || '')) next.PremiereDate = new Date(airedAt).toISOString();
       items[index] = next;
     });
 
@@ -2371,22 +2407,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json(itemList(ordered.slice(startIndex, startIndex + limit), ordered.length, startIndex));
   });
 
-  const buildUpcoming = async (userUUID: string, config: any): Promise<any[]> => {
-    const now = Date.now();
-    const days = envInt('JELLYFIN_UPCOMING_DAYS', 90, 1);
-    const horizon = now + days * 24 * 60 * 60 * 1000;
-    const serverId = serverIdFor(userUUID);
-    const profile = profileKey(config);
-    const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
-    const within = (at: number): boolean => Number.isFinite(at) && at > now && at <= horizon;
-
+  // Tracker-followed shows are all checked; locally known ones are capped.
+  const showsInView = async (userUUID: string, config: any, days: number) => {
     const [snapshot, resume, own, caughtUp] = await Promise.all([
       watchedSnapshot(userUUID, config),
       resumeSnapshot(userUUID, config),
-      ownNextUpRows(userUUID, profile),
+      ownNextUpRows(userUUID, profileKey(config)),
       upcomingFollowed(config, days),
     ]);
-    // Tracker-followed shows are all checked; locally known ones are capped.
     const shows = new Map<string, string>();
     for (const row of [...caughtUp, ...snapshot.following]) {
       if (!shows.has(row.metaId)) shows.set(row.metaId, row.mediaType);
@@ -2399,7 +2427,66 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       shows.set(row.metaId, row.mediaType);
       local += 1;
     }
-    const followed = [...shows.entries()];
+    const followed = [...shows.entries()].filter(([metaId]) => !keepsAnimeOnly(config) || isAnimeTitle(metaId, 'series'));
+    return { snapshot, caughtUp, followed };
+  };
+
+  const buildCalendar = async (userUUID: string, config: any, from: number, to: number): Promise<any[]> => {
+    const serverId = serverIdFor(userUUID);
+    const profile = profileKey(config);
+    const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
+    const { snapshot, caughtUp, followed } = await showsInView(userUUID, config, envInt('JELLYFIN_UPCOMING_DAYS', 90, 1));
+    const timed = new Map<string, Array<{ videoId?: string | null; season: number | null; episode: number; airsAt: number }>>();
+    for (const row of [...snapshot.nextUp, ...caughtUp]) {
+      if (!row.airsAt) continue;
+      const list = timed.get(row.metaId) || [];
+      list.push({ videoId: row.videoId, season: row.season ?? null, episode: row.episode, airsAt: row.airsAt });
+      timed.set(row.metaId, list);
+    }
+
+    const seenShows = new Set<string>();
+    const seenEpisodes = new Set<string>();
+    const dated: any[] = [];
+    await warmSeriesIndex(userUUID, followed.map(([metaId]) => metaId));
+    await mapWithConcurrency(followed, shelfConcurrency(), async ([metaId, mediaType]) => {
+      const meta = await seriesIndex(userUUID, metaId);
+      if (!meta) return;
+      const identity = meta._tmdbId ? `tmdb:${meta._tmdbId}` : meta._imdbId ? `imdb:${meta._imdbId}` : String(meta.id);
+      if (seenShows.has(identity)) return;
+      seenShows.add(identity);
+      const seriesId = encodeJellyfinId({ k: 'series', t: mediaType, i: String(meta.id) });
+      const episodes = buildEpisodes(meta, mediaType, seriesId, serverId, null)
+        .filter((episode: any) => episode.ParentIndexNumber !== 0);
+      for (const row of timed.get(metaId) || []) {
+        const episode = row.videoId
+          ? await locateEpisode(episodes, row.videoId, mediaType, String(meta.id))
+          : episodes.find((e: any) => e.IndexNumber === row.episode && (row.season === null || e.ParentIndexNumber === row.season));
+        if (episode) episode.PremiereDate = new Date(row.airsAt).toISOString();
+      }
+      for (const episode of episodes) {
+        const at = premiereAt(episode);
+        if (!Number.isFinite(at) || at < from || at > to || seenEpisodes.has(episode.Id)) continue;
+        seenEpisodes.add(episode.Id);
+        dated.push(episode);
+      }
+    });
+
+    await applyWatchedState(dated, snapshot, userUUID, profile);
+    return dated
+      .filter(keepsUnderProfileCap(config))
+      .sort((a, b) => premiereAt(a) - premiereAt(b));
+  };
+
+  const buildUpcoming = async (userUUID: string, config: any): Promise<any[]> => {
+    const now = Date.now();
+    const days = envInt('JELLYFIN_UPCOMING_DAYS', 90, 1);
+    const horizon = now + days * 24 * 60 * 60 * 1000;
+    const serverId = serverIdFor(userUUID);
+    const profile = profileKey(config);
+    const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
+    const within = (at: number): boolean => Number.isFinite(at) && at > now && at <= horizon;
+
+    const { snapshot, caughtUp, followed } = await showsInView(userUUID, config, days);
     const named = new Map<string, NextUpRow>();
     for (const row of snapshot.nextUp) if (row.airsAt) named.set(row.metaId, row);
     // MDBList names each followed show's next episode and when it airs, in progress or not,
@@ -2493,6 +2580,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       for (const meta of window.items) {
         const item = metaToBaseItem(meta, catalog.type, serverId, null);
         if (item.Type === 'Movie' && within(premiereAt(item)) && !seen.has(item.Id)) {
+          if (keepsAnimeOnly(config) && !isAnimeTitle(String(meta.id), 'movie')) continue;
           seen.add(item.Id);
           films.push(item);
         }

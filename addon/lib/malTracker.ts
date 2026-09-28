@@ -336,7 +336,15 @@ async function getValidAccessToken(userUUID: string, tokenId?: string | null): P
       logger.debug(`[MAL Tracker] No MAL token ID found for user ${userUUID}`);
       return null;
     }
+    return await getAccessTokenById(malTokenId);
+  } catch (error: any) {
+    logger.error(`[MAL Tracker] Error getting valid access token for user ${userUUID}:`, error.message || error);
+    return null;
+  }
+}
 
+async function getAccessTokenById(malTokenId: string): Promise<string | null> {
+  try {
     const tokenData = await database.getOAuthToken(malTokenId);
     if (!tokenData) {
       logger.debug(`[MAL Tracker] No OAuth token found for token ID ${malTokenId}`);
@@ -348,7 +356,7 @@ async function getValidAccessToken(userUUID: string, tokenId?: string | null): P
     }
 
     if (!tokenData.refresh_token) {
-      logger.warn(`[MAL Tracker] Token expired for user ${userUUID} and no refresh token available. User must re-authenticate.`);
+      logger.warn(`[MAL Tracker] Token ${malTokenId} expired and no refresh token available. User must re-authenticate.`);
       return null;
     }
 
@@ -374,9 +382,45 @@ async function getValidAccessToken(userUUID: string, tokenId?: string | null): P
       refreshLocks.delete(malTokenId);
     }
   } catch (error: any) {
-    logger.error(`[MAL Tracker] Error getting valid access token for user ${userUUID}:`, error.message || error);
+    logger.error(`[MAL Tracker] Error getting valid access token for token ${malTokenId}:`, error.message || error);
     return null;
   }
+}
+
+const MAL_LIST_STATUSES: Record<string, string> = {
+  watching: 'watching',
+  completed: 'completed',
+  dropped: 'dropped',
+  on_hold: 'paused',
+  plan_to_watch: 'planning',
+};
+
+async function fetchAnimeList(accessToken: string): Promise<any[]> {
+  const entries: any[] = [];
+  const params = new URLSearchParams({
+    fields: 'list_status{status,num_episodes_watched,is_rewatching,updated_at},num_episodes,media_type',
+    limit: '1000',
+    nsfw: 'true',
+  });
+  let url: string | null = `${MAL_API_BASE}/users/@me/animelist?${params.toString()}`;
+  for (let page = 0; url && page < 20; page += 1) {
+    const data: any = await makeRateLimitedRequest(() => malRequest(url as string, { accessToken }));
+    for (const item of Array.isArray(data?.data) ? data.data : []) {
+      const node = item?.node;
+      const list = item?.list_status ?? node?.my_list_status;
+      if (!node?.id || !list) continue;
+      entries.push({
+        mal: Number(node.id),
+        status: list.is_rewatching ? 'watching' : MAL_LIST_STATUSES[list.status] || 'planning',
+        progress: Number(list.num_episodes_watched) || 0,
+        episodes: Number(node.num_episodes) || null,
+        movie: node.media_type === 'movie',
+        updatedAt: Date.parse(list.updated_at ?? '') || 0,
+      });
+    }
+    url = data?.paging?.next ?? null;
+  }
+  return entries;
 }
 
 /**
@@ -648,6 +692,8 @@ async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID
 export {
   isTokenExpired,
   getValidAccessToken,
+  getAccessTokenById,
+  fetchAnimeList,
   fetchMalUserList,
   fetchMalSuggestions,
   MAL_USERLIST_STATUSES,
