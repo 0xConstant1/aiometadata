@@ -25,6 +25,7 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
   const [busy, setBusy] = useState<CardService | null>(null);
   const [stale, setStale] = useState<Partial<Record<CardService, boolean>>>({});
 
+  const hasPmdbWatchlist = catalogs.some((c) => c.id.startsWith('publicmetadb.list.') && c.metadata?.listType === 'watchlist');
   const simklToken = user.accounts?.apiKeys?.simklTokenId;
   const anilistToken = user.accounts?.apiKeys?.anilistTokenId;
   const malToken = user.accounts?.apiKeys?.malTokenId;
@@ -68,7 +69,7 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
     <div className="space-y-2 border-t pt-3">
       <Label className="text-xs font-medium">Accounts</Label>
       <p className="text-[11px] text-muted-foreground">
-        Connect {user.name}'s own trackers. Once any is connected, what they play, mark, drop or heart goes to these accounts only, and their shelves and watchlist catalogs read from them. Your accounts are never used for them.
+        Connect {user.name}'s own trackers. Once any is connected, what they play, mark, drop or heart goes to these accounts only, and their shelves and watchlist catalogs read from them. None of your Simkl, MDBList, PublicMetaDB, AniList or MyAnimeList accounts is used for them; catalogs of your other accounts, such as Trakt or TMDB, show your lists if their tags include them.
       </p>
       {CARD_SERVICE_ORDER.map((service) => {
         const info = CARD_SERVICES[service];
@@ -114,6 +115,8 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
                 </label>
                 {service === 'publicmetadb' && !user.accounts?.publicmetadbWatchlist ? (
                   <span className="text-amber-400">No watchlist list on this account, so PublicMetaDB is not one of their watchlist shelves.</span>
+                ) : service === 'publicmetadb' && !hasPmdbWatchlist ? (
+                  <span className="text-amber-400">Their PublicMetaDB watchlist is read through yours; add your PublicMetaDB watchlist catalog to give them the shelf.</span>
                 ) : null}
               </div>
             ) : null}
