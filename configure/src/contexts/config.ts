@@ -15,6 +15,21 @@ export interface TagDef {
   allowUnratedContent?: boolean;
 }
 
+export type CardService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';
+
+/** Accounts a user who is someone else holds, in the top level's field names. */
+export interface JellyfinUserAccounts {
+  apiKeys?: { simklTokenId?: string; mdblist?: string; publicmetadb?: string; anilistTokenId?: string; malTokenId?: string };
+  simklWatchTracking?: boolean;
+  mdblistWatchTracking?: boolean;
+  publicmetadbWatchTracking?: boolean;
+  anilistWatchTracking?: boolean;
+  malWatchTracking?: boolean;
+  watchTracking?: Partial<Record<CardService, { movie?: boolean; series?: boolean }>>;
+  publicmetadbWatchlist?: string;
+  labels?: Partial<Record<CardService, string>>;
+}
+
 /** A user on the Jellyfin sign-in screen, made of the profile tags it picks. */
 export interface JellyfinUser {
   id: string;
@@ -31,6 +46,10 @@ export interface JellyfinUser {
   watchlistServices?: string[];
   /** Overrides the configuration's stream addon for this user. */
   streamUrl?: string;
+  /** Accounts this card holds for itself, when it isn't `trackers`. */
+  accounts?: JellyfinUserAccounts;
+  /** Extra names AIOStreams handoff events may address this user by. */
+  handoffNames?: string[];
 }
 
 export interface CatalogConfig {
@@ -142,6 +161,8 @@ export interface CatalogConfig {
      */
     pickOrder?: 'suggested' | 'popular' | 'acclaimed' | 'balanced';
     pickMinVotes?: number;
+    /** Only offered to a Jellyfin card that holds the account backing this catalog. */
+    accountsOnly?: boolean;
   };
 }
 
@@ -416,6 +437,7 @@ export interface AppConfig {
   jellyfinUserName?: string;
   jellyfinUserAvatar?: string;
   jellyfinUserTags?: string[];
+  jellyfinUserHandoffNames?: string[];
   jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
   jellyfinWatchlistServices?: string[];
   jellyfinUsers?: JellyfinUser[];

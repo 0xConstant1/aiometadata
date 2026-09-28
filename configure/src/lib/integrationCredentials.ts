@@ -6,6 +6,7 @@ interface PersistArgs {
   userUUID: string | null;
   password: string | null;
   authenticated: boolean;
+  profile?: string;
 }
 
 /**
@@ -15,20 +16,36 @@ interface PersistArgs {
  * with the first save, which is what the caller's local update covers.
  */
 export async function persistIntegrationCredential(
-  { provider, tokenId, userUUID, password, authenticated }: PersistArgs
+  { provider, tokenId, userUUID, password, authenticated, profile }: PersistArgs
 ): Promise<{ persisted: boolean; error?: string }> {
   if (!authenticated || !userUUID || !tokenId) return { persisted: false };
   try {
     const response = await fetch('/api/integrations/credential', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userUUID, password, provider, tokenId }),
+      body: JSON.stringify({ userUUID, password, provider, tokenId, ...(profile ? { profile } : {}) }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return { persisted: false, error: data?.error || `Save failed (${response.status})` };
     return { persisted: true };
   } catch (error) {
     return { persisted: false, error: error instanceof Error ? error.message : 'Save failed' };
+  }
+}
+
+/** Disconnects one service from a Jellyfin user; a user the server has not stored yet has nothing to disconnect. */
+export async function disconnectCardAccount(path: string, userUUID: string, profile: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userUUID, profile }),
+    });
+    if (response.ok || response.status === 404) return { ok: true };
+    const data = await response.json().catch(() => ({}));
+    return { ok: false, error: data?.error || `Disconnect failed (${response.status})` };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Disconnect failed' };
   }
 }
 

@@ -56,6 +56,9 @@ export function exportConfigFile(
     ...config,
     apiKeys: excludeApiKeys ? emptyApiKeys : { ...config.apiKeys },
     ...withoutManagerSecrets(config, excludeApiKeys),
+    ...(excludeApiKeys && config.jellyfinUsers
+      ? { jellyfinUsers: config.jellyfinUsers.map((user) => (user.accounts ? { ...user, accounts: { ...user.accounts, apiKeys: {} } } : user)) }
+      : {}),
   };
 
   const totalCatalogs = config.catalogs?.length || 0;
