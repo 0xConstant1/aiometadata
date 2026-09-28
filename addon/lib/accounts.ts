@@ -54,7 +54,7 @@ export function credentialOf(config: any, service: AccountService): string | und
 
 const SLOTS: Array<[AccountService, RegExp]> = [
   ['mdblist', /^mdblist\.(watchlist(\.(movies|series))?|upnext|recommended\..+)$/],
-  ['simkl', /^simkl\.(watchlist\..+|upnext(\.anime)?|calendar\..+)$/],
+  ['simkl', /^simkl\.(watchlist\..+|upnext(\.anime)?)$/],
   ['mal', /^mal\.(userlist\..+|suggestions)$/],
   ['anilist', /^anilist\.(?!trending$)[^.]+$/],
   ['publicmetadb', /^publicmetadb\.upnext$/],
