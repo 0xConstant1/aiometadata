@@ -1735,6 +1735,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       ? {
           watchState: {
             version: WATCH_STATE_VERSION,
+            viewers: true,
             push: { events: WATCH_STATE_PUSH_EVENTS, bulk: true },
             pull: { items: true, watched: true, watchlist: true, ttlSeconds: watchStatePullTtl() },
           },

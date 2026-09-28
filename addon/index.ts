@@ -5888,9 +5888,18 @@ addon.post(["/stremio/:userUUID/watch_state/push/:type/:id.json", "/stremio/:use
     return res.status(404).json({ error: "Playback reporting is not enabled" });
   }
 
+  const { configForViewer } = require('./lib/jellyfin/profiles');
+  const viewer = configForViewer(config, userUUID, req.body?.viewer);
+  if (!viewer) {
+    consola.info(`[Playback] Unknown viewer "${String(req.body?.viewer).slice(0, 64)}" for ${userUUID}, dropping ${type}/${id}`);
+    return res.status(404).json({ error: "Unknown viewer" });
+  }
+
   try {
     const { handlePlaybackReport } = require('./lib/playbackHandler');
-    const outcome = await handlePlaybackReport(type, id, req.body, config, userUUID);
+    const { runAsAccountOwner } = require('./lib/jellyfin/viewer');
+    const { accountOwner } = require('./lib/accounts');
+    const outcome = await runAsAccountOwner(accountOwner(viewer), () => handlePlaybackReport(type, id, req.body, viewer, userUUID));
     if (outcome.status === 204) {
       return res.status(204).end();
     }
@@ -5916,10 +5925,19 @@ addon.get("/stremio/:userUUID/watch_state/pull.json", async function (req, res) 
     return res.status(404).json({ error: "Watch state is not enabled" });
   }
 
+  const { configForViewer } = require('./lib/jellyfin/profiles');
+  const viewer = configForViewer(config, userUUID, req.query.viewer);
+  if (!viewer) {
+    consola.info(`[Watch State] Unknown viewer "${String(req.query.viewer).slice(0, 64)}" for ${userUUID}`);
+    return res.status(404).json({ error: "Unknown viewer" });
+  }
+
   try {
     const { buildWatchStatePull } = require('./lib/watchState');
+    const { runAsAccountOwner } = require('./lib/jellyfin/viewer');
+    const { accountOwner } = require('./lib/accounts');
     const since = typeof req.query.since === 'string' && req.query.since ? req.query.since : null;
-    const payload = await buildWatchStatePull(userUUID, config, since);
+    const payload = await runAsAccountOwner(accountOwner(viewer), () => buildWatchStatePull(userUUID, viewer, since));
     res.setHeader('Cache-Control', 'no-store');
     return res.json(payload);
   } catch (error) {
