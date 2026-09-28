@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useConfig } from "@/contexts/ConfigContext";
 import { useSave } from "@/contexts/SaveContext";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,10 @@ import { Copy, Loader2, Plus, Save, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { TagChip } from "@/components/TagChip";
-import { MAX_TAG_NAME_LENGTH, type JellyfinUser, type TagDef } from "@/contexts/config";
+import { MAX_TAG_NAME_LENGTH, type CatalogConfig, type JellyfinUser, type TagDef } from "@/contexts/config";
+import { UserAccounts } from "@/components/jellyfin/UserAccounts";
+import { CARD_SERVICES, connectedServices, handoffNameClash, isHolder, trackerOptionsFor, watchlistOptionsFor } from "@/lib/cardAccounts";
+import { disconnectCardAccount } from "@/lib/integrationCredentials";
 
 /**
  * Typed by hand on a TV remote as often as pasted, so the alphabet leaves out
@@ -61,6 +64,28 @@ function Avatar({ src, onClick, title, small }: { src?: string; onClick?: () => 
   );
 }
 
+function HandoffNamesInput({ names, onChange }: { names?: string[]; onChange: (names: string[] | undefined) => void }) {
+  const [text, setText] = useState((names ?? []).join(', '));
+  useEffect(() => { setText((names ?? []).join(', ')); }, [names]);
+  const commit = () => {
+    const next = text.split(',').map((n) => n.trim()).filter(Boolean);
+    onChange(next.length ? next : undefined);
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Label className="text-xs text-muted-foreground">Also known as (AIOStreams)</Label>
+      <Input
+        className="h-8 min-w-[12rem] flex-1 text-xs"
+        placeholder="Names this user has on AIOStreams' Jellyfin server, comma separated"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+      />
+    </div>
+  );
+}
+
 interface UserRowProps {
   name: string;
   avatar?: string;
@@ -71,11 +96,13 @@ interface UserRowProps {
   trackerOptions: Array<{ value: string; label: string }>;
   watchlistOptions: WatchlistOption[];
   hasPmdb: boolean;
+  showHandoff?: boolean;
   onChange: (patch: Partial<JellyfinUser>) => void;
   onRemove?: () => void;
+  children?: ReactNode;
 }
 
-function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, onChange, onRemove }: UserRowProps) {
+function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, showHandoff, onChange, onRemove, children }: UserRowProps) {
   const chosen = user?.tags ?? [];
   const toggleTag = (tag: string) =>
     onChange({ tags: chosen.includes(tag) ? chosen.filter((t) => t !== tag) : [...chosen, tag] });
@@ -83,12 +110,13 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
     .filter((t) => chosen.includes(t.name) && t.ageRating && t.ageRating !== 'None')
     .map((t) => t.ageRating as string);
   const samePerson = main || user?.trackers === true;
+  const holder = !main && isHolder(user);
   const [pictureOpen, setPictureOpen] = useState(false);
 
   const scope = `${catalogCount} catalog${catalogCount === 1 ? '' : 's'}`;
   const capNote = caps.length ? <span className="rounded-full border border-amber-500/40 px-1.5 text-[11px] text-amber-400">{caps.join(', ')} and lower</span> : null;
 
-  const trackerValue = user?.trackerSource ?? (main ? 'auto' : 'inherit');
+  const trackerValue = user?.trackerSource ?? (main || holder ? 'auto' : 'inherit');
   const skipValue = user?.skipSource ?? (main ? 'auto' : 'inherit');
   const trackerCaption = trackerValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : resumeSourceCaption(trackerValue, trackerOptions);
   const skipCaption = skipValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : skipSourceCaption(skipValue, hasPmdb);
@@ -109,8 +137,8 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             {main ? (
               <span className="rounded-full border border-primary/40 bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">You</span>
             ) : (
-              <label className="flex items-center gap-1.5 text-xs" title="On: this is you on fewer catalogs, sharing your Continue Watching, watched marks and trackers. Off: someone else, with their own.">
-                <Switch checked={samePerson} onCheckedChange={(next) => onChange({ trackers: next || undefined })} aria-label={`${name} is the same person as you`} />
+              <label className="flex items-center gap-1.5 text-xs" title={holder ? 'Disconnect this user’s accounts first: a user with accounts of their own is someone else.' : 'On: this is you on fewer catalogs, sharing your Continue Watching, watched marks and trackers. Off: someone else, with their own.'}>
+                <Switch checked={samePerson} disabled={holder} onCheckedChange={(next) => onChange({ trackers: next || undefined })} aria-label={`${name} is the same person as you`} />
                 Same person as you
               </label>
             )}
@@ -131,7 +159,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             />
           ) : (
             <p className="text-[11px] text-muted-foreground">
-              {main ? 'Your Continue Watching, watched marks and trackers.' : samePerson ? 'You on these catalogs: shares your Continue Watching and watched marks, and writes your trackers; the picks below can still differ from your own card.' : 'Someone else: their own Continue Watching, watched marks and watchlist. Nothing they do reaches your trackers.'} Click the picture to change it.
+              {main ? 'Your Continue Watching, watched marks and trackers.' : samePerson ? 'You on these catalogs: shares your Continue Watching and watched marks, and writes your trackers; the picks below can still differ from your own card.' : holder ? 'Someone else, on their own accounts: their own Continue Watching, watched marks and watchlist, read from and written to the trackers connected below.' : 'Someone else: their own Continue Watching, watched marks and watchlist. Nothing they do reaches your trackers.'} Click the picture to change it.
             </p>
           )}
         </div>
@@ -158,11 +186,11 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
       ) : null}
       <div className="grid gap-4 border-t pt-3 md:grid-cols-3">
         <div className="space-y-1.5">
-          <Label className="text-xs font-medium">{main ? 'Your trackers' : 'Trackers this user reads'}</Label>
+          <Label className="text-xs font-medium">{main ? 'Your trackers' : holder ? 'Their trackers' : 'Trackers this user reads'}</Label>
           <Select value={trackerValue} onValueChange={(v) => onChange({ trackerSource: v === 'inherit' ? undefined : (v as JellyfinUser['trackerSource']) })}>
             <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {!main && <SelectItem value="inherit">Same as you</SelectItem>}
+              {!main && !holder && <SelectItem value="inherit">Same as you</SelectItem>}
               <SelectItem value="auto">Automatic</SelectItem>
               {trackerOptions.map((opt) => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
               <SelectItem value="off">This server only</SelectItem>
@@ -183,7 +211,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
         {watchlistOptions.length > 0 && (
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Watchlist</Label>
-            <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel={main ? 'Every connected' : 'Same as you'} />
+            <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel={main || holder ? 'Every connected' : 'Same as you'} />
             <p className="text-[11px] text-muted-foreground">
               A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. This server only leaves favourites to the hearts set here. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
             </p>
@@ -219,6 +247,8 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
           <p className="text-[11px] text-muted-foreground">{skipCaption}</p>
         </div>
       </div>
+      {showHandoff ? <HandoffNamesInput names={user?.handoffNames} onChange={(handoffNames) => onChange({ handoffNames })} /> : null}
+      {children}
     </div>
   );
 }
@@ -341,8 +371,21 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
       ...prev,
       jellyfinUsers: (prev.jellyfinUsers ?? []).map(u => (u.id === id ? { ...u, ...patch } : u)),
     }));
-  const removeUser = (id: string) =>
-    setConfig(prev => ({ ...prev, jellyfinUsers: (prev.jellyfinUsers ?? []).filter(u => u.id !== id) }));
+  const removeUser = async (user: JellyfinUser) => {
+    const held = connectedServices(user);
+    if (held.length) {
+      const names = held.map((service) => CARD_SERVICES[service].label).join(', ');
+      if (!window.confirm(`${user.name} is connected to ${names}. Removing the user disconnects them. Continue?`)) return;
+      for (const service of held) {
+        const path = CARD_SERVICES[service].disconnectPath;
+        if (path && auth.userUUID) await disconnectCardAccount(path, auth.userUUID, user.id);
+      }
+    }
+    setConfig(prev => ({ ...prev, jellyfinUsers: (prev.jellyfinUsers ?? []).filter(u => u.id !== user.id) }));
+  };
+  const addCatalogs = (entries: CatalogConfig[]) =>
+    setConfig(prev => ({ ...prev, catalogs: [...prev.catalogs, ...entries.filter((e) => !prev.catalogs.some((c) => c.id === e.id && c.type === e.type))] }));
+  const nameClash = handoffNameClash(mainName, config.jellyfinUserHandoffNames, users);
   const addUser = () => {
     const clean = newUserName.trim();
     if (!clean) return;
@@ -594,12 +637,14 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                 trackerSource: config.jellyfinResumeSource ?? 'auto',
                 skipSource: config.jellyfinSkipSource ?? 'auto',
                 watchlistServices: config.jellyfinWatchlistServices,
+                handoffNames: config.jellyfinUserHandoffNames,
               }}
               allTags={tags}
               catalogCount={catalogCountFor(config.jellyfinUserTags ?? [])}
               trackerOptions={resumeSourceOptions}
               watchlistOptions={watchlistOptions}
               hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
+              showHandoff={config.playbackReporting === true}
               onChange={(patch) => setConfig(prev => ({
                 ...prev,
                 ...('name' in patch ? { jellyfinUserName: patch.name } : {}),
@@ -608,23 +653,33 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                 ...('trackerSource' in patch ? { jellyfinResumeSource: patch.trackerSource as typeof prev.jellyfinResumeSource } : {}),
                 ...('skipSource' in patch ? { jellyfinSkipSource: patch.skipSource === 'auto' ? undefined : (patch.skipSource as typeof prev.jellyfinSkipSource) } : {}),
                 ...('watchlistServices' in patch ? { jellyfinWatchlistServices: patch.watchlistServices } : {}),
+                ...('handoffNames' in patch ? { jellyfinUserHandoffNames: patch.handoffNames } : {}),
               }))}
             />
-            {users.map((user) => (
-              <UserRow
-                key={user.id}
-                name={user.name}
-                avatar={user.avatar}
-                user={user}
-                allTags={tags}
-                catalogCount={catalogCountFor(user.tags)}
-                trackerOptions={resumeSourceOptions}
-                watchlistOptions={watchlistOptions}
-                hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
-                onChange={(patch) => updateUser(user.id, patch)}
-                onRemove={() => removeUser(user.id)}
-              />
-            ))}
+            {users.map((user) => {
+              const holder = isHolder(user);
+              return (
+                <UserRow
+                  key={user.id}
+                  name={user.name}
+                  avatar={user.avatar}
+                  user={user}
+                  allTags={tags}
+                  catalogCount={catalogCountFor(user.tags)}
+                  trackerOptions={holder ? trackerOptionsFor(user) : resumeSourceOptions}
+                  watchlistOptions={holder ? watchlistOptionsFor(user) : watchlistOptions}
+                  hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
+                  showHandoff={config.playbackReporting === true}
+                  onChange={(patch) => updateUser(user.id, patch)}
+                  onRemove={() => { void removeUser(user); }}
+                >
+                  {user.trackers !== true ? (
+                    <UserAccounts user={user} catalogs={config.catalogs ?? []} onChange={(next) => updateUser(user.id, next)} onAddCatalogs={addCatalogs} />
+                  ) : null}
+                </UserRow>
+              );
+            })}
+            {nameClash ? <p className="text-xs text-destructive">"{nameClash}" is used by two users. Each name, including AIOStreams names, must belong to one user.</p> : null}
             <div className="flex items-center gap-2">
               <Input
                 value={newUserName}
@@ -648,7 +703,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
               ? 'Unsaved changes. Clients see users, passwords and settings only once saved.'
               : 'Everything here is saved.'}
           </p>
-          <Button size="sm" disabled={!canSave || isSaving || !isDirty} onClick={requestSave} className="w-full sm:w-auto">
+          <Button size="sm" disabled={!canSave || isSaving || !isDirty || Boolean(nameClash)} onClick={requestSave} className="w-full sm:w-auto">
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Save configuration
           </Button>
