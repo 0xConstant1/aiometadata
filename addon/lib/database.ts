@@ -1864,9 +1864,10 @@ class Database {
                        WHERE json_extract(config_data, u.fullkey || '.accounts.apiKeys.${field}') IN (${marks}))`
       : `SELECT user_uuid, password_hash, config_data FROM user_configs
          WHERE config_data::jsonb->'apiKeys'->>'${field}' IN (${marks})
-            OR (jsonb_typeof(config_data::jsonb->'jellyfinUsers') = 'array' AND EXISTS (
-                 SELECT 1 FROM jsonb_array_elements(config_data::jsonb->'jellyfinUsers') u
-                 WHERE u->'accounts'->'apiKeys'->>'${field}' IN (${marks})))`;
+            OR EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(config_data::jsonb->'jellyfinUsers') = 'array'
+                                                         THEN config_data::jsonb->'jellyfinUsers' ELSE '[]'::jsonb END) u
+                 WHERE u->'accounts'->'apiKeys'->>'${field}' IN (${marks}))`;
     // The release check must see this process's own just-committed write, so this reads the
     // primary directly rather than through allQuery's (possibly lagging) read replica.
     if (!this.initialized) await this.initialize();
