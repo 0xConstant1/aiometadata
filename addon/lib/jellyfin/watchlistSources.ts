@@ -34,6 +34,8 @@ function connected(config: any, service: WatchlistService): boolean {
   if (service === 'anilist' || service === 'mal') {
     return Boolean(credentialOf(config, service)) && trackerConfig(config, service)?.[ACCOUNT_SERVICES[service].master] !== false;
   }
+  // Without a list of its own, a holder would read and write your PublicMetaDB watchlist's id.
+  if (service === 'publicmetadb' && config?.jellyfinAccounts && !config.jellyfinAccounts.publicmetadbWatchlist) return false;
   return Boolean(credentialFor(config, service));
 }
 
