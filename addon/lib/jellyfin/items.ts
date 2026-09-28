@@ -175,12 +175,28 @@ export async function fetchCatalogPage(
       return null;
     }
     const body: any = reply.body;
-    return Array.isArray(body?.metas) ? body.metas : [];
+    const metas = Array.isArray(body?.metas) ? body.metas : [];
+    if (typeof body?.rawLength === 'number') rawLengths.set(metas, body.rawLength);
+    if (typeof body?.pageSize === 'number' && body.pageSize > 0) pageSizes.set(metas, body.pageSize);
+    if (body?.served === true) servedPages.add(metas);
+    return metas;
   } catch (error: any) {
     failedPages.set(memo, true);
     logger.warn(`Catalog ${type}/${catalogId} failed: ${error?.message || error}; not asked again for ${envInt('JELLYFIN_CATALOG_RETRY', 60, 1)}s`);
     return null;
   }
+}
+
+const rawLengths = new WeakMap<any[], number>();
+const pageSizes = new WeakMap<any[], number>();
+const servedPages = new WeakSet<any[]>();
+const servedCatalogs = new LRUCache<string, true>({
+  max: envInt('JELLYFIN_PAGE_LENGTH_CACHE_MAX', 2000, 1),
+  ttl: envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60) * 1000,
+});
+
+function advanceOf(page: any[]): number {
+  return rawLengths.get(page) ?? page.length;
 }
 
 // A page that failed is not asked again on the next open of the same row.
@@ -229,8 +245,8 @@ export function knownCatalogLength(userUUID: string, catalog: CatalogRef, extras
 
 const walkConcurrency = (): number => envInt('JELLYFIN_CATALOG_WALK_CONCURRENCY', 4, 1);
 const lengthTtl = (): number => envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60);
-const catalogLengthRedisKey = (key: string): string => `jf:len:catalog:${key}`;
-const pageLengthRedisKey = (key: string): string => `jf:len:page:${key}`;
+const catalogLengthRedisKey = (key: string): string => `jf:len:v2:catalog:${key}`;
+const pageLengthRedisKey = (key: string): string => `jf:len:v2:page:${key}`;
 
 function rememberLength(kind: 'catalog' | 'page', key: string, value: number): void {
   (kind === 'catalog' ? catalogLengths : pageLengths).set(key, value);
@@ -304,8 +320,8 @@ export async function fetchWindow(
 
   if (!pageLength && startIndex > 0 && !filtering) {
     const probe = await fetchCatalogPage(userUUID, catalog.type, catalog.id, extras, tags);
-    if (probe && probe.length > 0) {
-      pageLength = probe.length;
+    if (probe && advanceOf(probe) > 0) {
+      pageLength = pageSizes.get(probe) ?? advanceOf(probe);
       rememberLength('page', pageKey, pageLength);
     }
   }
@@ -313,7 +329,10 @@ export async function fetchWindow(
   const cursor = pageLength && startIndex > 0 ? walkCursors.get(`${lengthKey}@${startIndex}`) : undefined;
   const minRaw = cursor ? cursor.raw : 0;
 
-  const alignedSkip = cursor ? Math.floor(cursor.raw / pageLength!) * pageLength! : filtering ? 0 : pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
+  let sequential = servedCatalogs.has(pageKey);
+  const alignedSkip = sequential
+    ? (cursor ? cursor.raw : filtering ? 0 : startIndex)
+    : cursor ? Math.floor(cursor.raw / pageLength!) * pageLength! : filtering ? 0 : pageLength ? Math.floor(startIndex / pageLength) * pageLength : startIndex;
   let offset = cursor ? 0 : startIndex - alignedSkip;
 
   const collected: any[] = [];
@@ -330,6 +349,7 @@ export async function fetchWindow(
   const knownLength = filtering || cursor ? undefined : catalogLengths.get(lengthKey);
   const minPage = envInt('JELLYFIN_CATALOG_MIN_PAGE', 10, 1);
   let stop = false;
+  let staleRun = 0;
 
   while (!stop && collected.length < offset + limit && pages < budget) {
     if (knownLength !== undefined && skip >= knownLength) {
@@ -338,7 +358,7 @@ export async function fetchWindow(
     }
 
     const wanted = offset + limit - collected.length;
-    const ahead = pageLength
+    const ahead = pageLength && !sequential
       ? Math.max(1, Math.min(walkConcurrency(), Math.ceil(wanted / pageLength), budget - pages))
       : 1;
     const skips: number[] = [];
@@ -358,25 +378,35 @@ export async function fetchWindow(
         stop = true;
         break;
       }
-      if (page.length === 0) {
+      if (servedPages.has(page) && !sequential) {
+        sequential = true;
+        servedCatalogs.set(pageKey, true);
+      }
+      const advance = advanceOf(page);
+      if (advance === 0) {
         exhausted = true;
         stop = true;
         break;
       }
 
-      if (first && i === 0 && !pageLength && page.length >= minPage) {
-        pageLength = page.length;
+      if (first && i === 0 && !pageLength && (pageSizes.has(page) || advance >= minPage)) {
+        pageLength = pageSizes.get(page) ?? advance;
         rememberLength('page', pageKey, pageLength);
         budget = maxPages((offset + limit) * (filtering ? 2 : 1), pageLength);
       }
 
       const candidates: Array<{ meta: any; at: number }> = [];
+      let fresh = 0;
       for (let j = 0; j < page.length; j++) {
         const meta = page[j];
-        if (skips[i] + j < minRaw) continue;
+        if (skips[i] + j < minRaw) {
+          fresh += 1;
+          continue;
+        }
         const key = meta?.id ? String(meta.id) : null;
         if (!key || seen.has(key)) continue;
         seen.add(key);
+        fresh += 1;
         if (keep && !keep(meta)) continue;
         candidates.push({ meta, at: skips[i] + j });
       }
@@ -387,12 +417,16 @@ export async function fetchWindow(
         rawAt.push(candidate.at);
       }
 
-      skip = skips[i] + page.length;
-      if (page.length < (pageLength || minPage)) {
+      const size = pageLength || minPage;
+      staleRun = fresh > 0 ? 0 : staleRun + 1;
+      const dropped = !sequential && advance < size && advance * 2 >= size && staleRun < 2;
+      skip = skips[i] + (dropped ? size : advance);
+      if ((advance < size && !dropped) || staleRun >= 2) {
         exhausted = true;
         stop = true;
         break;
       }
+      if (sequential) break;
     }
   }
 

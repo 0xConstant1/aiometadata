@@ -5327,13 +5327,13 @@ const catalogRoute = async function (req, res) {
       const { genre: genreName } = extraArgs;
       const skipValue = extraArgs.skip !== undefined ? parseInt(extraArgs.skip) : 0;
       const result = await getCatalog(actualType, language, catalogPage, cleanId, genreName, config, userUUID, false, skipValue);
-      responseData = { metas: result.metas || [] };
+      responseData = { metas: result.metas || [], ...(req.params.forJellyfin === '1' ? { served: true } : {}) };
       filtersAlreadyApplied = true;
       } else if (cleanId.startsWith('merged.')) {
       const { genre: genreName } = extraArgs;
       const skipValue = extraArgs.skip !== undefined ? parseInt(extraArgs.skip) : 0;
       const result = await getCatalog(actualType, language, catalogPage, cleanId, genreName, config, userUUID, false, skipValue);
-      responseData = { metas: result.metas || [] };
+      responseData = { metas: result.metas || [], ...(req.params.forJellyfin === '1' ? { served: true } : {}) };
       filtersAlreadyApplied = true;
       } else {
       const { genre: genreName, type_filter } = extraArgs;
@@ -5409,7 +5409,11 @@ const catalogRoute = async function (req, res) {
     const readPage = (page, skipOverride) =>
       cacheWrapper(userUUID, keyForPage(page), () => runCatalogPage(page, skipOverride), cacheOptions);
 
-    if (catalogFiltersActive({ config, catalogConfig, cleanId })) {
+    if (catalogFiltersActive({ config, catalogConfig, cleanId }) && req.params.forJellyfin === '1') {
+      const raw = (await readPage(catalogPage, legacySkip))?.metas || [];
+      responseData = { metas: await applyCatalogFilters(raw, { type: actualType, config, catalogConfig, cleanId }), rawLength: raw.length };
+      filtersAlreadyApplied = true;
+    } else if (catalogFiltersActive({ config, catalogConfig, cleanId })) {
       const { accountOwner } = require('./lib/accounts');
       const key = cursorKey(userUUID, cleanId, actualType, genreName, accountOwner(config));
       const skipValue = legacySkip || 0;
@@ -5567,6 +5571,8 @@ const catalogRoute = async function (req, res) {
         }
       }
     }
+
+    if (req.params.forJellyfin === '1' && Array.isArray(responseData?.metas)) responseData.pageSize = catalogPageSize;
 
     const isSearchCatalog = cleanId === 'search' || cleanId === 'people_search' || cleanId === 'gemini.search';
     if (catalogConfig?.metadata?.posterShape === 'landscape' && !isSearchCatalog && req.params.forJellyfin !== '1' && Array.isArray(responseData?.metas)) {
