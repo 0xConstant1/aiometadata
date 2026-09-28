@@ -2457,8 +2457,6 @@ async function getAniListCatalog(
       page,
       async () => anilist.fetchListItems(username, listName, page, pageSize, sort, accessToken),
       customCacheTTL,
-      // The page is shared, so a reader without a token must not cache its
-      // rejection over a copy a token holder could have fetched.
       { enableErrorCaching: anilistRequiresAuth() ? !!accessToken : true },
       sort,
       cacheScope
