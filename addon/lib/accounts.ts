@@ -78,6 +78,12 @@ export function servesCatalog(config: any, catalog: any): boolean {
   return true;
 }
 
+/** Which accounts decide what servesCatalog shows, without any credential in it. */
+export function servedAccountsKey(config: any): string {
+  const held = ACCOUNT_SERVICE_LIST.filter((service) => credentialOf(config, service)).join(',');
+  return config?.jellyfinAccounts?.publicmetadbWatchlist ? `${held}+pmdbwl` : held;
+}
+
 export function pmdbListIdFor(config: any, catalogId: string): string {
   const own = config?.jellyfinAccounts?.publicmetadbWatchlist;
   if (own && catalogId.startsWith('publicmetadb.list.')) {
