@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating, resolveInstallFilters } from '../../utils/ageRating';
 import { normaliseJellyfinId } from './idsCodec';
-import { accountOwner, withAccountOwner } from '../accounts';
+import { ACCOUNT_SERVICE_LIST, AccountService, accountOwner, credentialOf, withAccountOwner } from '../accounts';
 
 /** The main user is the configuration itself, under the id it always had. */
 export interface Profile {
@@ -122,6 +122,23 @@ export function profileByUserId(config: any, userUUID: string, userId: unknown):
   return listProfiles(config, userUUID).find((p) => p.userId === wanted) ?? null;
 }
 
+/** A holder's tracker pick, falling back to 'auto' once it names a service the holder doesn't hold. */
+function heldTrackerSource(held: any, trackerSource: string): string {
+  if (trackerSource === 'auto' || trackerSource === 'off') return trackerSource;
+  const service = trackerSource as AccountService;
+  return ACCOUNT_SERVICE_LIST.includes(service) && credentialOf(held, service) ? trackerSource : 'auto';
+}
+
+/** A holder's watchlist picks, dropping any whose service it doesn't hold; undefined once none are left. */
+function heldWatchlistServices(held: any, watchlistServices: string[]): string[] | undefined {
+  if (watchlistServices.includes('none')) return watchlistServices;
+  const kept = watchlistServices.filter((token) => {
+    const service = token.split(':')[0] as AccountService;
+    return ACCOUNT_SERVICE_LIST.includes(service) && Boolean(credentialOf(held, service));
+  });
+  return kept.length ? kept : undefined;
+}
+
 /** The same catalogs and cap an install URL naming this user's tags would get. */
 export function scopeConfigToProfile(config: any, userUUID: string, id: string | null): any {
   const profile = profileById(config, userUUID, id);
@@ -136,9 +153,13 @@ export function scopeConfigToProfile(config: any, userUUID: string, id: string |
         jellyfinProfileId: profile.id,
         jellyfinProfileTags: profile.tags,
         jellyfinProfileShares: profile.sharesHistory,
-        ...(profile.trackerSource ? { jellyfinResumeSource: profile.trackerSource } : owns ? { jellyfinResumeSource: 'auto' } : {}),
+        ...(profile.trackerSource
+          ? { jellyfinResumeSource: owns ? heldTrackerSource(held, profile.trackerSource) : profile.trackerSource }
+          : owns ? { jellyfinResumeSource: 'auto' } : {}),
         ...(profile.skipSource ? { jellyfinSkipSource: profile.skipSource } : {}),
-        ...(profile.watchlistServices ? { jellyfinWatchlistServices: profile.watchlistServices } : owns ? { jellyfinWatchlistServices: undefined } : {}),
+        ...(profile.watchlistServices
+          ? { jellyfinWatchlistServices: owns ? heldWatchlistServices(held, profile.watchlistServices) : profile.watchlistServices }
+          : owns ? { jellyfinWatchlistServices: undefined } : {}),
         ...(profile.streamUrl ? { jellyfinStreamUrl: profile.streamUrl } : {}),
       }
     : { ...config, jellyfinProfileTags: profile.tags };

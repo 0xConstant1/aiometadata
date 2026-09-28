@@ -116,7 +116,10 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
   const scope = `${catalogCount} catalog${catalogCount === 1 ? '' : 's'}`;
   const capNote = caps.length ? <span className="rounded-full border border-amber-500/40 px-1.5 text-[11px] text-amber-400">{caps.join(', ')} and lower</span> : null;
 
-  const trackerValue = user?.trackerSource ?? (main || holder ? 'auto' : 'inherit');
+  // A holder that has lost the service its pick named (e.g. disconnected it) falls back to Automatic.
+  const rawTrackerSource = user?.trackerSource;
+  const trackerKnown = rawTrackerSource === 'auto' || rawTrackerSource === 'off' || trackerOptions.some((opt) => opt.value === rawTrackerSource);
+  const trackerValue = holder && rawTrackerSource && !trackerKnown ? 'auto' : rawTrackerSource ?? (main || holder ? 'auto' : 'inherit');
   const skipValue = user?.skipSource ?? (main ? 'auto' : 'inherit');
   const trackerCaption = trackerValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : resumeSourceCaption(trackerValue, trackerOptions);
   const skipCaption = skipValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : skipSourceCaption(skipValue, hasPmdb);
