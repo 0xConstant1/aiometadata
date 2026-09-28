@@ -12,7 +12,7 @@ import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPic
 import { mapWithLimit } from "../utils/concurrency.js";
 const anilist = require('./anilist');
 import { createHash } from 'crypto';
-import { ownTokenId } from './accounts';
+import { accountOwner, ownTokenId, servesCatalog, viewerConfigFor } from './accounts';
 import * as jikan from "./mal.js"
 import * as Utils from '../utils/parseProps.js';
 import CATALOG_TYPES from "../static/catalog-types.json";
@@ -1870,7 +1870,8 @@ async function getExternalAddonCatalog(type: string, catalogId: string, genre: s
     const useCursor = skip !== undefined && redis;
     const stremioSkip = skip ?? (page - 1) * batchSize;
 
-    const cursorKey = useCursor ? `catalog-cursor:${userUUID}:${catalogId}:${type}:${genre || 'all'}` : null;
+    const owner = accountOwner(config);
+    const cursorKey = useCursor ? `catalog-cursor:${owner ? `${userUUID}@${owner}` : userUUID}:${catalogId}:${type}:${genre || 'all'}` : null;
     let upstreamSkip: number;
     const seenIds = new Set<string>();
 
@@ -3535,14 +3536,14 @@ async function getMergedCatalog(
       logger.warn(`[Merged] Skipping nested merge reference: ${s.catalogId}`);
       return false;
     }
-    const stillExists = config.catalogs?.some((c: any) =>
+    const entry = config.catalogs?.find((c: any) =>
       c.id === s.catalogId && c.type === s.catalogType
     );
-    if (!stillExists) {
+    if (!entry) {
       logger.warn(`[Merged] Source ${s.catalogId} (${s.catalogType}) no longer exists in config`);
       return false;
     }
-    return true;
+    return servesCatalog(config, entry);
   });
   if (validSources.length === 0) return [];
 
@@ -3552,7 +3553,8 @@ async function getMergedCatalog(
   const hasGenreFilter = !!(genre && genre !== 'None' && normalizeGenreKey(genre));
   const catalogTTL = parseInt(process.env.CATALOG_TTL || String(24 * 60 * 60), 10);
 
-  const cursorKey = redis ? `merged-cursor:${userUUID}:${catalogId}:${genre || 'all'}` : null;
+  const owner = accountOwner(config);
+  const cursorKey = redis ? `merged-cursor:${owner ? `${userUUID}@${owner}` : userUUID}:${catalogId}:${genre || 'all'}` : null;
 
   interface MergedCursor {
     served: number;
@@ -3625,14 +3627,15 @@ async function getMergedCatalog(
   const fetchSourcePage = async (src: any, srcPage: number): Promise<{ items: any[]; rawLength: number }> => {
     try {
       const effectiveGenre = genre || await resolveDefaultGenre(src.catalogId, src.catalogType) || '';
-      const cacheArgs = buildCatalogCacheArgs(src.catalogId, src.catalogType, srcPage, effectiveGenre, config);
+      const srcConfig = viewerConfigFor(config, owner, src.catalogId);
+      const cacheArgs = buildCatalogCacheArgs(src.catalogId, src.catalogType, srcPage, effectiveGenre, srcConfig);
       const catalogKey = `${src.catalogId}:${src.catalogType}:${stableStringify(cacheArgs)}`;
 
       const result = await cacheWrapCatalog(userUUID, catalogKey, async () => {
         return await getCatalog(
-          src.catalogType, language, srcPage, src.catalogId, effectiveGenre, config, userUUID, includeVideos
+          src.catalogType, language, srcPage, src.catalogId, effectiveGenre, srcConfig, userUUID, includeVideos
         );
-      }, { config });
+      }, { config: srcConfig });
 
       const raw = result?.metas || [];
       let items = raw;

@@ -1,5 +1,6 @@
 import consola from 'consola';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating } from './ageRating';
+import { trackerConfig } from '../lib/accounts';
 const logger = consola.withTag('CatalogFilters');
 
 function isHideWatchedExcluded(cleanId: string): boolean {
@@ -66,8 +67,9 @@ function catalogFiltersActive({ config, catalogConfig, cleanId }: Omit<CatalogFi
   if (hideUnreleasedShows) return true;
 
   if (!isHideWatchedExcluded(cleanId)) {
+    const tracked = trackerConfig(config);
     for (const [credential, flag] of WATCHED_FILTERS) {
-      if (!config.apiKeys?.[credential]) continue;
+      if (!tracked.apiKeys?.[credential]) continue;
       const catalogHide = catalogConfig?.metadata?.[flag];
       if (catalogHide !== undefined ? catalogHide : !!config[flag]) return true;
     }
@@ -83,6 +85,8 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
 
   metas = applyAgeRatingFilter(metas, type, config);
   const hideWatchedExcluded = isHideWatchedExcluded(cleanId);
+  // A Jellyfin user with accounts of their own hides what they watched, not what you did.
+  const tracked = trackerConfig(config);
 
   const catalogHideDigital = catalogConfig?.metadata?.hideUnreleasedDigital;
   const hideUnreleasedDigital = isSearch
@@ -117,14 +121,14 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
     }
   }
 
-  if (metas.length > 0 && config.apiKeys?.traktTokenId) {
+  if (metas.length > 0 && tracked.apiKeys?.traktTokenId) {
     const globalHide = !!config.hideWatchedTrakt;
     const catalogHide = catalogConfig?.metadata?.hideWatchedTrakt;
     const shouldHide = catalogHide !== undefined ? catalogHide : globalHide;
     if (shouldHide && !hideWatchedExcluded) {
       try {
         const { getTraktWatchedIds } = require('./traktUtils');
-        const watchedIds = await getTraktWatchedIds(config);
+        const watchedIds = await getTraktWatchedIds(tracked);
         if (watchedIds) {
           const actualType = catalogConfig?.type || type;
           const before = metas.length;
@@ -146,7 +150,7 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
     }
   }
 
-  if (metas.length > 0 && config.apiKeys?.anilistTokenId) {
+  if (metas.length > 0 && tracked.apiKeys?.anilistTokenId) {
     const globalHide = !!config.hideWatchedAnilist;
     const catalogHide = catalogConfig?.metadata?.hideWatchedAnilist;
     const shouldHide = catalogHide !== undefined ? catalogHide : globalHide;
@@ -154,7 +158,7 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
       try {
         const { getAnilistWatchedIds } = require('./anilistUtils');
         const idMapper = require('../lib/id-mapper');
-        const watchedIds = await getAnilistWatchedIds(config);
+        const watchedIds = await getAnilistWatchedIds(tracked);
         if (watchedIds) {
           const before = metas.length;
           metas = metas.filter(meta => {
@@ -192,14 +196,14 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
     }
   }
 
-  if (metas.length > 0 && config.apiKeys?.mdblist) {
+  if (metas.length > 0 && tracked.apiKeys?.mdblist) {
     const globalHide = !!config.hideWatchedMdblist;
     const catalogHide = catalogConfig?.metadata?.hideWatchedMdblist;
     const shouldHide = catalogHide !== undefined ? catalogHide : globalHide;
     if (shouldHide && !hideWatchedExcluded) {
       try {
         const { getMdblistWatchedIds } = require('./mdblistUtils');
-        const watchedIds = await getMdblistWatchedIds(config);
+        const watchedIds = await getMdblistWatchedIds(tracked);
         if (watchedIds) {
           const actualType = catalogConfig?.type || type;
           const before = metas.length;
@@ -221,7 +225,7 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
     }
   }
 
-  if (metas.length > 0 && config.apiKeys?.simklTokenId) {
+  if (metas.length > 0 && tracked.apiKeys?.simklTokenId) {
     const globalHide = !!config.hideWatchedSimkl;
     const catalogHide = catalogConfig?.metadata?.hideWatchedSimkl;
     const shouldHide = catalogHide !== undefined ? catalogHide : globalHide;
@@ -229,7 +233,7 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
       try {
         const { getSimklWatchedIds } = require('./simklUtils');
         const idMapper = require('../lib/id-mapper');
-        const watchedIds = await getSimklWatchedIds(config);
+        const watchedIds = await getSimklWatchedIds(tracked);
         if (watchedIds) {
           const actualType = catalogConfig?.type || type;
           const before = metas.length;

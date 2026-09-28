@@ -99,14 +99,14 @@ export function pmdbListIdFor(config: any, catalogId: string): string {
   return catalogId.replace('publicmetadb.list.', '');
 }
 
-/** A holder's own account on its slots; the installation's everywhere else. */
+/** A holder's own account on its slots; the installation's keys everywhere else, still carrying the holder for filters and merged sources. */
 export function viewerConfigFor(config: any, owner: unknown, catalogId: string): any {
   const viewer = withAccountOwner(config, typeof owner === 'string' ? owner : '');
   if (!viewer.jellyfinAccounts) return config;
   const bare = String(catalogId).replace(/_(movie|series|anime|all)$/, '');
   const entry = (viewer.catalogs ?? []).find((c: any) => c?.id === bare) ?? { id: bare };
   const service = slotServiceOf(entry);
-  return service ? trackerConfig(viewer, service) : config;
+  return service ? trackerConfig(viewer, service) : viewer;
 }
 
 function cardOf(config: any, owner: string): any {
