@@ -49,7 +49,8 @@ export function trackerConfig(config: any, only?: AccountService): any {
 }
 
 export function credentialOf(config: any, service: AccountService): string | undefined {
-  return trackerConfig(config, service)?.apiKeys?.[ACCOUNT_SERVICES[service].key] || undefined;
+  const keys = config?.jellyfinAccounts ? config.jellyfinAccounts.apiKeys : config?.apiKeys;
+  return keys?.[ACCOUNT_SERVICES[service].key] || undefined;
 }
 
 /** The token id a tracker call uses; null for a Jellyfin user without that account, so nothing falls back to yours. */
