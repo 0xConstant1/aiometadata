@@ -115,11 +115,12 @@ class ConfigApi {
   }
 
   async sanitizeCardAccounts(config) {
-    const providers = { simklTokenId: 'simkl', anilistTokenId: 'anilist', malTokenId: 'mal' };
+    const { ACCOUNT_SERVICES } = require('./accounts');
     for (const card of Array.isArray(config?.jellyfinUsers) ? config.jellyfinUsers : []) {
       const keys = card?.accounts?.apiKeys;
       if (!keys) continue;
-      for (const [field, provider] of Object.entries(providers)) {
+      for (const provider of ['simkl', 'anilist', 'mal']) {
+        const field = ACCOUNT_SERVICES[provider].key;
         if (!keys[field]) continue;
         const token = await database.getOAuthToken(keys[field]).catch(() => null);
         if (token && token.provider === provider && token.access_token) continue;

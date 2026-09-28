@@ -1532,11 +1532,7 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (typeof req.body?.profile === 'string' && req.body.profile) {
-      const access = await resolveConfigAccess(req, userUUID, req.body?.password);
-      if (!access || !access.passwordHash) return res.status(401).json({ error: "Invalid UUID or password" });
-      return await disconnectCardAccount(res, userUUID, req.body.profile, 'simkl', config);
-    }
+    if (await disconnectCardAccount(req, res, userUUID, 'simkl', config)) return;
 
     const released = config.apiKeys?.simklTokenId || null;
     if (released) delete config.apiKeys.simklTokenId;
@@ -3736,11 +3732,7 @@ addon.post("/anilist/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (typeof req.body?.profile === 'string' && req.body.profile) {
-      const access = await resolveConfigAccess(req, userUUID, req.body?.password);
-      if (!access || !access.passwordHash) return res.status(401).json({ error: "Invalid UUID or password" });
-      return await disconnectCardAccount(res, userUUID, req.body.profile, 'anilist', config);
-    }
+    if (await disconnectCardAccount(req, res, userUUID, 'anilist', config)) return;
 
     // Token ID is stored in apiKeys.anilistTokenId by the frontend
     const released = config.apiKeys?.anilistTokenId || null;
@@ -3998,11 +3990,7 @@ addon.post("/mal/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (typeof req.body?.profile === 'string' && req.body.profile) {
-      const access = await resolveConfigAccess(req, userUUID, req.body?.password);
-      if (!access || !access.passwordHash) return res.status(401).json({ error: "Invalid UUID or password" });
-      return await disconnectCardAccount(res, userUUID, req.body.profile, 'mal', config);
-    }
+    if (await disconnectCardAccount(req, res, userUUID, 'mal', config)) return;
 
     const released = config.apiKeys?.malTokenId || null;
     if (released) delete config.apiKeys.malTokenId;
@@ -4203,17 +4191,27 @@ addon.get("/api/publicmetadb/picks", async (req, res) => {
   }
 });
 
-async function disconnectCardAccount(res, userUUID, profile, service, config) {
+/** Handles a disconnect naming a Jellyfin user's card; false when it is for your own account. */
+async function disconnectCardAccount(req, res, userUUID, service, config) {
+  const profile = req.body?.profile;
+  if (typeof profile !== 'string' || !profile) return false;
+  const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+  if (!access || !access.passwordHash) {
+    res.status(401).json({ error: "Invalid UUID or password" });
+    return true;
+  }
   const { detachCardAccount } = require('./lib/accounts');
   const { releaseTokenIfUnused } = require('./lib/accountLinks');
   const removed = detachCardAccount(config, profile, service);
-  if (!removed) return res.status(404).json({ error: "No such user, or it has no account for this service" });
-  const user = await database.getUser(userUUID);
-  if (!user) return res.status(404).json({ error: "User not found" });
-  await database.saveUserConfig(userUUID, user.password_hash, config);
+  if (!removed) {
+    res.status(404).json({ error: "No such user, or it has no account for this service" });
+    return true;
+  }
+  await database.saveUserConfig(userUUID, access.passwordHash, config);
   configCache.del(userUUID);
   if (removed.tokenId) await releaseTokenIfUnused(service, removed.tokenId, service === 'simkl' ? revokeSimklGrant : undefined);
-  return res.json({ success: true, removed: { profile, service, apiKeys: removed.apiKeys, fields: removed.fields } });
+  res.json({ success: true, removed: { profile, service, apiKeys: removed.apiKeys, fields: removed.fields } });
+  return true;
 }
 
 // POST /api/integrations/credential - Point a configuration at a credential the OAuth
