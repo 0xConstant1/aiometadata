@@ -588,6 +588,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 5,
   },
   {
+    key: 'JELLYFIN_WATCHED_FIRST_WAIT',
+    envVar: 'JELLYFIN_WATCHED_FIRST_WAIT',
+    label: 'Jellyfin First Watched Read Wait',
+    description: "The first read of a tracker account imports its whole history, which can take minutes for a large one. Shelves wait this many seconds for it, then answer without the tracker's watched state until it is in. 0 waits for it.",
+    category: 'Features',
+    type: 'number',
+    default: 8,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_SHELF_META_CONCURRENCY',
     envVar: 'JELLYFIN_SHELF_META_CONCURRENCY',
     label: 'Jellyfin Shelf Meta Concurrency',

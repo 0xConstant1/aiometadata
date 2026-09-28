@@ -22,7 +22,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   const profile = profileKey(config);
 
   const resume = await trackerSnapshot(userUUID, config);
-  const snapshot = await watchedSnapshot(userUUID, config);
+  const snapshot = await watchedSnapshot(userUUID, config, { patient: true });
 
   // A pass only takes in what the tracker says, and the table wins over anything it has
   // already seen, so a tracker unchanged since the last pass has nothing new to give.
