@@ -2954,6 +2954,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 500,
   },
   {
+    key: 'TRAILER_ADDON_CATALOG_WAIT_MS',
+    envVar: 'TRAILER_ADDON_CATALOG_WAIT_MS',
+    label: 'Trailer Addon Catalog Wait (ms)',
+    description: 'How long a catalog page waits for the trailer addon before it is sent. Titles it has not answered for yet keep the metadata provider\'s trailer this time and get the addon\'s on the next view.',
+    category: 'Providers',
+    type: 'number',
+    default: 1500,
+    min: 0,
+  },
+  {
     key: 'TRAILER_ADDON_TTL',
     envVar: 'TRAILER_ADDON_TTL',
     label: 'Trailer Addon Cache (sec)',

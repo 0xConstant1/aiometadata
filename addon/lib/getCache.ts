@@ -1226,11 +1226,11 @@ function applyTrailerStreamsProjection(meta: any): any {
   return meta;
 }
 
-async function projectMetaForUser(meta: any, config: any): Promise<any> {
+async function projectMetaForUser(meta: any, config: any, opts: { addonTrailers?: boolean } = {}): Promise<any> {
   if (!meta) return meta;
   normalizeMetaCredits(meta);
   applyTrailerStreamsProjection(meta);
-  await applyTrailerAddonProjection(meta, config);
+  if (opts.addonTrailers !== false) await applyTrailerAddonProjection(meta, config);
   applyCastCountProjection(meta, config);
   applyBlurThumbProjection(meta, config);
   applyDisplayAgeRatingProjection(meta, config);
@@ -1956,7 +1956,7 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
     cacheLogger.warn(`[ColdStore] write-through failed for ${metaId}: ${coldErr?.message}`);
   }
 
-  return { meta: await projectMetaForUser(meta, config) };
+  return { meta: await projectMetaForUser(meta, config, { addonTrailers: authoritative }) };
 }
 
 async function readMetaAlias({ config, metaId, type = null, useShowPoster = false }: { config: any; metaId: string; type?: string | null; useShowPoster?: boolean }): Promise<string | null> {
@@ -2226,7 +2226,7 @@ async function reconstructMetaFromComponentsWithConfig({ config, metaId, type = 
   const metaReconstructionKey = `meta:reconstructed:${metaId}`;
   updateCacheHealth(metaReconstructionKey, 'hit', true);
 
-  return { meta: await projectMetaForUser(reconstructedMeta, config) };
+  return { meta: await projectMetaForUser(reconstructedMeta, config, { addonTrailers: includeVideos }) };
 }
 
 async function cacheWrapMetaSmart(userUUID: string, metaId: string, method: () => Promise<any>, ttl: number = META_TTL(), options: any = {}, type: string | null = null, includeVideos: boolean = true, useShowPoster: boolean = false): Promise<any> {

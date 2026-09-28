@@ -5574,6 +5574,11 @@ const catalogRoute = async function (req, res) {
 
     if (req.params.forJellyfin === '1' && Array.isArray(responseData?.metas)) responseData.pageSize = catalogPageSize;
 
+    if (config.trailerProvider === 'addon' && req.params.forJellyfin !== '1' && Array.isArray(responseData?.metas)) {
+      const { applyTrailerAddonWithin } = require('./lib/trailerProjection');
+      await applyTrailerAddonWithin(responseData.metas, config, envInt('TRAILER_ADDON_CATALOG_WAIT_MS', 1500, 0));
+    }
+
     const isSearchCatalog = cleanId === 'search' || cleanId === 'people_search' || cleanId === 'gemini.search';
     if (catalogConfig?.metadata?.posterShape === 'landscape' && !isSearchCatalog && req.params.forJellyfin !== '1' && Array.isArray(responseData?.metas)) {
       for (const meta of responseData.metas) {
