@@ -212,11 +212,15 @@ export function keepsUnderProfileCap(config: any): (item: any) => boolean {
 }
 
 /** A handoff names its viewer the way the sign-in screen does, or by a name set for AIOStreams. */
+function personaIdOf(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 28) || 'user';
+}
+
 export function viewerByName(config: any, userUUID: string, name: unknown): Profile | undefined {
   const wanted = typeof name === 'string' ? name.trim().toLowerCase() : '';
   if (!wanted) return undefined;
-  return listProfiles(config, userUUID).find((p) =>
-    p.name.trim().toLowerCase() === wanted || p.handoffNames.some((n) => n.toLowerCase() === wanted));
+  const matches = (candidate: string) => candidate.trim().toLowerCase() === wanted || personaIdOf(candidate) === wanted;
+  return listProfiles(config, userUUID).find((p) => matches(p.name) || p.handoffNames.some(matches));
 }
 
 export function hasNamedViewers(config: any, userUUID: string): boolean {

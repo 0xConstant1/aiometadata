@@ -5841,9 +5841,10 @@ addon.post(["/stremio/:userUUID/watch_state/push/:type/:id.json", "/stremio/:use
   }
 
   const { configForViewer } = require('./lib/jellyfin/profiles');
-  const viewer = configForViewer(config, userUUID, req.body?.viewer);
+  const named = req.body?.viewer ?? req.query.viewer;
+  const viewer = configForViewer(config, userUUID, named);
   if (!viewer) {
-    consola.info(`[Playback] Unknown viewer "${String(req.body?.viewer).slice(0, 64)}" for ${userUUID}, dropping ${type}/${id}`);
+    consola.info(`[Playback] Unknown viewer "${String(named).slice(0, 64)}" for ${userUUID}, dropping ${type}/${id}`);
     return res.status(404).json({ error: "Unknown viewer" });
   }
 
