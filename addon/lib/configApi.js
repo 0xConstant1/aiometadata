@@ -114,6 +114,23 @@ class ConfigApi {
     return { cleaned: false };
   }
 
+  async sanitizeCardAccounts(config) {
+    const providers = { simklTokenId: 'simkl', anilistTokenId: 'anilist', malTokenId: 'mal' };
+    for (const card of Array.isArray(config?.jellyfinUsers) ? config.jellyfinUsers : []) {
+      const keys = card?.accounts?.apiKeys;
+      if (!keys) continue;
+      for (const [field, provider] of Object.entries(providers)) {
+        if (!keys[field]) continue;
+        const token = await database.getOAuthToken(keys[field]).catch(() => null);
+        if (token && token.provider === provider && token.access_token) continue;
+        logger.warn(`[Config Protection] Removing an unknown ${provider} token from Jellyfin user ${card.id}`);
+        delete keys[field];
+        if (card.accounts.labels) delete card.accounts.labels[provider];
+        if (provider === 'simkl') delete card.accounts.simklUser;
+      }
+    }
+  }
+
   // Validate required API keys
   validateRequiredKeys(config) {
     const requiredKeys = ['tmdb'];
@@ -325,6 +342,7 @@ class ConfigApi {
 
       await this.sanitizeTraktToken(config);
       await this.sanitizeSimklToken(config);
+      await this.sanitizeCardAccounts(config);
 
       // Use existing UUID if provided, otherwise generate a new one
       const userUUID = existingUUID || database.generateUserUUID();
@@ -724,6 +742,7 @@ class ConfigApi {
 
       await this.sanitizeTraktToken(config);
       await this.sanitizeSimklToken(config);
+      await this.sanitizeCardAccounts(config);
 
       // Verify existing config exists
       let passwordHash;

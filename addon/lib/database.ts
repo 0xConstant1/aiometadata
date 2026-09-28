@@ -1852,6 +1852,39 @@ class Database {
     }
   }
 
+  /** Every configuration referring to one of these tokens, at the top level or on a Jellyfin user. */
+  async findTokenReferences(field: string, tokenIds: string[]): Promise<Array<{ uuid: string; passwordHash: string; config: any; owners: string[] }>> {
+    if (!tokenIds.length || !/^[A-Za-z]+$/.test(field)) return [];
+    const sqlite = this.type === 'sqlite';
+    const marks = tokenIds.map((_, i) => (sqlite ? '?' : `$${i + 1}`)).join(', ');
+    const query = sqlite
+      ? `SELECT user_uuid, password_hash, config_data FROM user_configs
+         WHERE json_extract(config_data, '$.apiKeys.${field}') IN (${marks})
+            OR EXISTS (SELECT 1 FROM json_each(config_data, '$.jellyfinUsers') u
+                       WHERE json_extract(u.value, '$.accounts.apiKeys.${field}') IN (${marks}))`
+      : `SELECT user_uuid, password_hash, config_data FROM user_configs
+         WHERE config_data::jsonb->'apiKeys'->>'${field}' IN (${marks})
+            OR (jsonb_typeof(config_data::jsonb->'jellyfinUsers') = 'array' AND EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(config_data::jsonb->'jellyfinUsers') u
+                 WHERE u->'accounts'->'apiKeys'->>'${field}' IN (${marks})))`;
+    try {
+      const rows = await this.allQuery(query, sqlite ? [...tokenIds, ...tokenIds] : tokenIds);
+      const wanted = new Set(tokenIds);
+      return rows.map((row: any) => {
+        const config = typeof row.config_data === 'string' ? JSON.parse(row.config_data) : row.config_data;
+        const owners: string[] = [];
+        if (wanted.has(config?.apiKeys?.[field])) owners.push('');
+        for (const card of Array.isArray(config?.jellyfinUsers) ? config.jellyfinUsers : []) {
+          if (card?.id && wanted.has(card?.accounts?.apiKeys?.[field])) owners.push(card.id);
+        }
+        return { uuid: row.user_uuid, passwordHash: row.password_hash, config, owners };
+      }).filter((ref: any) => ref.owners.length > 0);
+    } catch (error) {
+      logger.error(`Error finding references to ${field}:`, error);
+      return [];
+    }
+  }
+
   /** A page of configurations, newest first, matched on the id's start or an alias; the flags are read for the page only. */
   async listUsersWithStats(options: { query?: string; limit: number; offset: number }): Promise<{ users: any[]; total: number }> {
     const q = String(options.query || '').trim().toLowerCase();

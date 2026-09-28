@@ -1140,12 +1140,12 @@ async function persistSimklToken(user, accessToken, v2Tokens = null) {
     const userSimklTokens = existingTokens.filter(t => t.user_id.toLowerCase() === user.username.toLowerCase());
     const oldTokenIds = userSimklTokens.map(t => t.id).filter(id => id !== tokenId);
     if (oldTokenIds.length > 0) {
-      const affectedUsers = await database.getUsersByOAuthTokenIds('simklTokenId', oldTokenIds);
-      for (const dbUser of affectedUsers) {
-        dbUser.config.apiKeys.simklTokenId = tokenId;
-        await database.saveUserConfig(dbUser.id, dbUser.password_hash, dbUser.config);
-        configCache.del(dbUser.id);
-        consola.info(`[Simkl OAuth] Updated user ${dbUser.id} config to use new token ${tokenId}`);
+      const { setAccountKey } = require('./lib/accounts');
+      for (const ref of await database.findTokenReferences('simklTokenId', oldTokenIds)) {
+        for (const owner of ref.owners) setAccountKey(ref.config, owner, 'simkl', tokenId);
+        await database.saveUserConfig(ref.uuid, ref.passwordHash, ref.config);
+        configCache.del(ref.uuid);
+        consola.info(`[Simkl OAuth] Updated user ${ref.uuid} config to use new token ${tokenId}`);
       }
     }
   } catch (configError) {
@@ -1531,19 +1531,14 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     if (!config) {
       return res.status(404).json({ error: "User config not found" });
     }
-    
-    // Every configuration on the same Simkl account shares this token.
-    if (config.apiKeys?.simklTokenId) {
-      const tokenId = config.apiKeys.simklTokenId;
-      const sharing = (await database.getUsersByOAuthTokenIds('simklTokenId', [tokenId])).filter(u => u.id !== userUUID);
-      if (!sharing.length) {
-        const held = await database.getOAuthToken(tokenId).catch(() => null);
-        if (held?.refresh_token) revokeSimklGrant(held.refresh_token);
-        await database.deleteOAuthToken(tokenId);
-      }
-      delete config.apiKeys.simklTokenId;
+
+    if (typeof req.body?.profile === 'string' && req.body.profile) {
+      return disconnectCardAccount(res, userUUID, req.body.profile, 'simkl', config);
     }
-    
+
+    const released = config.apiKeys?.simklTokenId || null;
+    if (released) delete config.apiKeys.simklTokenId;
+
     // Remove Simkl user info
     delete config.simklUser;
     delete config.simklWatchTracking;
@@ -1561,7 +1556,12 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     
     // Invalidate config cache
     configCache.del(userUUID);
-    
+
+    if (released) {
+      const { releaseTokenIfUnused } = require('./lib/accountLinks');
+      await releaseTokenIfUnused('simkl', released, revokeSimklGrant);
+    }
+
     // `removed` says exactly what this disconnect took out, so a page holding
     // unsaved edits can apply the same removals instead of adopting the whole
     // saved document and losing them.
@@ -3733,29 +3733,32 @@ addon.post("/anilist/disconnect", async (req, res) => {
     if (!config) {
       return res.status(404).json({ error: "User config not found" });
     }
-    
-    // Delete OAuth token from database if it exists
-    // Token ID is stored in apiKeys.anilistTokenId by the frontend
-    if (config.apiKeys?.anilistTokenId) {
-      await database.deleteOAuthToken(config.apiKeys.anilistTokenId);
-      delete config.apiKeys.anilistTokenId;
+
+    if (typeof req.body?.profile === 'string' && req.body.profile) {
+      return disconnectCardAccount(res, userUUID, req.body.profile, 'anilist', config);
     }
-    
+
+    // Token ID is stored in apiKeys.anilistTokenId by the frontend
+    const released = config.apiKeys?.anilistTokenId || null;
+    if (released) delete config.apiKeys.anilistTokenId;
+
     // Disable AniList watch tracking
     delete config.anilistWatchTracking;
-    
+
     // Get user's password hash to save config
     const user = await database.getUser(userUUID);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    
+
     // Save updated config directly to database
     await database.saveUserConfig(userUUID, user.password_hash, config);
-    
+
     // Invalidate config cache
     configCache.del(userUUID);
-    
+
+    if (released) await require('./lib/accountLinks').releaseTokenIfUnused('anilist', released);
+
     // `removed` says exactly what this disconnect took out, so a page holding
     // unsaved edits can apply the same removals instead of adopting the whole
     // saved document and losing them.
@@ -3991,10 +3994,12 @@ addon.post("/mal/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (config.apiKeys?.malTokenId) {
-      await database.deleteOAuthToken(config.apiKeys.malTokenId);
-      delete config.apiKeys.malTokenId;
+    if (typeof req.body?.profile === 'string' && req.body.profile) {
+      return disconnectCardAccount(res, userUUID, req.body.profile, 'mal', config);
     }
+
+    const released = config.apiKeys?.malTokenId || null;
+    if (released) delete config.apiKeys.malTokenId;
 
     delete config.malWatchTracking;
 
@@ -4005,6 +4010,8 @@ addon.post("/mal/disconnect", async (req, res) => {
 
     await database.saveUserConfig(userUUID, user.password_hash, config);
     configCache.del(userUUID);
+
+    if (released) await require('./lib/accountLinks').releaseTokenIfUnused('mal', released);
 
     // `removed` says exactly what this disconnect took out, so a page holding
     // unsaved edits can apply the same removals instead of adopting the whole
@@ -4190,6 +4197,19 @@ addon.get("/api/publicmetadb/picks", async (req, res) => {
   }
 });
 
+async function disconnectCardAccount(res, userUUID, profile, service, config) {
+  const { detachCardAccount } = require('./lib/accounts');
+  const { releaseTokenIfUnused } = require('./lib/accountLinks');
+  const removed = detachCardAccount(config, profile, service);
+  if (!removed) return res.status(404).json({ error: "No such user, or it has no account for this service" });
+  const user = await database.getUser(userUUID);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  await database.saveUserConfig(userUUID, user.password_hash, config);
+  configCache.del(userUUID);
+  if (removed.tokenId) await releaseTokenIfUnused(service, removed.tokenId, service === 'simkl' ? revokeSimklGrant : undefined);
+  return res.json({ success: true, removed: { profile, service, apiKeys: removed.apiKeys, fields: removed.fields } });
+}
+
 // POST /api/integrations/credential - Point a configuration at a credential the OAuth
 // callback already stored. Persisting here rather than waiting for Save is what stops a
 // connection being lost by navigating away, and stops the token row being stranded with
@@ -4205,7 +4225,7 @@ const INTEGRATION_CREDENTIAL_FIELDS = {
 
 addon.post("/api/integrations/credential", async (req, res) => {
   try {
-    const { userUUID, password, provider, tokenId } = req.body || {};
+    const { userUUID, password, provider, tokenId, profile } = req.body || {};
     const mapping = INTEGRATION_CREDENTIAL_FIELDS[provider];
     if (!userUUID || !mapping || !tokenId) {
       return res.status(400).json({ error: "userUUID, a known provider and tokenId are required" });
@@ -4220,7 +4240,18 @@ addon.post("/api/integrations/credential", async (req, res) => {
       return res.status(404).json({ error: `No ${provider} credential with that id` });
     }
     const config = access.config;
-    config.apiKeys = { ...(config.apiKeys || {}), [mapping.field]: tokenId };
+    if (profile) {
+      if (!['simkl', 'anilist', 'mal'].includes(provider)) {
+        return res.status(400).json({ error: "A Jellyfin user can hold only Simkl, AniList and MyAnimeList sign-ins" });
+      }
+      const card = (Array.isArray(config.jellyfinUsers) ? config.jellyfinUsers : []).find((u) => u?.id === profile);
+      if (!card) return res.status(404).json({ error: "No such user yet; it is stored with the next save" });
+      const { ACCOUNT_SERVICES, setAccountKey } = require('./lib/accounts');
+      setAccountKey(config, profile, provider, tokenId);
+      if (card.accounts[ACCOUNT_SERVICES[provider].master] === undefined) card.accounts[ACCOUNT_SERVICES[provider].master] = true;
+    } else {
+      config.apiKeys = { ...(config.apiKeys || {}), [mapping.field]: tokenId };
+    }
     await database.saveUserConfig(userUUID, access.passwordHash, config);
     configCache.del(userUUID);
     res.json({ success: true, field: mapping.field, tokenId });

@@ -96,3 +96,40 @@ export function viewerConfigFor(config: any, owner: unknown, catalogId: string):
   const service = slotServiceOf(entry);
   return service ? trackerConfig(viewer, service) : config;
 }
+
+function cardOf(config: any, owner: string): any {
+  return (Array.isArray(config?.jellyfinUsers) ? config.jellyfinUsers : []).find((c: any) => c?.id === owner);
+}
+
+export function setAccountKey(config: any, owner: string, service: AccountService, value: string): void {
+  const { key } = ACCOUNT_SERVICES[service];
+  if (!owner) {
+    config.apiKeys = { ...(config.apiKeys ?? {}), [key]: value };
+    return;
+  }
+  const card = cardOf(config, owner);
+  if (!card) return;
+  card.accounts = { ...(card.accounts ?? {}), apiKeys: { ...(card.accounts?.apiKeys ?? {}), [key]: value } };
+}
+
+export function detachCardAccount(config: any, owner: string, service: AccountService): { tokenId?: string; apiKeys: string[]; fields: string[] } | null {
+  const card = cardOf(config, owner);
+  if (!card?.accounts?.apiKeys?.[ACCOUNT_SERVICES[service].key]) return null;
+  const { key, master } = ACCOUNT_SERVICES[service];
+  const accounts = {
+    ...card.accounts,
+    apiKeys: { ...card.accounts.apiKeys },
+    watchTracking: { ...(card.accounts.watchTracking ?? {}) },
+    labels: { ...(card.accounts.labels ?? {}) },
+  };
+  const tokenId = accounts.apiKeys[key];
+  delete accounts.apiKeys[key];
+  delete accounts[master];
+  delete accounts.watchTracking[service];
+  delete accounts.labels[service];
+  const fields = [master];
+  if (service === 'simkl') { delete accounts.simklUser; fields.push('simklUser'); }
+  if (service === 'publicmetadb') { delete accounts.publicmetadbWatchlist; fields.push('publicmetadbWatchlist'); }
+  card.accounts = accounts;
+  return { tokenId, apiKeys: [key], fields };
+}
