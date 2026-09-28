@@ -7,8 +7,22 @@ import anilist from '../lib/anilist';
 import database from '../lib/database';
 // @ts-ignore
 import { consola } from 'consola';
+import { slotServiceOf } from '../lib/accounts';
 
 const logger = consola.withTag('anilist-utils');
+
+/** Whose list a catalog reads; on a Jellyfin user's own slot, only the user behind their token. */
+export async function anilistListUsername(config: any, catalog: { id?: string; metadata?: any }): Promise<string | undefined> {
+  if (!config?.jellyfinAccounts || slotServiceOf(catalog) !== 'anilist') return catalog?.metadata?.username;
+  const tokenId = config.apiKeys?.anilistTokenId;
+  if (!tokenId) return undefined;
+  try {
+    const row = await database.getOAuthToken(tokenId);
+    return row?.provider === 'anilist' && row.user_id ? String(row.user_id) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function getAnilistAccessToken(config: any): Promise<string | undefined> {
   const tokenId = config?.apiKeys?.anilistTokenId;

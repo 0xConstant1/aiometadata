@@ -36,7 +36,7 @@ import redis from './redisClient.js';
 const logger = consola.withTag('Catalog');
 import { cacheWrapMetaSmart } from './getCache.js';
 // @ts-ignore
-import { getAnilistAccessToken } from '../utils/anilistUtils';
+import { anilistListUsername, getAnilistAccessToken } from '../utils/anilistUtils';
 import { anilistRequiresAuth } from '../utils/anilistAccess';
 import { UserConfig } from '../types/index.js';
 
@@ -2413,7 +2413,7 @@ async function getAniListCatalog(
     
     // Get the catalog config to retrieve username, list name and custom TTL
     const catalogConfig = config.catalogs?.find(c => c.id === catalogId);
-    const username = catalogConfig?.metadata?.username;
+    const username = await anilistListUsername(config, catalogConfig ?? { id: catalogId });
     
     // Prefer explicit listName metadata; fall back to id parsing to support older configs
     const idWithoutPrefix = catalogId.replace('anilist.', '');
@@ -2421,7 +2421,7 @@ async function getAniListCatalog(
       || (idWithoutPrefix.includes('.') ? idWithoutPrefix.split('.').slice(1).join('.') : idWithoutPrefix);
     
     if (!username) {
-      logger.error(`[AniList] No username found in catalog config for: ${catalogId}`);
+      logger.error(`[AniList] No AniList user resolved for: ${catalogId}`);
       return [];
     }
     if (!listName) {
