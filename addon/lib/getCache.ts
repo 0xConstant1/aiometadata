@@ -2573,13 +2573,13 @@ async function clearCache(key: string): Promise<number | undefined> {
   }
 }
 
-function generateAniListCatalogCacheKey(username: string, listName: string, page: number, sort: string | null = null): string {
+function generateAniListCatalogCacheKey(username: string, listName: string, page: number, sort: string | null = null, scope: string = ''): string {
   const sortSuffix = sort ? `:${sort}` : '';
-  return `anilist-catalog:${username}:${listName}:page${page}${sortSuffix}`;
+  return `anilist-catalog:${username}:${listName}:page${page}${sortSuffix}${scope ? `:${scope}` : ''}`;
 }
 
-async function cacheWrapAniListCatalog(username: string, listName: string, page: number, method: () => Promise<any>, customTTL: number | null = null, options: any = {}, sort: string | null = null): Promise<any> {
-  const key = generateAniListCatalogCacheKey(username, listName, page, sort);
+async function cacheWrapAniListCatalog(username: string, listName: string, page: number, method: () => Promise<any>, customTTL: number | null = null, options: any = {}, sort: string | null = null, scope: string = ''): Promise<any> {
+  const key = generateAniListCatalogCacheKey(username, listName, page, sort, scope);
   const ttl = customTTL !== null ? customTTL : ANILIST_CATALOG_TTL();
 
   cacheLogger.debug(`[AniList] Cache key: ${key}, TTL: ${ttl}s`);

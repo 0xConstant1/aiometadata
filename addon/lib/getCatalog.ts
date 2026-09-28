@@ -11,6 +11,7 @@ import { getFlixPatrolMetas } from "../utils/flixpatrolUtils.js";
 import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType } from "../utils/publicmetadbUtils.js";
 import { mapWithLimit } from "../utils/concurrency.js";
 const anilist = require('./anilist');
+import { createHash } from 'crypto';
 import * as jikan from "./mal.js"
 import * as Utils from '../utils/parseProps.js';
 import CATALOG_TYPES from "../static/catalog-types.json";
@@ -2442,6 +2443,11 @@ async function getAniListCatalog(
     logger.debug(`[AniList] Using sort: ${sortBase}, direction: ${sortDirection}, combined: ${sort}`);
     
     const accessToken = await getAnilistAccessToken(config);
+    // A page fetched with a token may include private entries, so it must not
+    // be shared with configs that name the same username without one.
+    const cacheScope = accessToken && config.apiKeys?.anilistTokenId
+      ? createHash('sha256').update(String(config.apiKeys.anilistTokenId)).digest('hex').slice(0, 12)
+      : '';
 
     // Fetch list items from AniList API with caching
     const response = await cacheWrapAniListCatalog(
@@ -2453,7 +2459,8 @@ async function getAniListCatalog(
       // The page is shared, so a reader without a token must not cache its
       // rejection over a copy a token holder could have fetched.
       { enableErrorCaching: anilistRequiresAuth() ? !!accessToken : true },
-      sort
+      sort,
+      cacheScope
     );
     
     // Handle cached error responses
