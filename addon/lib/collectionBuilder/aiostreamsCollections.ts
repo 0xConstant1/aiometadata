@@ -16,7 +16,7 @@ const SHAPES: Record<string, string> = { LANDSCAPE: 'landscape', SQUARE: 'square
 
 /** A folder is only reachable through the meta resource. */
 export function collectionsServed(config: any): boolean {
-  return !config?.catalogModeOnly;
+  return !config?.catalogModeOnly && config?.collectionCatalogs !== false;
 }
 
 export function isCollectionCatalogId(id: unknown): boolean {

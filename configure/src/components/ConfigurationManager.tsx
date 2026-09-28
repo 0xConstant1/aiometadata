@@ -374,6 +374,30 @@ export function ConfigurationManager() {
                 </Callout>
               ) : null}
             />
+
+            <SettingRow
+              htmlFor="collection-catalogs"
+              label="Collections as Catalogs"
+              description="Adds the collections you build to the manifest, for apps that show collections, such as AIOStreams. Apps that don't list them among their catalogs, for example under Discover. Jellyfin shows them as box sets either way."
+              control={
+                <Switch
+                  id="collection-catalogs"
+                  checked={!config.catalogModeOnly && config.collectionCatalogs !== false}
+                  disabled={config.catalogModeOnly}
+                  onCheckedChange={(checked) => {
+                    setConfig(prev => ({
+                      ...prev,
+                      collectionCatalogs: checked
+                    }));
+                  }}
+                />
+              }
+              note={config.catalogModeOnly ? (
+                <Callout variant="info">
+                  Catalog Mode Only already leaves collections out.
+                </Callout>
+              ) : null}
+            />
           </div>
         </CardContent>
       </Card>

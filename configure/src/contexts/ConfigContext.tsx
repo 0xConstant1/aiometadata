@@ -257,12 +257,20 @@ function getManifestFingerprint(config: AppConfig): string {
   }));
 
   const subtitlesResource = hasAnyWatchTrackingEnabled(config);
+  const collectionCatalogs = !config.catalogModeOnly && config.collectionCatalogs !== false;
+  const collections = collectionCatalogs
+    ? (config.collections || [])
+        .filter((entry) => entry.kind === 'collection')
+        .map((entry) => ({ id: entry.id, title: entry.title }))
+    : [];
 
   return JSON.stringify({
     catalogs: catalogFingerprint,
     addonName: config.addonName,
     catalogModeOnly: config.catalogModeOnly,
     hideStremioCatalogs: config.hideStremioCatalogs,
+    collectionCatalogs,
+    collections,
     showRateMeButton: config.showRateMeButton,
     subtitlesResource,
     showPrefix: config.showPrefix,
