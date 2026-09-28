@@ -1141,12 +1141,12 @@ async function persistSimklToken(user, accessToken, v2Tokens = null) {
     const userSimklTokens = existingTokens.filter(t => t.user_id.toLowerCase() === user.username.toLowerCase());
     const oldTokenIds = userSimklTokens.map(t => t.id).filter(id => id !== tokenId);
     if (oldTokenIds.length > 0) {
-      const affectedUsers = await database.getUsersByOAuthTokenIds('simklTokenId', oldTokenIds);
-      for (const dbUser of affectedUsers) {
-        dbUser.config.apiKeys.simklTokenId = tokenId;
-        await database.saveUserConfig(dbUser.id, dbUser.password_hash, dbUser.config);
-        configCache.del(dbUser.id);
-        consola.info(`[Simkl OAuth] Updated user ${dbUser.id} config to use new token ${tokenId}`);
+      const { setAccountKey } = require('./lib/accounts');
+      for (const ref of await database.findTokenReferences('simklTokenId', oldTokenIds)) {
+        for (const owner of ref.owners) setAccountKey(ref.config, owner, 'simkl', tokenId);
+        await database.saveUserConfig(ref.uuid, ref.passwordHash, ref.config);
+        configCache.del(ref.uuid);
+        consola.info(`[Simkl OAuth] Updated user ${ref.uuid} config to use new token ${tokenId}`);
       }
     }
   } catch (configError) {
@@ -1532,19 +1532,12 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     if (!config) {
       return res.status(404).json({ error: "User config not found" });
     }
-    
-    // Every configuration on the same Simkl account shares this token.
-    if (config.apiKeys?.simklTokenId) {
-      const tokenId = config.apiKeys.simklTokenId;
-      const sharing = (await database.getUsersByOAuthTokenIds('simklTokenId', [tokenId])).filter(u => u.id !== userUUID);
-      if (!sharing.length) {
-        const held = await database.getOAuthToken(tokenId).catch(() => null);
-        if (held?.refresh_token) revokeSimklGrant(held.refresh_token);
-        await database.deleteOAuthToken(tokenId);
-      }
-      delete config.apiKeys.simklTokenId;
-    }
-    
+
+    if (await disconnectCardAccount(req, res, userUUID, 'simkl', config)) return;
+
+    const released = config.apiKeys?.simklTokenId || null;
+    if (released) delete config.apiKeys.simklTokenId;
+
     // Remove Simkl user info
     delete config.simklUser;
     delete config.simklWatchTracking;
@@ -1562,7 +1555,12 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     
     // Invalidate config cache
     configCache.del(userUUID);
-    
+
+    if (released) {
+      const { releaseTokenIfUnused } = require('./lib/accountLinks');
+      await releaseTokenIfUnused('simkl', released, revokeSimklGrant);
+    }
+
     // `removed` says exactly what this disconnect took out, so a page holding
     // unsaved edits can apply the same removals instead of adopting the whole
     // saved document and losing them.
@@ -3734,29 +3732,30 @@ addon.post("/anilist/disconnect", async (req, res) => {
     if (!config) {
       return res.status(404).json({ error: "User config not found" });
     }
-    
-    // Delete OAuth token from database if it exists
+
+    if (await disconnectCardAccount(req, res, userUUID, 'anilist', config)) return;
+
     // Token ID is stored in apiKeys.anilistTokenId by the frontend
-    if (config.apiKeys?.anilistTokenId) {
-      await database.deleteOAuthToken(config.apiKeys.anilistTokenId);
-      delete config.apiKeys.anilistTokenId;
-    }
-    
+    const released = config.apiKeys?.anilistTokenId || null;
+    if (released) delete config.apiKeys.anilistTokenId;
+
     // Disable AniList watch tracking
     delete config.anilistWatchTracking;
-    
+
     // Get user's password hash to save config
     const user = await database.getUser(userUUID);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    
+
     // Save updated config directly to database
     await database.saveUserConfig(userUUID, user.password_hash, config);
-    
+
     // Invalidate config cache
     configCache.del(userUUID);
-    
+
+    if (released) await require('./lib/accountLinks').releaseTokenIfUnused('anilist', released);
+
     // `removed` says exactly what this disconnect took out, so a page holding
     // unsaved edits can apply the same removals instead of adopting the whole
     // saved document and losing them.
@@ -3992,10 +3991,10 @@ addon.post("/mal/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (config.apiKeys?.malTokenId) {
-      await database.deleteOAuthToken(config.apiKeys.malTokenId);
-      delete config.apiKeys.malTokenId;
-    }
+    if (await disconnectCardAccount(req, res, userUUID, 'mal', config)) return;
+
+    const released = config.apiKeys?.malTokenId || null;
+    if (released) delete config.apiKeys.malTokenId;
 
     delete config.malWatchTracking;
 
@@ -4006,6 +4005,8 @@ addon.post("/mal/disconnect", async (req, res) => {
 
     await database.saveUserConfig(userUUID, user.password_hash, config);
     configCache.del(userUUID);
+
+    if (released) await require('./lib/accountLinks').releaseTokenIfUnused('mal', released);
 
     // `removed` says exactly what this disconnect took out, so a page holding
     // unsaved edits can apply the same removals instead of adopting the whole
@@ -4191,6 +4192,29 @@ addon.get("/api/publicmetadb/picks", async (req, res) => {
   }
 });
 
+/** Handles a disconnect naming a Jellyfin user's card; false when it is for your own account. */
+async function disconnectCardAccount(req, res, userUUID, service, config) {
+  const profile = req.body?.profile;
+  if (typeof profile !== 'string' || !profile) return false;
+  const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+  if (!access || !access.passwordHash) {
+    res.status(401).json({ error: "Invalid UUID or password" });
+    return true;
+  }
+  const { detachCardAccount } = require('./lib/accounts');
+  const { releaseTokenIfUnused } = require('./lib/accountLinks');
+  const removed = detachCardAccount(config, profile, service);
+  if (!removed) {
+    res.status(404).json({ error: "No such user, or it has no account for this service" });
+    return true;
+  }
+  await database.saveUserConfig(userUUID, access.passwordHash, config);
+  configCache.del(userUUID);
+  if (removed.tokenId) await releaseTokenIfUnused(service, removed.tokenId, service === 'simkl' ? revokeSimklGrant : undefined);
+  res.json({ success: true, removed: { profile, service, apiKeys: removed.apiKeys, fields: removed.fields } });
+  return true;
+}
+
 // POST /api/integrations/credential - Point a configuration at a credential the OAuth
 // callback already stored. Persisting here rather than waiting for Save is what stops a
 // connection being lost by navigating away, and stops the token row being stranded with
@@ -4206,7 +4230,7 @@ const INTEGRATION_CREDENTIAL_FIELDS = {
 
 addon.post("/api/integrations/credential", async (req, res) => {
   try {
-    const { userUUID, password, provider, tokenId } = req.body || {};
+    const { userUUID, password, provider, tokenId, profile } = req.body || {};
     const mapping = INTEGRATION_CREDENTIAL_FIELDS[provider];
     if (!userUUID || !mapping || !tokenId) {
       return res.status(400).json({ error: "userUUID, a known provider and tokenId are required" });
@@ -4221,9 +4245,27 @@ addon.post("/api/integrations/credential", async (req, res) => {
       return res.status(404).json({ error: `No ${provider} credential with that id` });
     }
     const config = access.config;
-    config.apiKeys = { ...(config.apiKeys || {}), [mapping.field]: tokenId };
+    const before = JSON.parse(JSON.stringify(config));
+    let replaced = null;
+    if (profile) {
+      if (!['simkl', 'anilist', 'mal'].includes(provider)) {
+        return res.status(400).json({ error: "A Jellyfin user can hold only Simkl, AniList and MyAnimeList sign-ins" });
+      }
+      const card = (Array.isArray(config.jellyfinUsers) ? config.jellyfinUsers : []).find((u) => u?.id === profile);
+      if (!card) return res.status(404).json({ error: "No such user yet; it is stored with the next save" });
+      if (card.trackers === true) return res.status(400).json({ error: "This user is you; connect accounts on your own card" });
+      const { ACCOUNT_SERVICES, setAccountKey } = require('./lib/accounts');
+      const previous = card.accounts?.apiKeys?.[ACCOUNT_SERVICES[provider].key];
+      if (previous && previous !== tokenId) replaced = previous;
+      setAccountKey(config, profile, provider, tokenId);
+      if (card.accounts[ACCOUNT_SERVICES[provider].master] === undefined) card.accounts[ACCOUNT_SERVICES[provider].master] = true;
+    } else {
+      config.apiKeys = { ...(config.apiKeys || {}), [mapping.field]: tokenId };
+    }
     await database.saveUserConfig(userUUID, access.passwordHash, config);
     configCache.del(userUUID);
+    if (replaced) await require('./lib/accountLinks').releaseTokenIfUnused(provider, replaced, provider === 'simkl' ? revokeSimklGrant : undefined);
+    require('./lib/jellyfin/watched').warmChangedSources(userUUID, before, config);
     res.json({ success: true, field: mapping.field, tokenId });
   } catch (error) {
     consola.error(`[Integrations] Failed to store credential: ${error.message}`);
@@ -4798,7 +4840,9 @@ const catalogRoute = async function (req, res) {
   if (!storedConfig) {
     return res.status(404).send({ error: "User configuration not found" });
   }
-  const config = applyRatingOverrides(storedConfig, req, userUUID);
+  const { viewerConfigFor } = require('./lib/accounts');
+  // Set only by the Jellyfin server's in-process reads, never from the request.
+  const config = applyRatingOverrides(viewerConfigFor(storedConfig, req.params.accountOwner, id), req, userUUID);
   config.userUUID = userUUID;
 
   {
@@ -5283,13 +5327,13 @@ const catalogRoute = async function (req, res) {
       const { genre: genreName } = extraArgs;
       const skipValue = extraArgs.skip !== undefined ? parseInt(extraArgs.skip) : 0;
       const result = await getCatalog(actualType, language, catalogPage, cleanId, genreName, config, userUUID, false, skipValue);
-      responseData = { metas: result.metas || [] };
+      responseData = { metas: result.metas || [], ...(req.params.forJellyfin === '1' ? { served: true } : {}) };
       filtersAlreadyApplied = true;
       } else if (cleanId.startsWith('merged.')) {
       const { genre: genreName } = extraArgs;
       const skipValue = extraArgs.skip !== undefined ? parseInt(extraArgs.skip) : 0;
       const result = await getCatalog(actualType, language, catalogPage, cleanId, genreName, config, userUUID, false, skipValue);
-      responseData = { metas: result.metas || [] };
+      responseData = { metas: result.metas || [], ...(req.params.forJellyfin === '1' ? { served: true } : {}) };
       filtersAlreadyApplied = true;
       } else {
       const { genre: genreName, type_filter } = extraArgs;
@@ -5365,8 +5409,13 @@ const catalogRoute = async function (req, res) {
     const readPage = (page, skipOverride) =>
       cacheWrapper(userUUID, keyForPage(page), () => runCatalogPage(page, skipOverride), cacheOptions);
 
-    if (catalogFiltersActive({ config, catalogConfig, cleanId })) {
-      const key = cursorKey(userUUID, cleanId, actualType, genreName);
+    if (catalogFiltersActive({ config, catalogConfig, cleanId }) && req.params.forJellyfin === '1') {
+      const raw = (await readPage(catalogPage, legacySkip))?.metas || [];
+      responseData = { metas: await applyCatalogFilters(raw, { type: actualType, config, catalogConfig, cleanId }), rawLength: raw.length };
+      filtersAlreadyApplied = true;
+    } else if (catalogFiltersActive({ config, catalogConfig, cleanId })) {
+      const { accountOwner } = require('./lib/accounts');
+      const key = cursorKey(userUUID, cleanId, actualType, genreName, accountOwner(config));
       const skipValue = legacySkip || 0;
       // Deduped here rather than after, so what a page serves, and so where the
       // next one starts, is the same whether it is filled for this request or on
@@ -5521,6 +5570,13 @@ const catalogRoute = async function (req, res) {
           }
         }
       }
+    }
+
+    if (req.params.forJellyfin === '1' && Array.isArray(responseData?.metas)) responseData.pageSize = catalogPageSize;
+
+    if (config.trailerProvider === 'addon' && req.params.forJellyfin !== '1' && Array.isArray(responseData?.metas)) {
+      const { applyTrailerAddonWithin } = require('./lib/trailerProjection');
+      await applyTrailerAddonWithin(responseData.metas, config, envInt('TRAILER_ADDON_CATALOG_WAIT_MS', 1500, 0));
     }
 
     const isSearchCatalog = cleanId === 'search' || cleanId === 'people_search' || cleanId === 'gemini.search';
@@ -5784,9 +5840,18 @@ addon.post(["/stremio/:userUUID/watch_state/push/:type/:id.json", "/stremio/:use
     return res.status(404).json({ error: "Playback reporting is not enabled" });
   }
 
+  const { configForViewer } = require('./lib/jellyfin/profiles');
+  const viewer = configForViewer(config, userUUID, req.body?.viewer);
+  if (!viewer) {
+    consola.info(`[Playback] Unknown viewer "${String(req.body?.viewer).slice(0, 64)}" for ${userUUID}, dropping ${type}/${id}`);
+    return res.status(404).json({ error: "Unknown viewer" });
+  }
+
   try {
     const { handlePlaybackReport } = require('./lib/playbackHandler');
-    const outcome = await handlePlaybackReport(type, id, req.body, config, userUUID);
+    const { runAsAccountOwner } = require('./lib/jellyfin/viewer');
+    const { accountOwner } = require('./lib/accounts');
+    const outcome = await runAsAccountOwner(accountOwner(viewer), () => handlePlaybackReport(type, id, req.body, viewer, userUUID));
     if (outcome.status === 204) {
       return res.status(204).end();
     }
@@ -5812,10 +5877,19 @@ addon.get("/stremio/:userUUID/watch_state/pull.json", async function (req, res) 
     return res.status(404).json({ error: "Watch state is not enabled" });
   }
 
+  const { configForViewer } = require('./lib/jellyfin/profiles');
+  const viewer = configForViewer(config, userUUID, req.query.viewer);
+  if (!viewer) {
+    consola.info(`[Watch State] Unknown viewer "${String(req.query.viewer).slice(0, 64)}" for ${userUUID}`);
+    return res.status(404).json({ error: "Unknown viewer" });
+  }
+
   try {
     const { buildWatchStatePull } = require('./lib/watchState');
+    const { runAsAccountOwner } = require('./lib/jellyfin/viewer');
+    const { accountOwner } = require('./lib/accounts');
     const since = typeof req.query.since === 'string' && req.query.since ? req.query.since : null;
-    const payload = await buildWatchStatePull(userUUID, config, since);
+    const payload = await runAsAccountOwner(accountOwner(viewer), () => buildWatchStatePull(userUUID, viewer, since));
     res.setHeader('Cache-Control', 'no-store');
     return res.json(payload);
   } catch (error) {

@@ -1,3 +1,5 @@
+import { ACCOUNT_SERVICES, credentialOf, trackerConfig } from '../accounts';
+
 /** Services that store a playback position or a watch history we can read. */
 export const CAPABLE = ['mdblist', 'simkl', 'publicmetadb', 'anilist', 'mal'] as const;
 
@@ -6,19 +8,7 @@ export type Capable = (typeof CAPABLE)[number];
 const POSITIONAL: readonly Capable[] = ['mdblist', 'simkl', 'publicmetadb'];
 
 export function credentialFor(config: any, service: Capable): string | undefined {
-  const keys = config?.apiKeys ?? {};
-  switch (service) {
-    case 'mdblist':
-      return config?.mdblistWatchTracking !== false ? keys.mdblist : undefined;
-    case 'simkl':
-      return config?.simklWatchTracking !== false ? keys.simklTokenId : undefined;
-    case 'publicmetadb':
-      return config?.publicmetadbWatchTracking !== false ? keys.publicmetadb : undefined;
-    case 'anilist':
-      return config?.anilistWatchTracking !== false ? keys.anilistTokenId : undefined;
-    case 'mal':
-      return config?.malWatchTracking !== false ? keys.malTokenId : undefined;
-  }
+  return trackerConfig(config, service)?.[ACCOUNT_SERVICES[service].master] !== false ? credentialOf(config, service) : undefined;
 }
 
 /**

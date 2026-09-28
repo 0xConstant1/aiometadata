@@ -114,6 +114,24 @@ class ConfigApi {
     return { cleaned: false };
   }
 
+  async sanitizeCardAccounts(config) {
+    const { ACCOUNT_SERVICES } = require('./accounts');
+    for (const card of Array.isArray(config?.jellyfinUsers) ? config.jellyfinUsers : []) {
+      const keys = card?.accounts?.apiKeys;
+      if (!keys) continue;
+      for (const provider of ['simkl', 'anilist', 'mal']) {
+        const field = ACCOUNT_SERVICES[provider].key;
+        if (!keys[field]) continue;
+        const token = await database.getOAuthToken(keys[field]).catch(() => null);
+        if (token && token.provider === provider && token.access_token) continue;
+        logger.warn(`[Config Protection] Removing an unknown ${provider} token from Jellyfin user ${card.id}`);
+        delete keys[field];
+        if (card.accounts.labels) delete card.accounts.labels[provider];
+        if (provider === 'simkl') delete card.accounts.simklUser;
+      }
+    }
+  }
+
   // Validate required API keys
   validateRequiredKeys(config) {
     const requiredKeys = ['tmdb'];
@@ -325,6 +343,7 @@ class ConfigApi {
 
       await this.sanitizeTraktToken(config);
       await this.sanitizeSimklToken(config);
+      await this.sanitizeCardAccounts(config);
 
       // Use existing UUID if provided, otherwise generate a new one
       const userUUID = existingUUID || database.generateUserUUID();
@@ -359,6 +378,12 @@ class ConfigApi {
         await configCache.set(userUUID, persistedConfig);
       } else {
         await configCache.del(userUUID);
+      }
+
+      try {
+        require('./jellyfin/watched').warmChangedSources(userUUID, oldConfig, persistedConfig || configWithTimestamp);
+      } catch (error) {
+        logger.debug(`Could not start reading new tracker accounts for ${userUUID}: ${error.message}`);
       }
 
       require('./collectionImageCacheSync')
@@ -724,6 +749,7 @@ class ConfigApi {
 
       await this.sanitizeTraktToken(config);
       await this.sanitizeSimklToken(config);
+      await this.sanitizeCardAccounts(config);
 
       // Verify existing config exists
       let passwordHash;
@@ -769,6 +795,12 @@ class ConfigApi {
         await configCache.set(userUUID, persistedConfig);
       } else {
         await configCache.del(userUUID);
+      }
+
+      try {
+        require('./jellyfin/watched').warmChangedSources(userUUID, oldConfig, persistedConfig || configWithTimestamp);
+      } catch (error) {
+        logger.debug(`Could not start reading new tracker accounts for ${userUUID}: ${error.message}`);
       }
 
       require('./collectionImageCacheSync')

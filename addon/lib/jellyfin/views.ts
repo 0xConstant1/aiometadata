@@ -6,6 +6,7 @@ import { encodeJellyfinId } from './ids';
 import { collectionFolder } from './dto';
 import { profileTags } from './profiles';
 import { isCollectionCatalogId } from '../collectionBuilder/aiostreamsCollections';
+import { accountOwner, servedAccountsKey } from '../accounts';
 
 const { getManifest } = require('../getManifest');
 
@@ -47,7 +48,7 @@ export function collectionTypeFor(type: string): string | null {
 export async function getCatalogs(userUUID: string, config: any): Promise<CatalogRef[]> {
   const tags = profileTags(config);
   const shape = createHash('md5').update(JSON.stringify(config?.catalogs ?? null)).digest('hex').slice(0, 12);
-  const key = `${userUUID}:${tags.map((t) => t.toLowerCase()).sort().join(',')}:${shape}`;
+  const key = `${userUUID}:${tags.map((t) => t.toLowerCase()).sort().join(',')}:${shape}:${accountOwner(config)}:${servedAccountsKey(config)}`;
   const cached = catalogCache.get(key);
   if (cached) return cached;
 

@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating, resolveInstallFilters } from '../../utils/ageRating';
 import { normaliseJellyfinId } from './idsCodec';
+import { ACCOUNT_SERVICES, ACCOUNT_SERVICE_LIST, AccountService, accountOwner, credentialOf, trackerConfig, withAccountOwner } from '../accounts';
 
 /** The main user is the configuration itself, under the id it always had. */
 export interface Profile {
@@ -12,6 +13,7 @@ export interface Profile {
   avatar: string | null;
   /** Profile tags this user is made of; none means every catalog. */
   tags: string[];
+  handoffNames: string[];
   /** Whether this user is the same person as the account: its history and trackers. */
   sharesHistory: boolean;
   /** Undefined follows the main user. */
@@ -57,6 +59,16 @@ function knownTags(config: any, wanted: unknown): string[] {
   return out;
 }
 
+function namesOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const raw of value) {
+    const name = typeof raw === 'string' ? raw.trim() : '';
+    if (name && !out.some((n) => n.toLowerCase() === name.toLowerCase())) out.push(name);
+  }
+  return out;
+}
+
 export function listProfiles(config: any, userUUID: string): Profile[] {
   const profiles: Profile[] = [{
     id: null,
@@ -64,6 +76,7 @@ export function listProfiles(config: any, userUUID: string): Profile[] {
     userId: profileUserId(userUUID, null),
     avatar: avatarOf(config?.jellyfinUserAvatar),
     tags: knownTags(config, config?.jellyfinUserTags),
+    handoffNames: namesOf(config?.jellyfinUserHandoffNames),
     sharesHistory: true,
   }];
   const seen = new Set<string>();
@@ -79,6 +92,7 @@ export function listProfiles(config: any, userUUID: string): Profile[] {
       userId: profileUserId(userUUID, id),
       avatar: avatarOf(user.avatar),
       tags: knownTags(config, user.tags),
+      handoffNames: namesOf(user.handoffNames),
       sharesHistory: user.trackers === true,
       trackerSource: typeof user.trackerSource === 'string' ? user.trackerSource : undefined,
       skipSource: typeof user.skipSource === 'string' ? user.skipSource : undefined,
@@ -108,21 +122,53 @@ export function profileByUserId(config: any, userUUID: string, userId: unknown):
   return listProfiles(config, userUUID).find((p) => p.userId === wanted) ?? null;
 }
 
+/** A service is held only while it is connected and its own master switch is on. */
+function isHeld(held: any, service: AccountService): boolean {
+  if (!ACCOUNT_SERVICE_LIST.includes(service)) return false;
+  if (!credentialOf(held, service)) return false;
+  return trackerConfig(held, service)?.[ACCOUNT_SERVICES[service].master] !== false;
+}
+
+/** A PublicMetaDB watchlist pick also needs a chosen list; nothing else does. */
+function isHeldForWatchlist(held: any, service: AccountService): boolean {
+  if (!isHeld(held, service)) return false;
+  return service !== 'publicmetadb' || Boolean(held.jellyfinAccounts?.publicmetadbWatchlist);
+}
+
+/** A holder's tracker pick, falling back to 'auto' once it names a service the holder doesn't hold. */
+function heldTrackerSource(held: any, trackerSource: string): string {
+  if (trackerSource === 'auto' || trackerSource === 'off') return trackerSource;
+  return isHeld(held, trackerSource as AccountService) ? trackerSource : 'auto';
+}
+
+/** A holder's watchlist picks, dropping any whose service it doesn't hold; undefined once none are left. */
+function heldWatchlistServices(held: any, watchlistServices: string[]): string[] | undefined {
+  if (watchlistServices.includes('none')) return watchlistServices;
+  const kept = watchlistServices.filter((token) => isHeldForWatchlist(held, token.split(':')[0] as AccountService));
+  return kept.length ? kept : undefined;
+}
+
 /** The same catalogs and cap an install URL naming this user's tags would get. */
 export function scopeConfigToProfile(config: any, userUUID: string, id: string | null): any {
   const profile = profileById(config, userUUID, id);
   if (!profile.id && !profile.tags.length) return config;
 
+  const held = profile.id ? withAccountOwner(config, profile.id) : config;
+  const owns = held !== config;
   // The main user keeps its own history and trackers whatever tags it picks.
   const scoped = profile.id
     ? {
-        ...config,
+        ...held,
         jellyfinProfileId: profile.id,
         jellyfinProfileTags: profile.tags,
         jellyfinProfileShares: profile.sharesHistory,
-        ...(profile.trackerSource ? { jellyfinResumeSource: profile.trackerSource } : {}),
+        ...(profile.trackerSource
+          ? { jellyfinResumeSource: owns ? heldTrackerSource(held, profile.trackerSource) : profile.trackerSource }
+          : owns ? { jellyfinResumeSource: 'auto' } : {}),
         ...(profile.skipSource ? { jellyfinSkipSource: profile.skipSource } : {}),
-        ...(profile.watchlistServices ? { jellyfinWatchlistServices: profile.watchlistServices } : {}),
+        ...(profile.watchlistServices
+          ? { jellyfinWatchlistServices: owns ? heldWatchlistServices(held, profile.watchlistServices) : profile.watchlistServices }
+          : owns ? { jellyfinWatchlistServices: undefined } : {}),
         ...(profile.streamUrl ? { jellyfinStreamUrl: profile.streamUrl } : {}),
       }
     : { ...config, jellyfinProfileTags: profile.tags };
@@ -146,7 +192,7 @@ export function profileKey(config: any): string {
 }
 
 export function writesTrackers(config: any): boolean {
-  return !profileKey(config);
+  return !profileKey(config) || Boolean(accountOwner(config));
 }
 
 export function readsTrackers(config: any): boolean {
@@ -163,4 +209,27 @@ export function keepsUnderProfileCap(config: any): (item: any) => boolean {
     const type = item?.Type === 'Movie' ? 'movie' : 'series';
     return passesAgeRating(item?.OfficialRating, type, cap, unrated);
   };
+}
+
+/** A handoff names its viewer the way the sign-in screen does, or by a name set for AIOStreams. */
+export function viewerByName(config: any, userUUID: string, name: unknown): Profile | undefined {
+  const wanted = typeof name === 'string' ? name.trim().toLowerCase() : '';
+  if (!wanted) return undefined;
+  return listProfiles(config, userUUID).find((p) =>
+    p.name.trim().toLowerCase() === wanted || p.handoffNames.some((n) => n.toLowerCase() === wanted));
+}
+
+export function hasNamedViewers(config: any, userUUID: string): boolean {
+  const [main, ...others] = listProfiles(config, userUUID);
+  return others.length > 0 || main.handoffNames.length > 0;
+}
+
+/** The config a handoff request acts as; undefined when it names nobody here while others could be named. */
+export function configForViewer(config: any, userUUID: string, name: unknown): any | undefined {
+  if (name === undefined || name === null || (typeof name === 'string' && !name.trim())) return config;
+  if (!hasNamedViewers(config, userUUID)) return config;
+  if (typeof name !== 'string') return undefined;
+  const profile = viewerByName(config, userUUID, name);
+  if (!profile) return undefined;
+  return profile.id ? scopeConfigToProfile(config, userUUID, profile.id) : config;
 }

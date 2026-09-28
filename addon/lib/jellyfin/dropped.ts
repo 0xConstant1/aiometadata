@@ -90,7 +90,7 @@ export function undropOnWatch(userUUID: string, config: any, seriesIds: string[]
   if (!unique.length) return;
   (async () => {
     const { watchedSnapshot } = require('./watched');
-    const snapshot = await watchedSnapshot(userUUID, config);
+    const snapshot = await watchedSnapshot(userUUID, config, { patient: true });
     for (const id of unique) {
       if (snapshot.dropped.has(id)) await rateSeries(userUUID, config, { k: 'series', i: id }, true);
     }
@@ -112,7 +112,7 @@ export async function rateSeries(userUUID: string, config: any, descriptor: any,
   const keys = showKeys(String(meta.id), ids);
   const dropping = likes === false;
   if (!dropping) {
-    const snapshot = await watchedSnapshot(userUUID, config);
+    const snapshot = await watchedSnapshot(userUUID, config, { patient: true });
     if (!keys.some((key) => snapshot.dropped.has(key))) return false;
   }
 

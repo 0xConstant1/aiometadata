@@ -11,6 +11,8 @@ import { getFlixPatrolMetas } from "../utils/flixpatrolUtils.js";
 import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType } from "../utils/publicmetadbUtils.js";
 import { mapWithLimit } from "../utils/concurrency.js";
 const anilist = require('./anilist');
+import { createHash } from 'crypto';
+import { accountOwner, ownTokenId, servesCatalog, viewerConfigFor } from './accounts';
 import * as jikan from "./mal.js"
 import * as Utils from '../utils/parseProps.js';
 import CATALOG_TYPES from "../static/catalog-types.json";
@@ -36,7 +38,7 @@ import redis from './redisClient.js';
 const logger = consola.withTag('Catalog');
 import { cacheWrapMetaSmart } from './getCache.js';
 // @ts-ignore
-import { getAnilistAccessToken } from '../utils/anilistUtils';
+import { anilistListAccess, getAnilistAccessToken } from '../utils/anilistUtils';
 import { anilistRequiresAuth } from '../utils/anilistAccess';
 import { UserConfig } from '../types/index.js';
 
@@ -1868,7 +1870,8 @@ async function getExternalAddonCatalog(type: string, catalogId: string, genre: s
     const useCursor = skip !== undefined && redis;
     const stremioSkip = skip ?? (page - 1) * batchSize;
 
-    const cursorKey = useCursor ? `catalog-cursor:${userUUID}:${catalogId}:${type}:${genre || 'all'}` : null;
+    const owner = accountOwner(config);
+    const cursorKey = useCursor ? `catalog-cursor:${owner ? `${userUUID}@${owner}` : userUUID}:${catalogId}:${type}:${genre || 'all'}` : null;
     let upstreamSkip: number;
     const seenIds = new Set<string>();
 
@@ -2413,7 +2416,7 @@ async function getAniListCatalog(
     
     // Get the catalog config to retrieve username, list name and custom TTL
     const catalogConfig = config.catalogs?.find(c => c.id === catalogId);
-    const username = catalogConfig?.metadata?.username;
+    const { username, accessToken } = await anilistListAccess(config, catalogConfig ?? { id: catalogId });
     
     // Prefer explicit listName metadata; fall back to id parsing to support older configs
     const idWithoutPrefix = catalogId.replace('anilist.', '');
@@ -2421,7 +2424,7 @@ async function getAniListCatalog(
       || (idWithoutPrefix.includes('.') ? idWithoutPrefix.split('.').slice(1).join('.') : idWithoutPrefix);
     
     if (!username) {
-      logger.error(`[AniList] No username found in catalog config for: ${catalogId}`);
+      logger.error(`[AniList] No AniList user resolved for: ${catalogId}`);
       return [];
     }
     if (!listName) {
@@ -2441,7 +2444,11 @@ async function getAniListCatalog(
     
     logger.debug(`[AniList] Using sort: ${sortBase}, direction: ${sortDirection}, combined: ${sort}`);
     
-    const accessToken = await getAnilistAccessToken(config);
+    // A page fetched with a token may include private entries, so it must not
+    // be shared with configs that name the same username without one.
+    const cacheScope = accessToken && config.apiKeys?.anilistTokenId
+      ? createHash('sha256').update(String(config.apiKeys.anilistTokenId)).digest('hex').slice(0, 12)
+      : '';
 
     // Fetch list items from AniList API with caching
     const response = await cacheWrapAniListCatalog(
@@ -2450,10 +2457,9 @@ async function getAniListCatalog(
       page,
       async () => anilist.fetchListItems(username, listName, page, pageSize, sort, accessToken),
       customCacheTTL,
-      // The page is shared, so a reader without a token must not cache its
-      // rejection over a copy a token holder could have fetched.
       { enableErrorCaching: anilistRequiresAuth() ? !!accessToken : true },
-      sort
+      sort,
+      cacheScope
     );
     
     // Handle cached error responses
@@ -2586,7 +2592,7 @@ async function getMalUserListCatalog(
       return [];
     }
 
-    const accessToken = await malTracker.getValidAccessToken(userUUID);
+    const accessToken = await malTracker.getValidAccessToken(userUUID, ownTokenId(config, 'mal'));
     if (!accessToken) {
       logger.warn(`[MAL] No valid access token for user ${userUUID} (catalog: ${catalogId})`);
       return [];
@@ -3422,7 +3428,8 @@ async function getPublicMetaDBCatalog(
     }
 
     if (catalogId.startsWith('publicmetadb.list.')) {
-      const listId = catalogId.replace('publicmetadb.list.', '');
+      const { pmdbListIdFor } = require('./accounts');
+      const listId = pmdbListIdFor(config, catalogId);
       const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
       const [data, listType] = await Promise.all([
         fetchListItems(apiKey, listId, page, pageSize).catch((error: any) => {
@@ -3528,14 +3535,14 @@ async function getMergedCatalog(
       logger.warn(`[Merged] Skipping nested merge reference: ${s.catalogId}`);
       return false;
     }
-    const stillExists = config.catalogs?.some((c: any) =>
+    const entry = config.catalogs?.find((c: any) =>
       c.id === s.catalogId && c.type === s.catalogType
     );
-    if (!stillExists) {
+    if (!entry) {
       logger.warn(`[Merged] Source ${s.catalogId} (${s.catalogType}) no longer exists in config`);
       return false;
     }
-    return true;
+    return servesCatalog(config, entry);
   });
   if (validSources.length === 0) return [];
 
@@ -3545,7 +3552,8 @@ async function getMergedCatalog(
   const hasGenreFilter = !!(genre && genre !== 'None' && normalizeGenreKey(genre));
   const catalogTTL = parseInt(process.env.CATALOG_TTL || String(24 * 60 * 60), 10);
 
-  const cursorKey = redis ? `merged-cursor:${userUUID}:${catalogId}:${genre || 'all'}` : null;
+  const owner = accountOwner(config);
+  const cursorKey = redis ? `merged-cursor:${owner ? `${userUUID}@${owner}` : userUUID}:${catalogId}:${genre || 'all'}` : null;
 
   interface MergedCursor {
     served: number;
@@ -3618,14 +3626,15 @@ async function getMergedCatalog(
   const fetchSourcePage = async (src: any, srcPage: number): Promise<{ items: any[]; rawLength: number }> => {
     try {
       const effectiveGenre = genre || await resolveDefaultGenre(src.catalogId, src.catalogType) || '';
-      const cacheArgs = buildCatalogCacheArgs(src.catalogId, src.catalogType, srcPage, effectiveGenre, config);
+      const srcConfig = viewerConfigFor(config, owner, src.catalogId);
+      const cacheArgs = buildCatalogCacheArgs(src.catalogId, src.catalogType, srcPage, effectiveGenre, srcConfig);
       const catalogKey = `${src.catalogId}:${src.catalogType}:${stableStringify(cacheArgs)}`;
 
       const result = await cacheWrapCatalog(userUUID, catalogKey, async () => {
         return await getCatalog(
-          src.catalogType, language, srcPage, src.catalogId, effectiveGenre, config, userUUID, includeVideos
+          src.catalogType, language, srcPage, src.catalogId, effectiveGenre, srcConfig, userUUID, includeVideos
         );
-      }, { config });
+      }, { config: srcConfig });
 
       const raw = result?.metas || [];
       let items = raw;

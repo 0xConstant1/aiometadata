@@ -1226,11 +1226,11 @@ function applyTrailerStreamsProjection(meta: any): any {
   return meta;
 }
 
-async function projectMetaForUser(meta: any, config: any): Promise<any> {
+async function projectMetaForUser(meta: any, config: any, opts: { addonTrailers?: boolean } = {}): Promise<any> {
   if (!meta) return meta;
   normalizeMetaCredits(meta);
   applyTrailerStreamsProjection(meta);
-  await applyTrailerAddonProjection(meta, config);
+  if (opts.addonTrailers !== false) await applyTrailerAddonProjection(meta, config);
   applyCastCountProjection(meta, config);
   applyBlurThumbProjection(meta, config);
   applyDisplayAgeRatingProjection(meta, config);
@@ -1956,7 +1956,7 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
     cacheLogger.warn(`[ColdStore] write-through failed for ${metaId}: ${coldErr?.message}`);
   }
 
-  return { meta: await projectMetaForUser(meta, config) };
+  return { meta: await projectMetaForUser(meta, config, { addonTrailers: authoritative }) };
 }
 
 async function readMetaAlias({ config, metaId, type = null, useShowPoster = false }: { config: any; metaId: string; type?: string | null; useShowPoster?: boolean }): Promise<string | null> {
@@ -2226,7 +2226,7 @@ async function reconstructMetaFromComponentsWithConfig({ config, metaId, type = 
   const metaReconstructionKey = `meta:reconstructed:${metaId}`;
   updateCacheHealth(metaReconstructionKey, 'hit', true);
 
-  return { meta: await projectMetaForUser(reconstructedMeta, config) };
+  return { meta: await projectMetaForUser(reconstructedMeta, config, { addonTrailers: includeVideos }) };
 }
 
 async function cacheWrapMetaSmart(userUUID: string, metaId: string, method: () => Promise<any>, ttl: number = META_TTL(), options: any = {}, type: string | null = null, includeVideos: boolean = true, useShowPoster: boolean = false): Promise<any> {
@@ -2577,13 +2577,13 @@ async function clearCache(key: string): Promise<number | undefined> {
   }
 }
 
-function generateAniListCatalogCacheKey(username: string, listName: string, page: number, sort: string | null = null): string {
+function generateAniListCatalogCacheKey(username: string, listName: string, page: number, sort: string | null = null, scope: string = ''): string {
   const sortSuffix = sort ? `:${sort}` : '';
-  return `anilist-catalog:${username}:${listName}:page${page}${sortSuffix}`;
+  return `anilist-catalog:${username}:${listName}:page${page}${sortSuffix}${scope ? `:${scope}` : ''}`;
 }
 
-async function cacheWrapAniListCatalog(username: string, listName: string, page: number, method: () => Promise<any>, customTTL: number | null = null, options: any = {}, sort: string | null = null): Promise<any> {
-  const key = generateAniListCatalogCacheKey(username, listName, page, sort);
+async function cacheWrapAniListCatalog(username: string, listName: string, page: number, method: () => Promise<any>, customTTL: number | null = null, options: any = {}, sort: string | null = null, scope: string = ''): Promise<any> {
+  const key = generateAniListCatalogCacheKey(username, listName, page, sort, scope);
   const ttl = customTTL !== null ? customTTL : ANILIST_CATALOG_TTL();
 
   cacheLogger.debug(`[AniList] Cache key: ${key}, TTL: ${ttl}s`);

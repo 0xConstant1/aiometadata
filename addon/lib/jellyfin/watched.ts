@@ -1068,16 +1068,63 @@ function refreshServed(key: string, userUUID: string, config: any): void {
     .finally(() => refreshing.delete(key));
 }
 
-export async function watchedSnapshot(userUUID: string, config: any): Promise<WatchedSnapshot> {
+const firstReads = new Map<string, Promise<WatchedSnapshot>>();
+
+function firstRead(key: string, userUUID: string, config: any): Promise<WatchedSnapshot> {
+  let pending = firstReads.get(key);
+  if (!pending) {
+    pending = readAndFollow(userUUID, config)
+      .then((snapshot) => {
+        served.set(key, { snapshot, at: Date.now() });
+        return snapshot;
+      })
+      .finally(() => firstReads.delete(key));
+    pending.catch(() => undefined);
+    firstReads.set(key, pending);
+  }
+  return pending;
+}
+
+async function withinFirstWait(key: string, userUUID: string, config: any): Promise<WatchedSnapshot> {
+  const reading = firstRead(key, userUUID, config);
+  const waitMs = envInt('JELLYFIN_WATCHED_FIRST_WAIT', 8, 0) * 1000;
+  if (waitMs <= 0) return reading;
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), waitMs); });
+  const first = await Promise.race([reading, late]).finally(() => clearTimeout(timer));
+  if (first) return first;
+  logger.info(`Watched state for ${userUUID} is still being read from the tracker after ${waitMs}ms; answering without it meanwhile`);
+  return EMPTY;
+}
+
+export function warmChangedSources(userUUID: string, before: any, after: any): void {
+  if (!userUUID || !after) return;
+  const { holderCards } = require('../accounts');
+  const { scopeConfigToProfile } = require('./profiles');
+  const views = (config: any): any[] => [
+    { ...config, userUUID },
+    ...holderCards(config).map((card: any) => ({ ...scopeConfigToProfile(config, userUUID, card.id), userUUID })),
+  ];
+  const known = new Set(before ? views(before).map((config) => servedKey(userUUID, config)).filter(Boolean) : []);
+  for (const config of views(after)) {
+    const key = servedKey(userUUID, config);
+    if (!key || known.has(key) || served.has(key) || firstReads.has(key)) continue;
+    logger.debug(`Reading a newly connected tracker account for ${userUUID} ahead of its first shelf`);
+    firstRead(key, userUUID, config).catch((error: any) => logger.debug(`Early tracker read failed for ${userUUID}: ${error?.message || error}`));
+  }
+}
+
+export async function watchedSnapshot(userUUID: string, config: any, opts: { patient?: boolean } = {}): Promise<WatchedSnapshot> {
   const key = servedKey(userUUID, config);
   let snapshot: WatchedSnapshot;
   const held = key ? served.get(key) : undefined;
   if (held) {
     snapshot = held.snapshot;
     if (Date.now() - held.at >= envInt('JELLYFIN_WATCHED_REFRESH', 30, 5) * 1000) refreshServed(key!, userUUID, config);
-  } else {
+  } else if (!key) {
     snapshot = await readAndFollow(userUUID, config);
-    if (key) served.set(key, { snapshot, at: Date.now() });
+  } else {
+    snapshot = opts.patient ? await firstRead(key, userUUID, config) : await withinFirstWait(key, userUUID, config);
   }
 
   // Kept out of what is held: a drop made here shows on the next read.

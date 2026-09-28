@@ -1,5 +1,6 @@
 import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
+import { ACCOUNT_SERVICES, credentialOf, ownTokenId, trackerConfig } from '../accounts';
 import { credentialFor } from './trackerSource';
 
 const logger = consola.withTag('Jellyfin');
@@ -30,11 +31,12 @@ export const SERVICE_KINDS: Record<WatchlistService, WatchlistKind[]> = {
 };
 
 function connected(config: any, service: WatchlistService): boolean {
-  switch (service) {
-    case 'anilist': return Boolean(config?.apiKeys?.anilistTokenId) && config?.anilistWatchTracking !== false;
-    case 'mal': return Boolean(config?.apiKeys?.malTokenId) && config?.malWatchTracking !== false;
-    default: return Boolean(credentialFor(config, service));
+  if (service === 'anilist' || service === 'mal') {
+    return Boolean(credentialOf(config, service)) && trackerConfig(config, service)?.[ACCOUNT_SERVICES[service].master] !== false;
   }
+  // Without a list of its own, a holder would read and write your PublicMetaDB watchlist's id.
+  if (service === 'publicmetadb' && config?.jellyfinAccounts && !config.jellyfinAccounts.publicmetadbWatchlist) return false;
+  return Boolean(credentialFor(config, service));
 }
 
 /**
@@ -220,7 +222,8 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
       const { publicMetaDBWatchlistCatalog, setListItem } = require('../../utils/publicmetadbUtils');
       const catalog = await publicMetaDBWatchlistCatalog(config);
       if (catalog) {
-        await setListItem(config.apiKeys.publicmetadb, catalog.id.slice('publicmetadb.list.'.length), ids.tmdb, kind === 'movie' ? 'movie' : 'tv', listed);
+        const { pmdbListIdFor } = require('../accounts');
+        await setListItem(config.apiKeys.publicmetadb, pmdbListIdFor(config, catalog.id), ids.tmdb, kind === 'movie' ? 'movie' : 'tv', listed);
       }
     } catch (error: any) {
       logger.warn(`PublicMetaDB watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);
@@ -231,7 +234,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     try {
       const anilist = require('../anilistTracker');
       const idMapper: any = require('../id-mapper');
-      const accessToken = await anilist.getValidAccessToken(userUUID);
+      const accessToken = await anilist.getValidAccessToken(userUUID, ownTokenId(config, 'anilist'));
       const anilistId = idMapper.getMappingByKitsuId(Number(ids.kitsu))?.anilist_id;
       if (accessToken && anilistId) await anilist.setPlanning(anilistId, listed, accessToken);
     } catch (error: any) {
@@ -242,7 +245,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
   if (takes('mal', 'anime') && ids.mal) {
     try {
       const mal = require('../malTracker');
-      const accessToken = await mal.getValidAccessToken(userUUID);
+      const accessToken = await mal.getValidAccessToken(userUUID, ownTokenId(config, 'mal'));
       if (accessToken) await mal.setPlanToWatch(Number(ids.mal), listed, accessToken);
     } catch (error: any) {
       logger.warn(`MAL watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);

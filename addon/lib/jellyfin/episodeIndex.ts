@@ -189,7 +189,7 @@ export async function warmNextUpIndex(userUUID: string, config: any): Promise<nu
   const { watchedSnapshot, ownNextUpRows } = require('./watched');
   const { profileKey } = require('./profiles');
   const { mapWithConcurrency } = require('../../utils/concurrency');
-  const snapshot = await watchedSnapshot(userUUID, config);
+  const snapshot = await watchedSnapshot(userUUID, config, { patient: true });
   const own = await ownNextUpRows(userUUID, profileKey(config));
   const metaIds = [...new Set([...own, ...snapshot.nextUp].map((row: any) => String(row.metaId)))];
   await warmSeriesIndex(userUUID, metaIds);

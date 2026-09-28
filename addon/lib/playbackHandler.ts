@@ -108,6 +108,17 @@ export function isRepeatWatched(userUUID: string, report: PlaybackReport): boole
   return true;
 }
 
+/** Keeps one user's events apart from another's; the installation keeps the key it always had. */
+export function viewerScope(userUUID: string, config: any): string {
+  const { profileKey } = require('./jellyfin/profiles');
+  const key = profileKey(config);
+  return key ? `${userUUID}:${key}` : userUUID;
+}
+
+function writesTrackersFor(config: any): boolean {
+  return require('./jellyfin/profiles').writesTrackers(config);
+}
+
 export interface PlaybackOutcome {
   status: number;
   reason?: string;
@@ -135,7 +146,7 @@ export async function handleBulkPlaybackReport(
     .filter((v: string | null): v is string => !!v);
   if (!videos.length) return { status: 400, reason: 'no videos' };
 
-  if (isDuplicate(userUUID, typeof body?.id === 'string' && body.id ? body.id : null)) return { status: 204 };
+  if (isDuplicate(viewerScope(userUUID, config), typeof body?.id === 'string' && body.id ? body.id : null)) return { status: 204 };
 
   const idMapper = require('./id-mapper');
   const base = String(body?.metaId || id).split(':')[0];
@@ -179,7 +190,7 @@ export async function handleBulkPlaybackReport(
       }
     }
   }
-  await enqueueTrackerWrites(userUUID, config, jobs);
+  if (writesTrackersFor(config)) await enqueueTrackerWrites(userUUID, config, jobs);
 
   return { status: 204 };
 }
@@ -207,7 +218,7 @@ async function handleTitleReport(
   const metaId = typeof body.metaId === 'string' && body.metaId ? body.metaId : id;
   if (type !== 'movie' && type !== 'series') return { status: 400, reason: 'unsupported type' };
   if ((event === 'dropped' || event === 'undropped') && type !== 'series') return { status: 400, reason: 'not a series' };
-  if (isDuplicate(userUUID, typeof body.id === 'string' && body.id ? body.id : null)) return { status: 204 };
+  if (isDuplicate(viewerScope(userUUID, config), typeof body.id === 'string' && body.id ? body.id : null)) return { status: 204 };
 
   const ids = body.ids && typeof body.ids === 'object' ? body.ids : {};
   const anime = Boolean(ids.kitsu || ids.mal || ids.anilist || ids.anidb) || /^(kitsu|mal|anilist|anidb):/.test(metaId);
@@ -249,7 +260,7 @@ export async function handlePlaybackReport(
     return { status: 400, reason: 'unrecognised event' };
   }
 
-  if (isDuplicate(userUUID, report.id)) {
+  if (isDuplicate(viewerScope(userUUID, config), report.id)) {
     logger.debug(`Duplicate ${report.event} for ${type}/${id} (${report.id})`);
     return { status: 204 };
   }
@@ -281,7 +292,7 @@ export async function handlePlaybackReport(
   // remembered stays "watched" and a mark that follows an unmark reads as a
   // repeat of the first and never reaches a tracker.
   const intent = intentOf(report);
-  if ((intent === 'watched' || intent === 'unwatched') && isRepeatWatched(userUUID, report)) {
+  if ((intent === 'watched' || intent === 'unwatched') && isRepeatWatched(viewerScope(userUUID, config), report)) {
     logger.debug(`Already recorded as ${intent}: ${type}/${id}`);
     return { status: 204 };
   }
@@ -297,7 +308,7 @@ export async function handlePlaybackReport(
     undropOnWatch(userUUID, config, [report.metaId]);
   }
 
-  await enqueueTrackerWrites(userUUID, config, planReport(type, id, report, progress, config));
+  if (writesTrackersFor(config)) await enqueueTrackerWrites(userUUID, config, planReport(type, id, report, progress, config));
 
   return { status: 204 };
 }

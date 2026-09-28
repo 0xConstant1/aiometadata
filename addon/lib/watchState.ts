@@ -89,7 +89,7 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
     : undefined;
 
   const service = sourceFor(config) ?? 'none';
-  const snapshot = await watchedSnapshot(userUUID, config);
+  const snapshot = await watchedSnapshot(userUUID, config, { patient: true });
   // Drops kept here move no tracker's fingerprint, so they are folded in or a new one would never be sent.
   const kept = dropsKeptHere(config) ? [...(await localDrops(userUUID, config))].sort().join(',') : '';
   const version = snapshot.fingerprint

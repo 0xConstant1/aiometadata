@@ -11,6 +11,8 @@ import catalogTypesJson from "../static/catalog-types.json";
 import { PLAYBACK_MANIFEST_EVENTS, WATCH_STATE_PUSH_EVENTS, WATCH_STATE_VERSION } from "./playbackHandler";
 import { watchStatePullTtl } from "./watchState";
 import { collectionCatalogs, collectionsServed, COLLECTION_META_PREFIX } from "./collectionBuilder/aiostreamsCollections";
+import { holderCards, servesCatalog, withAccountOwner } from "./accounts";
+import { hasNamedViewers } from "./jellyfin/profiles";
 const jikan: any = require('./mal');
 const DEFAULT_LANGUAGE = "en-US";
 const catalogsTranslations: Record<string, Record<string, string>> = catalogsTranslationsJson;
@@ -908,7 +910,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   const tags = Array.isArray(opts.tags) ? opts.tags.filter(Boolean) : [];
   const tagSet = new Set(tags.map((t: string) => t.toLowerCase()));
   const enabledCatalogs = userCatalogs.filter((c: any) =>
-    c.enabled && (tagSet.size === 0 || (Array.isArray(c.tags) && c.tags.some((t: any) => tagSet.has(String(t).toLowerCase()))))
+    c.enabled && servesCatalog(config, c) && (tagSet.size === 0 || (Array.isArray(c.tags) && c.tags.some((t: any) => tagSet.has(String(t).toLowerCase()))))
   );
 
   // Absorbed merge sources must be built (even if disabled) so their genres feed the parent.
@@ -1717,7 +1719,8 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   // Declared only when the user has opted in, since declaring it is what makes
   // a front-end start delivering. Named as strings: a reader validates object resources against the names it
   // knows, and one that has never heard of these would reject the manifest whole.
-  const playbackReporting = watchTrackingEnabled && config.playbackReporting === true;
+  const anyoneTracks = watchTrackingEnabled || holderCards(config).some((card) => hasAnyWatchTrackingEnabled(withAccountOwner(config, card.id)));
+  const playbackReporting = anyoneTracks && config.playbackReporting === true;
   if (playbackReporting) {
     resources.push("watch_state", "playback");
   }
@@ -1734,6 +1737,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       ? {
           watchState: {
             version: WATCH_STATE_VERSION,
+            ...(hasNamedViewers(config, config.userUUID ?? '') ? { viewers: true } : {}),
             push: { events: WATCH_STATE_PUSH_EVENTS, bulk: true },
             pull: { items: true, watched: true, watchlist: true, ttlSeconds: watchStatePullTtl() },
           },

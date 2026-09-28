@@ -102,15 +102,14 @@ async function fetchAddonTrailers(manifestUrl: string, type: string, id: string)
   return streams.map(toStream).filter((s: TrailerStream | null): s is TrailerStream => s !== null);
 }
 
-// Applied on the way out, like the IMDb rating: the cached components keep the provider's own.
-export async function applyTrailerAddonProjection(meta: any, config: any): Promise<any> {
-  if (!meta || config?.trailerProvider !== 'addon') return meta;
+async function addonTrailers(meta: any, config: any): Promise<TrailerStream[] | null> {
+  if (!meta || config?.trailerProvider !== 'addon') return null;
   const manifestUrl = typeof config?.trailerAddonUrl === 'string' ? config.trailerAddonUrl.trim() : '';
-  if (!manifestUrl) return meta;
+  if (!manifestUrl) return null;
 
   const type = meta.type === 'movie' || meta.type === 'anime.movie' ? 'movie' : 'series';
   const id = imdbIdOf(meta);
-  if (!id) return meta;
+  if (!id) return null;
 
   const { readGlobalCache, writeGlobalCache } = require('./getCache');
   const addonHash = createHash('sha256').update(manifestUrl).digest('hex').slice(0, 12);
@@ -120,14 +119,33 @@ export async function applyTrailerAddonProjection(meta: any, config: any): Promi
     try {
       streams = await inflight(key, () => fetchAddonTrailers(manifestUrl, type, id));
     } catch {
-      return meta;
+      return null;
     }
     await writeGlobalCache(key, streams, streams.length ? ttlFor(streams) : envInt('TRAILER_ADDON_EMPTY_TTL', 60 * 60, 60));
   }
-  if (!Array.isArray(streams) || !streams.length) return meta;
+  return Array.isArray(streams) ? streams : null;
+}
 
+function attachTrailers(meta: any, streams: TrailerStream[] | null): any {
+  if (!streams?.length) return meta;
   meta.trailerStreams = streams;
   const youtube = streams.filter((s) => s.ytId);
   if (youtube.length) meta.trailers = youtube.map((s) => ({ source: s.ytId, type: 'Trailer', name: s.title }));
   return meta;
+}
+
+// Applied on the way out, like the IMDb rating: the cached components keep the provider's own.
+export async function applyTrailerAddonProjection(meta: any, config: any): Promise<any> {
+  return attachTrailers(meta, await addonTrailers(meta, config));
+}
+
+export async function applyTrailerAddonWithin(metas: any[], config: any, waitMs: number): Promise<void> {
+  if (config?.trailerProvider !== 'addon' || !Array.isArray(metas) || !metas.length) return;
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), waitMs); });
+  await Promise.all(metas.map(async (meta) => {
+    const streams = await Promise.race([addonTrailers(meta, config).catch(() => null), deadline]);
+    attachTrailers(meta, streams);
+  }));
+  clearTimeout(timer);
 }

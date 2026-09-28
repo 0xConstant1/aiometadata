@@ -1,4 +1,5 @@
 import consola from 'consola';
+import { createHash } from 'crypto';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { type Capable, credentialFor, resumeSourcesFor } from './trackerSource';
@@ -444,7 +445,7 @@ async function serviceSnapshot(userUUID: string, config: any, service: Capable):
   const credential = credentialFor(config, service);
   if (!credential) return [];
 
-  const key = `${userUUID}:${service}`;
+  const key = `${userUUID}:${service}:${createHash('sha256').update(String(credential)).digest('hex').slice(0, 16)}`;
   const held = snapshots.get(key);
   // Read again only once the tracker reports playback moved; one that reports nothing is read on a timer.
   if (held && Date.now() - held.at < envInt('JELLYFIN_RESUME_TTL', 60, 1) * 1000) return held.rows;

@@ -3,7 +3,8 @@ import { readTokenSession } from './tokens';
 import { scopeConfigToProfile } from './profiles';
 import { normaliseJellyfinId } from './idsCodec';
 import { LRUCache } from 'lru-cache';
-import { AsyncLocalStorage } from 'node:async_hooks';
+import { noteAccountOwner, runInViewerScope, viewerOwnsWatchlist } from './viewer';
+import { accountOwner } from '../accounts';
 
 const redis: any = require('../redisClient');
 const { envInt } = require('../../utils/envNumber');
@@ -104,15 +105,14 @@ export function extractToken(req: any): string | undefined {
 // Pelagica shows a watchlist beside favourites, through the like a title carries. Other
 // clients have favourites alone, so the watchlist is what they are shown as favourites.
 const OWN_WATCHLIST_CLIENT = /^pelagica\b/i;
-const clientStore = new AsyncLocalStorage<{ ownWatchlist: boolean }>();
 
 export function runWithClient<T>(req: any, fn: () => T): T {
-  return clientStore.run({ ownWatchlist: OWN_WATCHLIST_CLIENT.test(clientInfo(req).client) }, fn);
+  return runInViewerScope(OWN_WATCHLIST_CLIENT.test(clientInfo(req).client), fn);
 }
 
 /** Whether the client asking keeps a watchlist apart from favourites. */
 export function clientHasOwnWatchlist(): boolean {
-  return clientStore.getStore()?.ownWatchlist === true;
+  return viewerOwnsWatchlist();
 }
 
 export function clientInfo(req: any): { client: string; device: string; deviceId: string; version: string } {
@@ -177,6 +177,7 @@ export async function loadConfig(req: any): Promise<any> {
   const config = scopeConfigToProfile({ ...stored }, req.jellyfin.userUUID, req.jellyfin.profileId ?? null);
   config.userUUID = req.jellyfin.userUUID;
   req.jellyfin.config = config;
+  noteAccountOwner(accountOwner(config));
   return config;
 }
 
