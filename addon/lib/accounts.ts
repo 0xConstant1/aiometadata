@@ -71,6 +71,7 @@ const SLOTS: Array<[AccountService, RegExp]> = [
 export function slotServiceOf(catalog: { id?: string; metadata?: any } | null | undefined): AccountService | null {
   const id = String(catalog?.id ?? '').replace(/_(movie|series|anime|all)$/, '');
   if (id.startsWith('publicmetadb.list.') && catalog?.metadata?.listType === 'watchlist') return 'publicmetadb';
+  if (id.startsWith('anilist.') && catalog?.metadata?.isCustomList) return null;
   for (const [service, pattern] of SLOTS) if (pattern.test(id)) return service;
   return null;
 }
