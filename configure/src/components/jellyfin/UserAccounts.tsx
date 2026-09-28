@@ -20,7 +20,7 @@ interface UserAccountsProps {
 }
 
 export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAccountsProps) {
-  const { auth } = useConfig();
+  const { auth, config } = useConfig();
   const [open, setOpen] = useState<CardService | null>(null);
   const [busy, setBusy] = useState<CardService | null>(null);
   const [stale, setStale] = useState<Partial<Record<CardService, boolean>>>({});
@@ -74,7 +74,7 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
       {CARD_SERVICE_ORDER.map((service) => {
         const info = CARD_SERVICES[service];
         const account = cardAccount(user, service);
-        const missing = account.connected ? missingWatchlistSlots(catalogs, service) : [];
+        const missing = account.connected ? missingWatchlistSlots(catalogs, service, config.displayTypeOverrides) : [];
         return (
           <div key={service} className="space-y-2 rounded-md border px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">

@@ -116,9 +116,12 @@ const WATCHLIST_SLOTS: Partial<Record<CardService, CatalogConfig[]>> = {
   mal: [{ id: 'mal.userlist.plan_to_watch', type: 'anime', name: 'MyAnimeList Plan to Watch', enabled: true, showInHome: true, source: 'mal', metadata: { accountsOnly: true } } as CatalogConfig],
 };
 
-export function missingWatchlistSlots(catalogs: Array<Pick<CatalogConfig, 'id'>>, service: CardService): CatalogConfig[] {
+export function missingWatchlistSlots(catalogs: Array<Pick<CatalogConfig, 'id'>>, service: CardService, overrides?: { movie?: string; series?: string }): CatalogConfig[] {
   const held = (id: string) => catalogs.some((c) => c.id === id || (id === 'mdblist.watchlist' && c.id.startsWith('mdblist.watchlist')));
-  return (WATCHLIST_SLOTS[service] ?? []).filter((slot) => !held(slot.id));
+  return (WATCHLIST_SLOTS[service] ?? []).filter((slot) => !held(slot.id)).map((slot) => {
+    const displayType = slot.type === 'movie' || slot.type === 'series' ? overrides?.[slot.type] : undefined;
+    return displayType ? { ...slot, displayType } : slot;
+  });
 }
 
 export function handoffNameClash(mainName: string, mainHandoff: string[] | undefined, users: JellyfinUser[]): string | null {
