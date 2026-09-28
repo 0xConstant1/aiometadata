@@ -34,7 +34,7 @@ export function isHolder(user?: JellyfinUser): boolean {
 
 export function cardAccount(user: JellyfinUser | undefined, service: CardService) {
   const info = CARD_SERVICES[service];
-  const accounts = user?.accounts;
+  const accounts = user?.trackers === true ? undefined : user?.accounts;
   const media = accounts?.watchTracking?.[service];
   return {
     connected: Boolean(accounts?.apiKeys?.[info.key]),
@@ -86,7 +86,7 @@ export function withTracking(user: JellyfinUser, service: CardService, patch: { 
 }
 
 function reads(user: JellyfinUser, service: CardService): boolean {
-  return cardAccount(user, service).connected && user.accounts?.[CARD_SERVICES[service].master] !== false;
+  return user.trackers !== true && cardAccount(user, service).connected && user.accounts?.[CARD_SERVICES[service].master] !== false;
 }
 
 export function trackerOptionsFor(user: JellyfinUser): Array<{ value: string; label: string }> {
