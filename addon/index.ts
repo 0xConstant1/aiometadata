@@ -4245,6 +4245,7 @@ addon.post("/api/integrations/credential", async (req, res) => {
       return res.status(404).json({ error: `No ${provider} credential with that id` });
     }
     const config = access.config;
+    const before = JSON.parse(JSON.stringify(config));
     let replaced = null;
     if (profile) {
       if (!['simkl', 'anilist', 'mal'].includes(provider)) {
@@ -4264,6 +4265,7 @@ addon.post("/api/integrations/credential", async (req, res) => {
     await database.saveUserConfig(userUUID, access.passwordHash, config);
     configCache.del(userUUID);
     if (replaced) await require('./lib/accountLinks').releaseTokenIfUnused(provider, replaced, provider === 'simkl' ? revokeSimklGrant : undefined);
+    require('./lib/jellyfin/watched').warmChangedSources(userUUID, before, config);
     res.json({ success: true, field: mapping.field, tokenId });
   } catch (error) {
     consola.error(`[Integrations] Failed to store credential: ${error.message}`);

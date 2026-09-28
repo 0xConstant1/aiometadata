@@ -380,6 +380,12 @@ class ConfigApi {
         await configCache.del(userUUID);
       }
 
+      try {
+        require('./jellyfin/watched').warmChangedSources(userUUID, oldConfig, persistedConfig || configWithTimestamp);
+      } catch (error) {
+        logger.debug(`Could not start reading new tracker accounts for ${userUUID}: ${error.message}`);
+      }
+
       require('./collectionImageCacheSync')
         .syncCollectionImages(userUUID, configWithTimestamp)
         .catch(() => undefined);
@@ -789,6 +795,12 @@ class ConfigApi {
         await configCache.set(userUUID, persistedConfig);
       } else {
         await configCache.del(userUUID);
+      }
+
+      try {
+        require('./jellyfin/watched').warmChangedSources(userUUID, oldConfig, persistedConfig || configWithTimestamp);
+      } catch (error) {
+        logger.debug(`Could not start reading new tracker accounts for ${userUUID}: ${error.message}`);
       }
 
       require('./collectionImageCacheSync')
