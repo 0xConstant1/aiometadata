@@ -200,7 +200,7 @@ async function getMalDiscoverCatalog(
     const catalogConfig = config.catalogs?.find((c: any) => c.id === catalogId);
     const discoverMetadata = catalogConfig?.metadata?.discover || {};
     const rawParams = { ...(discoverMetadata?.params || {}) };
-    const customCacheTTL = catalogConfig?.cacheTTL || null;
+    const customCacheTTL = catalogConfig?.cacheTTL ?? null;
 
     let seasonCacheSuffix = '';
     if (rawParams.season) {
@@ -238,9 +238,9 @@ async function getMalDiscoverCatalog(
     }
 
     const response = await cacheWrapJikanApi(
-      `mal-discover-${catalogId}-page${page}-genre${genreName || 'All'}${seasonCacheSuffix}`,
+      `mal-discover-${catalogId}-page${page}-genre${genreName || 'All'}${seasonCacheSuffix}${customCacheTTL !== null ? `-ttl${customCacheTTL}` : ''}`,
       async () => jikan.fetchDiscover(rawParams, page),
-      customCacheTTL || 30 * 60
+      customCacheTTL ?? 30 * 60
     );
 
     if (!response?.items || response.items.length === 0) {
@@ -442,7 +442,7 @@ async function getAniListDiscoverCatalog(
     const catalogConfig = config.catalogs?.find((c: any) => c.id === catalogId);
     const discoverMetadata = catalogConfig?.metadata?.discover || {};
     const rawParams = { ...(discoverMetadata?.params || {}) };
-    const customCacheTTL = catalogConfig?.cacheTTL || null;
+    const customCacheTTL = catalogConfig?.cacheTTL ?? null;
     const pageSize = 50;
 
     if (rawParams.season === 'CURRENT') {
@@ -1905,8 +1905,9 @@ async function getExternalAddonCatalog(type: string, catalogId: string, genre: s
     const { applyCatalogFilters, catalogFiltersActive } = require('../utils/catalogFilters.js');
     const { fillMaxPages } = require('./catalogPagination');
 
+    const sourceKey = createHash('sha256').update(String(catalogUrl)).digest('hex').slice(0, 16);
     const readBatch = async (offset: number) => {
-      const cacheKey = `custom-batch:${catalogId}:${genre || 'all'}:skip=${offset}`;
+      const cacheKey = `custom-batch:${catalogId}:${sourceKey}:${genre || 'all'}:skip=${offset}:ttl:${catalogTTL}`;
       return await cacheWrap(cacheKey, async () => {
         return await fetchStremThruCatalog(catalogUrl, offset, genre);
       }, catalogTTL, { enableErrorCaching: true, maxRetries: 2 });
@@ -2379,7 +2380,7 @@ async function getAniListCatalog(
     if (catalogId === 'anilist.trending') {
       const pageSize = 50;
       const catalogConfig = config.catalogs?.find(c => c.id === catalogId);
-      const customCacheTTL = catalogConfig?.cacheTTL || null;
+      const customCacheTTL = catalogConfig?.cacheTTL ?? null;
       const sfw = config.sfw || false;
       const accessToken = await getAnilistAccessToken(config);
 
@@ -2435,7 +2436,7 @@ async function getAniListCatalog(
     const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
     
     // Get custom cache TTL and sort option from catalog config if specified
-    const customCacheTTL = catalogConfig?.cacheTTL || null;
+    const customCacheTTL = catalogConfig?.cacheTTL ?? null;
     const sortBase = catalogConfig?.sort || 'ADDED_TIME';
     const sortDirection = catalogConfig?.sortDirection || 'desc';
     
@@ -2680,11 +2681,11 @@ async function getLetterboxdCatalog(
     logger.info(`Fetching Letterboxd ${isWatchlist ? 'watchlist' : 'list'}: ${identifier}, Page: ${page}`);
 
     // Fetch list data from StremThru
-    // cache wrap the fetchLetterboxdList call with the custom cache TTL from the catalog config with a minimum of 2hrs
+    const listTtl = catalogConfig?.cacheTTL ?? 7200;
     const listData = await cacheWrap(
-      `letterboxd-list:${identifier}:${isWatchlist}`,
+      `letterboxd-list:${identifier}:${isWatchlist}:ttl:${listTtl}`,
       async () => await fetchLetterboxdList(identifier, isWatchlist),
-      catalogConfig?.cacheTTL || 7200,
+      listTtl,
       { enableErrorCaching: true, maxRetries: 2, resultClassifier: classifyResultAllowEmpty }
     );
     
@@ -3376,7 +3377,7 @@ async function getLumiereCatalog(
 
     const fetchIds = () => fetchLumiereList(baseUrl, list, type, genreSlug, timeoutMs);
     const ids: string[] = ttl > 0
-      ? await cacheWrapGlobal(`lumiere-list:${list}:${type}:${genreSlug || 'all'}`, fetchIds, ttl, { resultClassifier: classifyResultAllowEmpty })
+      ? await cacheWrapGlobal(`lumiere-list:${list}:${type}:${genreSlug || 'all'}:ttl:${ttl}`, fetchIds, ttl, { resultClassifier: classifyResultAllowEmpty })
       : await fetchIds();
 
     const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;

@@ -501,6 +501,9 @@ async function cacheWrap(key: string, method: () => Promise<any>, ttl: number, o
   if (!redis) {
     return method();
   }
+  if (!(ttl > 0)) {
+    return singleFlight(`uncached:${key}`, method);
+  }
 
   const epochKey = withEpoch(key);
   return singleFlight(epochKey, () => cacheWrapInternal(key, method, ttl, options, epochKey));
@@ -682,6 +685,9 @@ async function writeGlobalCache(key: string, value: any, ttl: number): Promise<v
 async function cacheWrapGlobal(key: string, method: () => Promise<any>, ttl: number, options: any = {}): Promise<any> {
   if (!redis) {
     return method();
+  }
+  if (!(ttl > 0)) {
+    return singleFlight(`uncached:global:${key}`, method);
   }
 
   const { upstream = false, sourceList = false } = options;
@@ -1552,6 +1558,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     { label: 'LumiereDB', matches: idOnly.startsWith('lumiere.') },
     { label: 'SimKL', matches: idOnly.startsWith('simkl.') },
     { label: 'discover', matches: isDiscoverCatalog },
+    { label: 'catalog', matches: !isAuthCatalog },
   ];
 
   // The page and the picks it was built from expire together, so refresh-ahead
@@ -2583,8 +2590,8 @@ function generateAniListCatalogCacheKey(username: string, listName: string, page
 }
 
 async function cacheWrapAniListCatalog(username: string, listName: string, page: number, method: () => Promise<any>, customTTL: number | null = null, options: any = {}, sort: string | null = null, scope: string = ''): Promise<any> {
-  const key = generateAniListCatalogCacheKey(username, listName, page, sort, scope);
   const ttl = customTTL !== null ? customTTL : ANILIST_CATALOG_TTL();
+  const key = generateAniListCatalogCacheKey(username, listName, page, sort, scope) + (customTTL !== null ? `:ttl:${ttl}` : '');
 
   cacheLogger.debug(`[AniList] Cache key: ${key}, TTL: ${ttl}s`);
 
