@@ -1861,14 +1861,19 @@ class Database {
       ? `SELECT user_uuid, password_hash, config_data FROM user_configs
          WHERE json_extract(config_data, '$.apiKeys.${field}') IN (${marks})
             OR EXISTS (SELECT 1 FROM json_each(config_data, '$.jellyfinUsers') u
-                       WHERE json_extract(u.value, '$.accounts.apiKeys.${field}') IN (${marks}))`
+                       WHERE json_extract(config_data, u.fullkey || '.accounts.apiKeys.${field}') IN (${marks}))`
       : `SELECT user_uuid, password_hash, config_data FROM user_configs
          WHERE config_data::jsonb->'apiKeys'->>'${field}' IN (${marks})
             OR (jsonb_typeof(config_data::jsonb->'jellyfinUsers') = 'array' AND EXISTS (
                  SELECT 1 FROM jsonb_array_elements(config_data::jsonb->'jellyfinUsers') u
                  WHERE u->'accounts'->'apiKeys'->>'${field}' IN (${marks})))`;
+    // The release check must see this process's own just-committed write, so this reads the
+    // primary directly rather than through allQuery's (possibly lagging) read replica.
+    if (!this.initialized) await this.initialize();
     try {
-      const rows = await this.allQuery(query, sqlite ? [...tokenIds, ...tokenIds] : tokenIds);
+      const rows = sqlite
+        ? this.executeSQLiteStatement(this.db.prepare(query), 'all', [...tokenIds, ...tokenIds])
+        : (await this.db.query(query, tokenIds)).rows;
       const wanted = new Set(tokenIds);
       return rows.map((row: any) => {
         const config = typeof row.config_data === 'string' ? JSON.parse(row.config_data) : row.config_data;
@@ -1881,7 +1886,7 @@ class Database {
       }).filter((ref: any) => ref.owners.length > 0);
     } catch (error) {
       logger.error(`Error finding references to ${field}:`, error);
-      return [];
+      throw error;
     }
   }
 

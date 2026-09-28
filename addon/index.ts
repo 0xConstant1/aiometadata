@@ -1533,7 +1533,7 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     }
 
     if (typeof req.body?.profile === 'string' && req.body.profile) {
-      return disconnectCardAccount(res, userUUID, req.body.profile, 'simkl', config);
+      return await disconnectCardAccount(res, userUUID, req.body.profile, 'simkl', config);
     }
 
     const released = config.apiKeys?.simklTokenId || null;
@@ -3735,7 +3735,7 @@ addon.post("/anilist/disconnect", async (req, res) => {
     }
 
     if (typeof req.body?.profile === 'string' && req.body.profile) {
-      return disconnectCardAccount(res, userUUID, req.body.profile, 'anilist', config);
+      return await disconnectCardAccount(res, userUUID, req.body.profile, 'anilist', config);
     }
 
     // Token ID is stored in apiKeys.anilistTokenId by the frontend
@@ -3995,7 +3995,7 @@ addon.post("/mal/disconnect", async (req, res) => {
     }
 
     if (typeof req.body?.profile === 'string' && req.body.profile) {
-      return disconnectCardAccount(res, userUUID, req.body.profile, 'mal', config);
+      return await disconnectCardAccount(res, userUUID, req.body.profile, 'mal', config);
     }
 
     const released = config.apiKeys?.malTokenId || null;
