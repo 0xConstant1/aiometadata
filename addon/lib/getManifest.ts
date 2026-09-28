@@ -11,7 +11,7 @@ import catalogTypesJson from "../static/catalog-types.json";
 import { PLAYBACK_MANIFEST_EVENTS, WATCH_STATE_PUSH_EVENTS, WATCH_STATE_VERSION } from "./playbackHandler";
 import { watchStatePullTtl } from "./watchState";
 import { collectionCatalogs, collectionsServed, COLLECTION_META_PREFIX } from "./collectionBuilder/aiostreamsCollections";
-import { servesCatalog } from "./accounts";
+import { holderCards, servesCatalog, withAccountOwner } from "./accounts";
 const jikan: any = require('./mal');
 const DEFAULT_LANGUAGE = "en-US";
 const catalogsTranslations: Record<string, Record<string, string>> = catalogsTranslationsJson;
@@ -1718,7 +1718,8 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   // Declared only when the user has opted in, since declaring it is what makes
   // a front-end start delivering. Named as strings: a reader validates object resources against the names it
   // knows, and one that has never heard of these would reject the manifest whole.
-  const playbackReporting = watchTrackingEnabled && config.playbackReporting === true;
+  const anyoneTracks = watchTrackingEnabled || holderCards(config).some((card) => hasAnyWatchTrackingEnabled(withAccountOwner(config, card.id)));
+  const playbackReporting = anyoneTracks && config.playbackReporting === true;
   if (playbackReporting) {
     resources.push("watch_state", "playback");
   }
