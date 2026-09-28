@@ -3,7 +3,9 @@ import { useConfig } from "@/contexts/ConfigContext";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus } from "lucide-react";
+import { Info, Loader2, Plus } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { CardService, CatalogConfig, JellyfinUser } from "@/contexts/config";
 import { disconnectCardAccount, persistIntegrationCredential } from "@/lib/integrationCredentials";
@@ -43,7 +45,6 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
 
   const connected = (service: CardService, value: string, extra: { label?: string; publicmetadbWatchlist?: string }) => {
     onChange(withAccount(user, service, value, extra));
-    setOpen(null);
     toast.success(`${user.name} connected to ${CARD_SERVICES[service].label}${extra.label ? ` as ${extra.label}` : ''}`);
     if (service === 'simkl' || service === 'anilist' || service === 'mal') {
       void persistIntegrationCredential({ provider: service, tokenId: value, userUUID: auth.userUUID, password: auth.password, authenticated: auth.authenticated, profile: user.id })
@@ -65,72 +66,114 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
     onChange(withAccount(user, service, undefined));
   };
 
+  const selected = open;
+  const selectedInfo = selected ? CARD_SERVICES[selected] : null;
+  const selectedAccount = selected ? cardAccount(user, selected) : null;
+  const missing = selected && selectedAccount?.connected ? missingWatchlistSlots(catalogs, selected, config.displayTypeOverrides) : [];
+
   return (
-    <div className="space-y-2 border-t pt-3">
-      <Label className="text-xs font-medium">Accounts</Label>
+    <div className="space-y-2.5 border-t pt-3">
+      <div className="flex items-center gap-1.5">
+        <Label className="text-xs font-medium">Accounts</Label>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="About accounts">
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">
+              None of your Simkl, MDBList, PublicMetaDB, AniList or MyAnimeList accounts is used for {user.name}. Catalogs of your other accounts, such as Trakt or TMDB, still show your lists if their tags include them. When plays are recorded follows Watch Tracking in General, for every user.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
       <p className="text-[11px] text-muted-foreground">
-        Connect {user.name}'s own trackers. Once any is connected, what they play, mark, drop or heart goes to these accounts only, and their shelves and watchlist catalogs read from them. None of your Simkl, MDBList, PublicMetaDB, AniList or MyAnimeList accounts is used for them; catalogs of your other accounts, such as Trakt or TMDB, show your lists if their tags include them.
+        {user.name}'s own trackers. Once one is connected, what they play, mark or heart goes there, and their shelves and watchlist read from it.
       </p>
-      {CARD_SERVICE_ORDER.map((service) => {
-        const info = CARD_SERVICES[service];
-        const account = cardAccount(user, service);
-        const missing = account.connected ? missingWatchlistSlots(catalogs, service, config.displayTypeOverrides) : [];
-        return (
-          <div key={service} className="space-y-2 rounded-md border px-3 py-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-28 text-xs font-medium">{info.label}</span>
-              {account.connected ? (
-                <>
-                  <span className="text-xs text-emerald-400">{account.label ? `Connected as ${account.label}` : 'Connected'}</span>
-                  {stale[service] ? <span className="text-xs text-amber-400">This sign-in no longer works; disconnect and connect again.</span> : null}
-                  <Button size="sm" variant="ghost" className="ml-auto h-7 text-xs" disabled={busy === service} onClick={() => disconnect(service)}>
-                    {busy === service ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Disconnect'}
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={() => setOpen(open === service ? null : service)}>
-                  {open === service ? 'Cancel' : 'Connect'}
-                </Button>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {CARD_SERVICE_ORDER.map((service) => {
+          const info = CARD_SERVICES[service];
+          const account = cardAccount(user, service);
+          const status = !account.connected ? 'Connect'
+            : stale[service] ? 'Sign in again'
+            : !account.enabled ? 'Tracking off'
+            : account.label ?? 'Connected';
+          return (
+            <button
+              key={service}
+              type="button"
+              onClick={() => setOpen(open === service ? null : service)}
+              aria-expanded={open === service}
+              className={cn(
+                'flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-accent/50',
+                open === service ? 'border-primary/60 bg-accent/40' : account.connected ? 'border-emerald-500/30' : 'border-border',
               )}
-            </div>
-            {!account.connected && open === service ? (
-              service === 'simkl' ? <SimklConnect onConnected={(tokenId, username) => connected('simkl', tokenId, { label: username })} />
-              : service === 'anilist' ? <OAuthTokenConnect provider="anilist" authUrl="/anilist/auth" label="AniList" onConnected={(tokenId, username) => connected('anilist', tokenId, { label: username })} />
-              : service === 'mal' ? <OAuthTokenConnect provider="mal" authUrl="/mal/auth" label="MyAnimeList" onConnected={(tokenId, username) => connected('mal', tokenId, { label: username })} />
-              : <ApiKeyConnect service={service} onConnected={(key, found) => connected(service, key, found)} />
-            ) : null}
-            {account.connected ? (
-              <div className="flex flex-wrap items-center gap-4 text-xs">
-                <label className="flex items-center gap-1.5">
-                  <Switch checked={account.enabled} onCheckedChange={(next) => onChange(withTracking(user, service, { enabled: next }))} aria-label={`Watch tracking on ${info.label} for ${user.name}`} />
-                  Watch tracking
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <Switch checked={account.movie} disabled={!account.enabled} onCheckedChange={(next) => onChange(withTracking(user, service, { movie: next }))} aria-label={`Track movies on ${info.label}`} />
-                  Movies
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <Switch checked={account.series} disabled={!account.enabled} onCheckedChange={(next) => onChange(withTracking(user, service, { series: next }))} aria-label={`Track series on ${info.label}`} />
-                  Series
-                </label>
-                {service === 'publicmetadb' && !user.accounts?.publicmetadbWatchlist ? (
-                  <span className="text-amber-400">No watchlist list on this account, so PublicMetaDB is not one of their watchlist shelves.</span>
-                ) : service === 'publicmetadb' && !hasPmdbWatchlist ? (
-                  <span className="text-amber-400">Their PublicMetaDB watchlist is read through yours; add your PublicMetaDB watchlist catalog to give them the shelf.</span>
-                ) : null}
-              </div>
-            ) : null}
-            {missing.length ? (
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onAddCatalogs(missing)}>
-                <Plus className="mr-1 h-3 w-3" /> Add {info.label} watchlist to the catalogs
+            >
+              <img src={info.icon} alt="" className={cn('h-7 w-7 shrink-0 rounded-md object-contain', !account.connected && 'opacity-60 grayscale')} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium">{info.label}</span>
+                <span className={cn(
+                  'flex items-center gap-1 truncate text-[11px]',
+                  !account.connected ? 'text-muted-foreground' : stale[service] ? 'text-amber-400' : account.enabled ? 'text-emerald-400' : 'text-muted-foreground',
+                )}>
+                  {account.connected && !stale[service] && account.enabled ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" /> : null}
+                  <span className="truncate">{status}</span>
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {selected && selectedInfo && selectedAccount ? (
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <img src={selectedInfo.icon} alt="" className="h-5 w-5 rounded object-contain" />
+            <span className="text-xs font-medium">
+              {selectedAccount.connected ? (selectedAccount.label ? `${selectedInfo.label} as ${selectedAccount.label}` : selectedInfo.label) : `Connect ${user.name}'s ${selectedInfo.label}`}
+            </span>
+            {selectedAccount.connected ? (
+              <Button size="sm" variant="ghost" className="ml-auto h-7 text-xs text-muted-foreground hover:text-destructive" disabled={busy === selected} onClick={() => disconnect(selected)}>
+                {busy === selected ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Disconnect'}
               </Button>
             ) : null}
           </div>
-        );
-      })}
-      <p className="text-[11px] text-muted-foreground">
-        When plays are recorded follows Watch Tracking in General, for every user.
-      </p>
+          {stale[selected] ? <p className="text-[11px] text-amber-400">This sign-in no longer works; disconnect and connect again.</p> : null}
+          {!selectedAccount.connected ? (
+            selected === 'simkl' ? <SimklConnect onConnected={(tokenId, username) => connected('simkl', tokenId, { label: username })} />
+            : selected === 'anilist' ? <OAuthTokenConnect provider="anilist" authUrl="/anilist/auth" label="AniList" onConnected={(tokenId, username) => connected('anilist', tokenId, { label: username })} />
+            : selected === 'mal' ? <OAuthTokenConnect provider="mal" authUrl="/mal/auth" label="MyAnimeList" onConnected={(tokenId, username) => connected('mal', tokenId, { label: username })} />
+            : <ApiKeyConnect service={selected} onConnected={(key, found) => connected(selected, key, found)} />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+                <label className="flex items-center gap-1.5">
+                  <Switch checked={selectedAccount.enabled} onCheckedChange={(next) => onChange(withTracking(user, selected, { enabled: next }))} aria-label={`Watch tracking on ${selectedInfo.label} for ${user.name}`} />
+                  Watch tracking
+                </label>
+                <label className={cn('flex items-center gap-1.5', !selectedAccount.enabled && 'opacity-50')}>
+                  <Switch checked={selectedAccount.movie} disabled={!selectedAccount.enabled} onCheckedChange={(next) => onChange(withTracking(user, selected, { movie: next }))} aria-label={`Track movies on ${selectedInfo.label}`} />
+                  Movies
+                </label>
+                <label className={cn('flex items-center gap-1.5', !selectedAccount.enabled && 'opacity-50')}>
+                  <Switch checked={selectedAccount.series} disabled={!selectedAccount.enabled} onCheckedChange={(next) => onChange(withTracking(user, selected, { series: next }))} aria-label={`Track series on ${selectedInfo.label}`} />
+                  Series
+                </label>
+              </div>
+              {selected === 'publicmetadb' && !user.accounts?.publicmetadbWatchlist ? (
+                <p className="text-[11px] text-amber-400">No watchlist list on this account, so PublicMetaDB is not one of their watchlist shelves.</p>
+              ) : selected === 'publicmetadb' && !hasPmdbWatchlist ? (
+                <p className="text-[11px] text-amber-400">Their PublicMetaDB watchlist is read through yours; add your PublicMetaDB watchlist catalog to give them the shelf.</p>
+              ) : null}
+              {missing.length ? (
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onAddCatalogs(missing)}>
+                  <Plus className="mr-1 h-3 w-3" /> Add {selectedInfo.label} watchlist to the catalogs
+                </Button>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

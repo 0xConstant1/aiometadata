@@ -10,17 +10,18 @@ interface CardServiceInfo {
   master: MasterField;
   shelves: Shelf[];
   resume: boolean;
+  icon: string;
   disconnectPath?: string;
 }
 
 export const CARD_SERVICE_ORDER: CardService[] = ['simkl', 'mdblist', 'publicmetadb', 'anilist', 'mal'];
 
 export const CARD_SERVICES: Record<CardService, CardServiceInfo> = {
-  simkl: { label: 'Simkl', key: 'simklTokenId', master: 'simklWatchTracking', shelves: ['movies', 'series', 'anime'], resume: true, disconnectPath: '/api/auth/simkl/disconnect' },
-  mdblist: { label: 'MDBList', key: 'mdblist', master: 'mdblistWatchTracking', shelves: ['movies', 'series'], resume: true },
-  publicmetadb: { label: 'PublicMetaDB', key: 'publicmetadb', master: 'publicmetadbWatchTracking', shelves: ['movies', 'series'], resume: true },
-  anilist: { label: 'AniList', key: 'anilistTokenId', master: 'anilistWatchTracking', shelves: ['anime'], resume: false, disconnectPath: '/anilist/disconnect' },
-  mal: { label: 'MyAnimeList', key: 'malTokenId', master: 'malWatchTracking', shelves: ['anime'], resume: false, disconnectPath: '/mal/disconnect' },
+  simkl: { label: 'Simkl', key: 'simklTokenId', master: 'simklWatchTracking', shelves: ['movies', 'series', 'anime'], resume: true, icon: 'https://us.simkl.in/img_favicon/v2/favicon-192x192.png', disconnectPath: '/api/auth/simkl/disconnect' },
+  mdblist: { label: 'MDBList', key: 'mdblist', master: 'mdblistWatchTracking', shelves: ['movies', 'series'], resume: true, icon: '/mdblist_icon.png' },
+  publicmetadb: { label: 'PublicMetaDB', key: 'publicmetadb', master: 'publicmetadbWatchTracking', shelves: ['movies', 'series'], resume: true, icon: '/pmdb_icon.svg' },
+  anilist: { label: 'AniList', key: 'anilistTokenId', master: 'anilistWatchTracking', shelves: ['anime'], resume: false, icon: '/anilist_icon.png', disconnectPath: '/anilist/disconnect' },
+  mal: { label: 'MyAnimeList', key: 'malTokenId', master: 'malWatchTracking', shelves: ['anime'], resume: false, icon: '/mal_icon.png', disconnectPath: '/mal/disconnect' },
 };
 
 export function connectedServices(user?: JellyfinUser): CardService[] {
