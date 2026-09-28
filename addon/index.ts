@@ -4244,6 +4244,7 @@ addon.post("/api/integrations/credential", async (req, res) => {
       return res.status(404).json({ error: `No ${provider} credential with that id` });
     }
     const config = access.config;
+    let replaced = null;
     if (profile) {
       if (!['simkl', 'anilist', 'mal'].includes(provider)) {
         return res.status(400).json({ error: "A Jellyfin user can hold only Simkl, AniList and MyAnimeList sign-ins" });
@@ -4252,6 +4253,8 @@ addon.post("/api/integrations/credential", async (req, res) => {
       if (!card) return res.status(404).json({ error: "No such user yet; it is stored with the next save" });
       if (card.trackers === true) return res.status(400).json({ error: "This user is you; connect accounts on your own card" });
       const { ACCOUNT_SERVICES, setAccountKey } = require('./lib/accounts');
+      const previous = card.accounts?.apiKeys?.[ACCOUNT_SERVICES[provider].key];
+      if (previous && previous !== tokenId) replaced = previous;
       setAccountKey(config, profile, provider, tokenId);
       if (card.accounts[ACCOUNT_SERVICES[provider].master] === undefined) card.accounts[ACCOUNT_SERVICES[provider].master] = true;
     } else {
@@ -4259,6 +4262,7 @@ addon.post("/api/integrations/credential", async (req, res) => {
     }
     await database.saveUserConfig(userUUID, access.passwordHash, config);
     configCache.del(userUUID);
+    if (replaced) await require('./lib/accountLinks').releaseTokenIfUnused(provider, replaced, provider === 'simkl' ? revokeSimklGrant : undefined);
     res.json({ success: true, field: mapping.field, tokenId });
   } catch (error) {
     consola.error(`[Integrations] Failed to store credential: ${error.message}`);
