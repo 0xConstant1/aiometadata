@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating, resolveInstallFilters } from '../../utils/ageRating';
 import { normaliseJellyfinId } from './idsCodec';
-import { ACCOUNT_SERVICE_LIST, AccountService, accountOwner, credentialOf, withAccountOwner } from '../accounts';
+import { ACCOUNT_SERVICES, ACCOUNT_SERVICE_LIST, AccountService, accountOwner, credentialOf, trackerConfig, withAccountOwner } from '../accounts';
 
 /** The main user is the configuration itself, under the id it always had. */
 export interface Profile {
@@ -122,20 +122,29 @@ export function profileByUserId(config: any, userUUID: string, userId: unknown):
   return listProfiles(config, userUUID).find((p) => p.userId === wanted) ?? null;
 }
 
+/** A service is held only while it is connected and its own master switch is on. */
+function isHeld(held: any, service: AccountService): boolean {
+  if (!ACCOUNT_SERVICE_LIST.includes(service)) return false;
+  if (!credentialOf(held, service)) return false;
+  return trackerConfig(held, service)?.[ACCOUNT_SERVICES[service].master] !== false;
+}
+
+/** A PublicMetaDB watchlist pick also needs a chosen list; nothing else does. */
+function isHeldForWatchlist(held: any, service: AccountService): boolean {
+  if (!isHeld(held, service)) return false;
+  return service !== 'publicmetadb' || Boolean(held.jellyfinAccounts?.publicmetadbWatchlist);
+}
+
 /** A holder's tracker pick, falling back to 'auto' once it names a service the holder doesn't hold. */
 function heldTrackerSource(held: any, trackerSource: string): string {
   if (trackerSource === 'auto' || trackerSource === 'off') return trackerSource;
-  const service = trackerSource as AccountService;
-  return ACCOUNT_SERVICE_LIST.includes(service) && credentialOf(held, service) ? trackerSource : 'auto';
+  return isHeld(held, trackerSource as AccountService) ? trackerSource : 'auto';
 }
 
 /** A holder's watchlist picks, dropping any whose service it doesn't hold; undefined once none are left. */
 function heldWatchlistServices(held: any, watchlistServices: string[]): string[] | undefined {
   if (watchlistServices.includes('none')) return watchlistServices;
-  const kept = watchlistServices.filter((token) => {
-    const service = token.split(':')[0] as AccountService;
-    return ACCOUNT_SERVICE_LIST.includes(service) && Boolean(credentialOf(held, service));
-  });
+  const kept = watchlistServices.filter((token) => isHeldForWatchlist(held, token.split(':')[0] as AccountService));
   return kept.length ? kept : undefined;
 }
 
