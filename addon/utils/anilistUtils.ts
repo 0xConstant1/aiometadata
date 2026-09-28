@@ -11,10 +11,12 @@ import { slotServiceOf } from '../lib/accounts';
 
 const logger = consola.withTag('anilist-utils');
 
-/** Whose list a catalog reads; on a Jellyfin user's own slot, only the user behind their token. */
+/** Whose list a catalog reads; on an AniList slot with no named user, whoever owns the token. */
 export async function anilistListUsername(config: any, catalog: { id?: string; metadata?: any }): Promise<string | undefined> {
-  if (!config?.jellyfinAccounts || slotServiceOf(catalog) !== 'anilist') return catalog?.metadata?.username;
-  const tokenId = config.apiKeys?.anilistTokenId;
+  const named = catalog?.metadata?.username;
+  if (slotServiceOf(catalog) !== 'anilist') return named;
+  if (!config?.jellyfinAccounts && named) return named;
+  const tokenId = config?.apiKeys?.anilistTokenId;
   if (!tokenId) return undefined;
   try {
     const row = await database.getOAuthToken(tokenId);
