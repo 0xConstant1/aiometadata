@@ -191,7 +191,8 @@ export function viewerByName(config: any, userUUID: string, name: unknown): Prof
 
 /** The config a handoff request acts as; undefined when it names nobody here. */
 export function configForViewer(config: any, userUUID: string, name: unknown): any | undefined {
-  if (typeof name !== 'string' || !name.trim()) return config;
+  if (name === undefined || name === null || (typeof name === 'string' && !name.trim())) return config;
+  if (typeof name !== 'string') return undefined;
   const profile = viewerByName(config, userUUID, name);
   if (!profile) return undefined;
   return profile.id ? scopeConfigToProfile(config, userUUID, profile.id) : config;
