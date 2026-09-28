@@ -12,6 +12,7 @@ import { PLAYBACK_MANIFEST_EVENTS, WATCH_STATE_PUSH_EVENTS, WATCH_STATE_VERSION 
 import { watchStatePullTtl } from "./watchState";
 import { collectionCatalogs, collectionsServed, COLLECTION_META_PREFIX } from "./collectionBuilder/aiostreamsCollections";
 import { holderCards, servesCatalog, withAccountOwner } from "./accounts";
+import { hasNamedViewers } from "./jellyfin/profiles";
 const jikan: any = require('./mal');
 const DEFAULT_LANGUAGE = "en-US";
 const catalogsTranslations: Record<string, Record<string, string>> = catalogsTranslationsJson;
@@ -1736,7 +1737,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       ? {
           watchState: {
             version: WATCH_STATE_VERSION,
-            viewers: true,
+            ...(hasNamedViewers(config, config.userUUID ?? '') ? { viewers: true } : {}),
             push: { events: WATCH_STATE_PUSH_EVENTS, bulk: true },
             pull: { items: true, watched: true, watchlist: true, ttlSeconds: watchStatePullTtl() },
           },

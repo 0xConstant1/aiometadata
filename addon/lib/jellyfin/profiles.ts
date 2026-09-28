@@ -219,9 +219,15 @@ export function viewerByName(config: any, userUUID: string, name: unknown): Prof
     p.name.trim().toLowerCase() === wanted || p.handoffNames.some((n) => n.toLowerCase() === wanted));
 }
 
-/** The config a handoff request acts as; undefined when it names nobody here. */
+export function hasNamedViewers(config: any, userUUID: string): boolean {
+  const [main, ...others] = listProfiles(config, userUUID);
+  return others.length > 0 || main.handoffNames.length > 0;
+}
+
+/** The config a handoff request acts as; undefined when it names nobody here while others could be named. */
 export function configForViewer(config: any, userUUID: string, name: unknown): any | undefined {
   if (name === undefined || name === null || (typeof name === 'string' && !name.trim())) return config;
+  if (!hasNamedViewers(config, userUUID)) return config;
   if (typeof name !== 'string') return undefined;
   const profile = viewerByName(config, userUUID, name);
   if (!profile) return undefined;
