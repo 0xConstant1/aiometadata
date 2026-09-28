@@ -14,6 +14,27 @@ export function publicSystemInfo(serverId: string, localAddress: string): any {
   };
 }
 
+const buildInfo: any = require('../buildInfo');
+
+/** The AIOStreams Jellyfin extensions this server offers, each with its version. */
+const EXTENSIONS = {
+  users: 1,
+  playedUpTo: 1,
+  dropped: 1,
+  refreshVersions: 1,
+  versions: 1,
+} as const;
+
+export function extensionInfo(origin: string): any {
+  return {
+    logo: process.env.ADDON_LOGO_URL?.trim() || `${origin}/logo.png`,
+    configureUrl: `${origin}/configure`,
+    pinSignIn: false,
+    features: EXTENSIONS,
+    version: { tag: `v${buildInfo.version}` },
+  };
+}
+
 export function systemInfo(serverId: string, localAddress: string): any {
   return {
     ...publicSystemInfo(serverId, localAddress),

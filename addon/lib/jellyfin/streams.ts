@@ -25,6 +25,10 @@ export interface PlayableStream {
   /** Subtitle files the stream itself offers. */
   subtitles: SubtitleTrack[];
   parsed?: any;
+  /** The addon's own title and lines, apart, for a picker that shows them apart. */
+  title: string;
+  description: string;
+  bingeGroup: string | null;
 }
 
 // The stream addon adds what it parsed from a release only for a user agent it knows.
@@ -237,6 +241,9 @@ export function toPlayable(stream: any): PlayableStream | null {
     bitrate: Number.isFinite(Number(stream?.streamData?.bitrate)) && Number(stream.streamData.bitrate) > 0 ? Number(stream.streamData.bitrate) : null,
     subtitles: streamSubtitleTracks(stream),
     parsed: stream?.streamData?.parsedFile && typeof stream.streamData.parsedFile === 'object' ? stream.streamData.parsedFile : undefined,
+    title: String(stream.name || '').trim(),
+    description: String(stream.title || stream.description || '').trim(),
+    bingeGroup: typeof stream?.behaviorHints?.bingeGroup === 'string' && stream.behaviorHints.bingeGroup ? stream.behaviorHints.bingeGroup : null,
   };
 }
 
@@ -579,6 +586,13 @@ export function mediaSourceFor(
     MediaAttachments: [],
     Formats: [],
     RequiredHttpHeaders: {},
+    // The first version takes its item's id, so this is the one that stays the same.
+    aiostreams: {
+      id: playable.id,
+      name: playable.title || playable.name,
+      description: playable.description,
+      ...(playable.bingeGroup ? { bingeGroup: playable.bingeGroup } : {}),
+    },
     DefaultAudioStreamIndex: 1,
     DefaultSubtitleStreamIndex: null,
     HasSegments: false,

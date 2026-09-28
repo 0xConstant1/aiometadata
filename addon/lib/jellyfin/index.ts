@@ -17,6 +17,7 @@ import {
   collectionFolder,
   EMPTY_USER_DATA,
   itemList,
+  extensionInfo,
   publicSystemInfo,
   sessionInfo,
   systemInfo,
@@ -42,7 +43,7 @@ import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watch
 import { applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { registerStubs } from './stubs';
-import { recordPlayed, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
+import { recordPlayed, recordPlayedUpTo, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
 
 const database: any = require('../database');
 
@@ -305,7 +306,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   // --- Handshake ---
 
   router.get('/System/Info/Public', (req: any, res: any) => {
-    res.json(publicSystemInfo(serverIdFor(req.params.userUUID), baseFor(req)));
+    res.json({ ...publicSystemInfo(serverIdFor(req.params.userUUID), baseFor(req)), aiostreams: extensionInfo(localAddress(req)) });
   });
 
   router.all('/System/Ping', (_req: any, res: any) => {
@@ -396,22 +397,22 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return a.length === b.length && timingSafeEqual(a, b);
   };
 
+  /** The configuration this password opens, or null. */
+  const configForPassword = async (userUUID: string, password: string): Promise<any> => {
+    const config = await database.verifyUserAndGetConfig(userUUID, password);
+    if (config) return config;
+    // An account that signs in through a provider has no configuration password
+    // to type, and a client's sign-in form cannot run that flow, so a password
+    // issued for these clients is accepted here as well.
+    const stored = await database.getUserConfig(userUUID).catch(() => null);
+    return stored?.jellyfinAppPassword && matchesAppPassword(stored.jellyfinAppPassword, password) ? stored : null;
+  };
+
   router.post('/Users/AuthenticateByName', loginRateLimit, async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
     const password = req.body?.Pw ?? req.body?.pw ?? req.body?.Password ?? '';
 
-    let config = await database.verifyUserAndGetConfig(userUUID, String(password));
-
-    // An account that signs in through a provider has no configuration password
-    // to type, and a client's sign-in form cannot run that flow, so a password
-    // issued for these clients is accepted here as well.
-    if (!config) {
-      const stored = await database.getUserConfig(userUUID).catch(() => null);
-      if (stored?.jellyfinAppPassword && matchesAppPassword(stored.jellyfinAppPassword, String(password))) {
-        config = stored;
-      }
-    }
-
+    const config = await configForPassword(userUUID, String(password));
     if (!config) {
       logger.debug(`Rejected Jellyfin login for ${userUUID}`);
       res.status(401).json({ Message: 'Invalid username or password' });
@@ -456,7 +457,46 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   router.use(requireAuth);
 
   router.get('/System/Info', (req: any, res: any) => {
-    res.json(systemInfo(serverIdFor(req.params.userUUID), baseFor(req)));
+    res.json({ ...systemInfo(serverIdFor(req.params.userUUID), baseFor(req)), aiostreams: extensionInfo(localAddress(req)) });
+  });
+
+  // Every user of a configuration signs in with its one password. The main user sees
+  // everything, so it switches freely; any other user, who may be held to a rating or
+  // to some catalogs, gives the password again to become someone else.
+  const switchNeeds = (req: any, target: Profile): 'password' | null => {
+    const callerId = req.jellyfin?.profileId ?? null;
+    return callerId === null || callerId === target.id ? null : 'password';
+  };
+
+  router.get('/AIOStreams/Users', async (req: any, res: any) => {
+    const userUUID = req.params.userUUID;
+    const config = await database.getUserConfig(userUUID).catch(() => null);
+    if (!config) {
+      res.json([]);
+      return;
+    }
+    const serverId = serverIdFor(userUUID);
+    res.json(listProfiles(config, userUUID).map((profile) => ({
+      user: userFor(profile, serverId),
+      avatar: profile.avatar,
+      hidden: false,
+      needs: switchNeeds(req, profile),
+    })));
+  });
+
+  router.post('/AIOStreams/Token', loginRateLimit, async (req: any, res: any) => {
+    const userUUID = req.params.userUUID;
+    const config = await database.getUserConfig(userUUID).catch(() => null);
+    const profile = config && profileByUserId(config, userUUID, req.body?.UserId);
+    if (!profile) {
+      res.status(404).json({ Message: 'User not found' });
+      return;
+    }
+    if (switchNeeds(req, profile) && !(await configForPassword(userUUID, String(req.body?.Pw ?? '')))) {
+      res.status(401).json({ Message: 'Invalid password' });
+      return;
+    }
+    await signIn(req, res, userUUID, config, profile);
   });
 
   router.post('/QuickConnect/Authorize', async (req: any, res: any) => {
@@ -1069,7 +1109,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const resolveMediaSources = async (
     req: any,
     descriptor: any,
-    runtimeTicks: number | null
+    runtimeTicks: number | null,
+    refresh = false
   ): Promise<any[]> => {
     if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) return [];
 
@@ -1087,7 +1128,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const cacheKey = streamCacheKey(req.params.userUUID, profileKey(config), stremioType, stremioId);
 
     const streams =
-      recallStreams(cacheKey) ??
+      (refresh ? undefined : recallStreams(cacheKey)) ??
       (await coalesce(cacheKey, async () => {
         const fetched = await fetchStreams(base, stremioType, stremioId);
         if (fetched.streams.length) rememberStreams(cacheKey, fetched.streams);
@@ -1311,7 +1352,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const requested = req.query.MediaSourceId ?? req.body?.MediaSourceId;
-    const all = await resolveMediaSources(req, descriptor, null);
+    // A named version keeps the list it came from.
+    const named = typeof requested === 'string' && !!requested && normaliseJellyfinId(requested) !== normaliseJellyfinId(itemId);
+    const all = await resolveMediaSources(req, descriptor, null, req.body?.Refresh === true && !named);
     const withIds = await withDefaultSourceId(all, itemId);
 
     let sources = withIds;
@@ -2979,6 +3022,18 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       logger.debug(`Played report failed: ${error.message}`)
     );
     res.json(playedState(String(req.params.itemId), true));
+  });
+
+  router.post('/AIOStreams/PlayedUpTo/:itemId', async (req: any, res: any) => {
+    const descriptor = await decodeJellyfinId(String(req.params.itemId));
+    if (descriptor?.k !== 'episode') {
+      res.status(404).json({ Message: 'Episode not found' });
+      return;
+    }
+    await recordPlayedUpTo(req, String(req.params.itemId)).catch((error: any) =>
+      logger.debug(`Played up to report failed: ${error.message}`)
+    );
+    res.status(204).end();
   });
 
   router.delete(['/Users/:userId/PlayedItems/:itemId', '/UserPlayedItems/:itemId'], async (req: any, res: any) => {
