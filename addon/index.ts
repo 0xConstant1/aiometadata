@@ -5398,7 +5398,8 @@ const catalogRoute = async function (req, res) {
       cacheWrapper(userUUID, keyForPage(page), () => runCatalogPage(page, skipOverride), cacheOptions);
 
     if (catalogFiltersActive({ config, catalogConfig, cleanId })) {
-      const key = cursorKey(userUUID, cleanId, actualType, genreName);
+      const { accountOwner } = require('./lib/accounts');
+      const key = cursorKey(userUUID, cleanId, actualType, genreName, accountOwner(config));
       const skipValue = legacySkip || 0;
       // Deduped here rather than after, so what a page serves, and so where the
       // next one starts, is the same whether it is filled for this request or on
