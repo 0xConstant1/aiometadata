@@ -12,6 +12,7 @@ const { httpPost } = require('../utils/httpClient');
 const database = require('./database');
 const idMapper = require('./id-mapper');
 const { resolveAnidbEpisodeFromTvdbEpisode } = require('./anime-list-mapper');
+const { ownTokenId } = require('./accounts');
 
 
 const logger = consola.withTag('AniListTracker');
@@ -85,9 +86,14 @@ function isTokenExpired(expiresAt) {
  * Get a valid access token for a user, refreshing if necessary
  * 
  * @param {string} userUUID - User's UUID
+ * @param {string|null} [tokenId] - null means this user has no AniList account of their own
  * @returns {Promise<string|null>} Valid access token or null if unavailable
  */
 async function getValidAccessToken(userUUID, tokenId) {
+  if (tokenId === null) {
+    logger.debug(`[AniList Tracker] No AniList account of their own for user ${userUUID}`);
+    return null;
+  }
   try {
     let anilistTokenId = tokenId;
     if (!anilistTokenId) {
@@ -679,7 +685,7 @@ async function trackAnimeProgress(parsedId, config, userUUID) {
     logger.debug(`[AniList Tracker] Resolved ${parsedId.provider}:${parsedId.id} to AniList ID ${anilistId}, episode ${episodeNumber}`);
 
     // Step 3: Get valid access token (with auto-refresh)
-    const accessToken = await getValidAccessToken(userUUID, config?.apiKeys?.anilistTokenId);
+    const accessToken = await getValidAccessToken(userUUID, ownTokenId(config, 'anilist'));
     if (!accessToken) {
       logger.warn(`[AniList Tracker] No valid access token available for user ${userUUID}`);
       return { success: false, reason: 'no_valid_token', updated: false };

@@ -52,6 +52,12 @@ export function credentialOf(config: any, service: AccountService): string | und
   return trackerConfig(config, service)?.apiKeys?.[ACCOUNT_SERVICES[service].key] || undefined;
 }
 
+/** The token id a tracker call uses; null for a Jellyfin user without that account, so nothing falls back to yours. */
+export function ownTokenId(config: any, service: AccountService): string | null | undefined {
+  const credential = credentialOf(config, service);
+  return credential ?? (config?.jellyfinAccounts ? null : undefined);
+}
+
 const SLOTS: Array<[AccountService, RegExp]> = [
   ['mdblist', /^mdblist\.(watchlist(\.(movies|series))?|upnext|recommended\..+)$/],
   ['simkl', /^simkl\.(watchlist\..+|upnext(\.anime)?)$/],

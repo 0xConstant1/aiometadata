@@ -1,6 +1,6 @@
 import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
-import { ACCOUNT_SERVICES, credentialOf, trackerConfig } from '../accounts';
+import { ACCOUNT_SERVICES, credentialOf, ownTokenId, trackerConfig } from '../accounts';
 import { credentialFor } from './trackerSource';
 
 const logger = consola.withTag('Jellyfin');
@@ -232,7 +232,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
     try {
       const anilist = require('../anilistTracker');
       const idMapper: any = require('../id-mapper');
-      const accessToken = await anilist.getValidAccessToken(userUUID, config?.apiKeys?.anilistTokenId);
+      const accessToken = await anilist.getValidAccessToken(userUUID, ownTokenId(config, 'anilist'));
       const anilistId = idMapper.getMappingByKitsuId(Number(ids.kitsu))?.anilist_id;
       if (accessToken && anilistId) await anilist.setPlanning(anilistId, listed, accessToken);
     } catch (error: any) {
@@ -243,7 +243,7 @@ export async function writeWatchlist(config: any, userUUID: string, ids: Watchli
   if (takes('mal', 'anime') && ids.mal) {
     try {
       const mal = require('../malTracker');
-      const accessToken = await mal.getValidAccessToken(userUUID, config?.apiKeys?.malTokenId);
+      const accessToken = await mal.getValidAccessToken(userUUID, ownTokenId(config, 'mal'));
       if (accessToken) await mal.setPlanToWatch(Number(ids.mal), listed, accessToken);
     } catch (error: any) {
       logger.warn(`MAL watchlist ${listed ? 'add' : 'remove'} failed: ${error?.message || error}`);

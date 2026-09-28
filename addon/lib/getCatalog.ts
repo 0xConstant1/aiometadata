@@ -12,6 +12,7 @@ import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPic
 import { mapWithLimit } from "../utils/concurrency.js";
 const anilist = require('./anilist');
 import { createHash } from 'crypto';
+import { ownTokenId } from './accounts';
 import * as jikan from "./mal.js"
 import * as Utils from '../utils/parseProps.js';
 import CATALOG_TYPES from "../static/catalog-types.json";
@@ -2593,7 +2594,7 @@ async function getMalUserListCatalog(
       return [];
     }
 
-    const accessToken = await malTracker.getValidAccessToken(userUUID, config.apiKeys?.malTokenId);
+    const accessToken = await malTracker.getValidAccessToken(userUUID, ownTokenId(config, 'mal'));
     if (!accessToken) {
       logger.warn(`[MAL] No valid access token for user ${userUUID} (catalog: ${catalogId})`);
       return [];

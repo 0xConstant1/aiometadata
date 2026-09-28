@@ -15,6 +15,7 @@ import { noteTrackerCall } from '../utils/trackerCalls';
 const database: any = require('./database');
 const idMapper: any = require('./id-mapper');
 const { resolveAnidbEpisodeFromTvdbEpisode } = require('./anime-list-mapper');
+import { ownTokenId } from './accounts';
 
 const logger = consola.withTag('MALTracker');
 
@@ -317,9 +318,14 @@ async function fetchMalSuggestions(
 const refreshLocks = new Map<string, Promise<string | null>>();
 
 /**
- * Get a valid access token for a user, refreshing if necessary
+ * Get a valid access token for a user, refreshing if necessary.
+ * tokenId === null means this user has no MAL account of their own.
  */
-async function getValidAccessToken(userUUID: string, tokenId?: string): Promise<string | null> {
+async function getValidAccessToken(userUUID: string, tokenId?: string | null): Promise<string | null> {
+  if (tokenId === null) {
+    logger.debug(`[MAL Tracker] No MAL account of their own for user ${userUUID}`);
+    return null;
+  }
   try {
     let malTokenId = tokenId;
     if (!malTokenId) {
@@ -599,7 +605,7 @@ async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID
     const { malId, episode: episodeNumber } = resolution;
     logger.debug(`[MAL Tracker] Resolved ${parsedId.provider}:${parsedId.id} to MAL ID ${malId}, episode ${episodeNumber}`);
 
-    const accessToken = await getValidAccessToken(userUUID, config?.apiKeys?.malTokenId);
+    const accessToken = await getValidAccessToken(userUUID, ownTokenId(config, 'mal'));
     if (!accessToken) {
       logger.warn(`[MAL Tracker] No valid access token available for user ${userUUID}`);
       return { success: false, reason: 'no_valid_token', updated: false };
