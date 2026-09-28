@@ -159,7 +159,7 @@ export async function fetchCatalogPage(
   if (failedPages.has(url)) return null;
   try {
     const { invokeRoute } = require('../inProcessRoutes');
-    const params = { userUUID, type, id: catalogId, ...(parts.length ? { extra: decodeParam(parts.join('&')) } : {}) };
+    const params = { userUUID, type, id: catalogId, forJellyfin: '1', ...(parts.length ? { extra: decodeParam(parts.join('&')) } : {}) };
     const reply = await invokeRoute('catalog', url, params, routeTimeout());
     if (reply.status < 200 || reply.status >= 300) {
       failedPages.set(url, true);

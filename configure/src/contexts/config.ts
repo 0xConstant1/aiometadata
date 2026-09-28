@@ -78,6 +78,7 @@ export interface CatalogConfig {
     username?: string;
     listName?: string;
     isCustomList?: boolean;
+    posterShape?: 'poster' | 'landscape';
     // Trakt Up Next metadata
     useShowPosterForUpNext?: boolean;
     includeAnimeInUpNext?: boolean;

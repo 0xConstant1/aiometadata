@@ -5523,6 +5523,16 @@ const catalogRoute = async function (req, res) {
       }
     }
 
+    const isSearchCatalog = cleanId === 'search' || cleanId === 'people_search' || cleanId === 'gemini.search';
+    if (catalogConfig?.metadata?.posterShape === 'landscape' && !isSearchCatalog && req.params.forJellyfin !== '1' && Array.isArray(responseData?.metas)) {
+      for (const meta of responseData.metas) {
+        const landscape = meta.landscapePoster || meta.background;
+        if (meta.posterShape === 'landscape' || !landscape) continue;
+        meta.poster = landscape;
+        meta.posterShape = 'landscape';
+      }
+    }
+
     if ((responseData as any)?.error) {
       const { dynamicError, showsNotices } = require('./lib/errorNotice');
       const reason = String((responseData as any).error);
