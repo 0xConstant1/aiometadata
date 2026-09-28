@@ -378,7 +378,13 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
       if (!window.confirm(`${user.name} is connected to ${names}. Removing the user disconnects them. Continue?`)) return;
       for (const service of held) {
         const path = CARD_SERVICES[service].disconnectPath;
-        if (path && auth.userUUID) await disconnectCardAccount(path, auth.userUUID, user.id);
+        if (path && auth.userUUID) {
+          const result = await disconnectCardAccount(path, auth.userUUID, user.id);
+          if (!result.ok) {
+            toast.error(`Could not disconnect ${user.name} from ${CARD_SERVICES[service].label}: ${result.error ?? 'unknown error'}. The user was kept.`);
+            return;
+          }
+        }
       }
     }
     setConfig(prev => ({ ...prev, jellyfinUsers: (prev.jellyfinUsers ?? []).filter(u => u.id !== user.id) }));
