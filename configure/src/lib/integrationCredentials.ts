@@ -34,12 +34,12 @@ export async function persistIntegrationCredential(
 }
 
 /** Disconnects one service from a Jellyfin user; a user the server has not stored yet has nothing to disconnect. */
-export async function disconnectCardAccount(path: string, userUUID: string, profile: string): Promise<{ ok: boolean; error?: string }> {
+export async function disconnectCardAccount(path: string, userUUID: string, profile: string, password: string | null): Promise<{ ok: boolean; error?: string }> {
   try {
     const response = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userUUID, profile }),
+      body: JSON.stringify({ userUUID, profile, password }),
     });
     if (response.ok || response.status === 404) return { ok: true };
     const data = await response.json().catch(() => ({}));

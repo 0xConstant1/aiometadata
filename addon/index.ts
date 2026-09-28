@@ -1533,6 +1533,8 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     }
 
     if (typeof req.body?.profile === 'string' && req.body.profile) {
+      const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+      if (!access || !access.passwordHash) return res.status(401).json({ error: "Invalid UUID or password" });
       return await disconnectCardAccount(res, userUUID, req.body.profile, 'simkl', config);
     }
 
@@ -3735,6 +3737,8 @@ addon.post("/anilist/disconnect", async (req, res) => {
     }
 
     if (typeof req.body?.profile === 'string' && req.body.profile) {
+      const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+      if (!access || !access.passwordHash) return res.status(401).json({ error: "Invalid UUID or password" });
       return await disconnectCardAccount(res, userUUID, req.body.profile, 'anilist', config);
     }
 
@@ -3995,6 +3999,8 @@ addon.post("/mal/disconnect", async (req, res) => {
     }
 
     if (typeof req.body?.profile === 'string' && req.body.profile) {
+      const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+      if (!access || !access.passwordHash) return res.status(401).json({ error: "Invalid UUID or password" });
       return await disconnectCardAccount(res, userUUID, req.body.profile, 'mal', config);
     }
 

@@ -379,7 +379,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
       for (const service of held) {
         const path = CARD_SERVICES[service].disconnectPath;
         if (path && auth.userUUID) {
-          const result = await disconnectCardAccount(path, auth.userUUID, user.id);
+          const result = await disconnectCardAccount(path, auth.userUUID, user.id, auth.password);
           if (!result.ok) {
             toast.error(`Could not disconnect ${user.name} from ${CARD_SERVICES[service].label}: ${result.error ?? 'unknown error'}. The user was kept.`);
             return;

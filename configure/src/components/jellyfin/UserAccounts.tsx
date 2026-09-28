@@ -54,7 +54,7 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
     const path = CARD_SERVICES[service].disconnectPath;
     if (path && auth.userUUID) {
       setBusy(service);
-      const result = await disconnectCardAccount(path, auth.userUUID, user.id);
+      const result = await disconnectCardAccount(path, auth.userUUID, user.id, auth.password);
       setBusy(null);
       if (!result.ok) {
         toast.error(result.error ?? 'Disconnect failed');
