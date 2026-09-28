@@ -4252,6 +4252,7 @@ addon.post("/api/integrations/credential", async (req, res) => {
       }
       const card = (Array.isArray(config.jellyfinUsers) ? config.jellyfinUsers : []).find((u) => u?.id === profile);
       if (!card) return res.status(404).json({ error: "No such user yet; it is stored with the next save" });
+      if (card.trackers === true) return res.status(400).json({ error: "This user is you; connect accounts on your own card" });
       const { ACCOUNT_SERVICES, setAccountKey } = require('./lib/accounts');
       setAccountKey(config, profile, provider, tokenId);
       if (card.accounts[ACCOUNT_SERVICES[provider].master] === undefined) card.accounts[ACCOUNT_SERVICES[provider].master] = true;
