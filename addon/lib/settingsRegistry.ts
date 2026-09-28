@@ -1711,6 +1711,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     max: 5,
   },
   {
+    key: 'HTTP_SLOW_LOG_MS',
+    envVar: 'HTTP_SLOW_LOG_MS',
+    label: 'Slow Outgoing Request Log (ms)',
+    description: 'Logs any request this server makes to another service that takes longer than this, split into waiting for a connection, the service\'s answer and the download. 0 turns it off.',
+    category: 'Diagnostics',
+    type: 'number',
+    default: 2000,
+    min: 0,
+  },
+  {
     key: 'EVENT_LOOP_STALL_LOG_MS',
     envVar: 'EVENT_LOOP_STALL_LOG_MS',
     label: 'Event Loop Stall Log Threshold',
