@@ -7,6 +7,7 @@ const logger = consola.withTag('EventLoop');
 
 const SAMPLE_INTERVAL_US = 10000;
 const TOP_ENTRIES = 6;
+const ROLL_MS = 60000;
 const OWN_FRAMES = 3;
 
 interface CallFrame {
@@ -36,6 +37,7 @@ let disabled = false;
 let windowEndsAt = 0;
 let quietUntil = 0;
 let windowTimer: NodeJS.Timeout | null = null;
+let rollTimer: NodeJS.Timeout | null = null;
 
 function windowSeconds(): number {
   return envInt('EVENT_LOOP_STALL_PROFILE_SECONDS', 120, 0);
@@ -43,6 +45,18 @@ function windowSeconds(): number {
 
 function cooldownSeconds(): number {
   return envInt('EVENT_LOOP_STALL_PROFILE_COOLDOWN', 600, 0);
+}
+
+function longStallMs(): number {
+  return envInt('EVENT_LOOP_STALL_PROFILE_LONG_MS', 5000, 0);
+}
+
+function longWindowSeconds(): number {
+  return envInt('EVENT_LOOP_STALL_PROFILE_LONG_SECONDS', 1800, 0);
+}
+
+function isLong(lateMs: number): boolean {
+  return longStallMs() > 0 && lateMs >= longStallMs() && longWindowSeconds() > 0;
 }
 
 function post<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
@@ -128,9 +142,28 @@ function describeStall(profile: Profile, lateMs: number): string | null {
   return `Stall of ${lateMs}ms profiled: busiest stretch ${busyMs}ms from ${began}; ${top.join('; ')}`;
 }
 
+function openWindow(seconds: number): void {
+  windowEndsAt = Math.max(windowEndsAt, Date.now() + seconds * 1000);
+  if (windowTimer) clearTimeout(windowTimer);
+  windowTimer = setTimeout(endWindow, windowEndsAt - Date.now());
+  windowTimer.unref?.();
+  if (rollTimer) return;
+  let due = Date.now() + ROLL_MS;
+  rollTimer = setInterval(() => {
+    const late = Date.now() - due;
+    due = Date.now() + ROLL_MS;
+    if (late > 500 || busy || !running) return;
+    busy = true;
+    stop().then(() => start()).catch(giveUp).finally(() => { busy = false; });
+  }, ROLL_MS);
+  rollTimer.unref?.();
+}
+
 function endWindow(): void {
   if (windowTimer) clearTimeout(windowTimer);
   windowTimer = null;
+  if (rollTimer) clearInterval(rollTimer);
+  rollTimer = null;
   windowEndsAt = 0;
   quietUntil = Date.now() + cooldownSeconds() * 1000;
   stop().catch(() => undefined);
@@ -147,13 +180,12 @@ export function onStall(lateMs: number): void {
   const now = Date.now();
 
   if (!running) {
-    if (now < quietUntil) return;
+    if (now < quietUntil && !isLong(lateMs)) return;
     busy = true;
     start()
       .then(() => {
-        windowEndsAt = now + windowSeconds() * 1000;
-        windowTimer = setTimeout(endWindow, windowSeconds() * 1000);
-        windowTimer.unref?.();
+        openWindow(isLong(lateMs) ? longWindowSeconds() : windowSeconds());
+        if (isLong(lateMs)) logger.info(`Profiling the next ${longWindowSeconds()}s after a ${lateMs}ms stall, in case it comes back`);
       })
       .catch(giveUp)
       .finally(() => { busy = false; });
@@ -165,6 +197,7 @@ export function onStall(lateMs: number): void {
     .then((profile) => {
       const line = profile ? describeStall(profile, lateMs) : null;
       if (line) logger.warn(line);
+      if (isLong(lateMs)) openWindow(longWindowSeconds());
       return Date.now() < windowEndsAt ? start() : endWindow();
     })
     .catch(giveUp)
