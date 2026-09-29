@@ -26,6 +26,7 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
+import { imageTag, readImageTag } from './imageTags';
 import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
@@ -1539,7 +1540,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       PremiereDate: isoDate(person?.birthday),
       EndDate: isoDate(person?.deathday),
       ProductionLocations: person?.birthplace ? [person.birthplace] : [],
-      ImageTags: person?.photo ? { Primary: 'p' } : {},
+      ImageTags: person?.photo ? { Primary: imageTag(person.photo) } : {},
       BackdropImageTags: [],
       UserData: { ...EMPTY_USER_DATA, Key: bare, ItemId: bare },
     };
@@ -1839,17 +1840,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   });
 
   router.get(['/Items/:itemId/Images/:imageType', '/Items/:itemId/Images/:imageType/:index'], async (req: any, res: any) => {
-    const images = await imagesFor(req, String(req.params.itemId));
-    if (!images) {
+    const requested = String(req.params.imageType).toLowerCase();
+    const tagged = readImageTag(req.query.tag ?? req.query.Tag);
+    const images = tagged ? null : await imagesFor(req, String(req.params.itemId));
+    if (!tagged && !images) {
       res.status(404).end();
       return;
     }
-    const kind = String(req.params.imageType).toLowerCase();
-    let url =
-      kind === 'primary' ? images.primary
-      : kind === 'backdrop' ? images.backdrop
-      : kind === 'logo' ? images.logo
-      : kind === 'thumb' ? images.thumb
+    const kind = tagged?.wide ? 'thumb' : requested;
+    let url = tagged
+      ? tagged.url
+      : kind === 'primary' ? images!.primary
+      : kind === 'backdrop' ? images!.backdrop
+      : kind === 'logo' ? images!.logo
+      : kind === 'thumb' ? images!.thumb
       : undefined;
 
     if (!url) {

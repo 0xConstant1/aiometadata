@@ -1,3 +1,4 @@
+import { imageTag } from './imageTags';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId } from './ids';
@@ -71,8 +72,8 @@ export function collectionView(serverId: string, collection: CollectionDraft, fo
   if (backdrop) rememberImages(serverId, id, { primary: backdrop, backdrop });
   const view = collectionFolder(id, serverId, collection.title, 'boxsets', folderCount);
   if (backdrop) {
-    view.ImageTags = { Primary: 'p' };
-    view.BackdropImageTags = ['b'];
+    view.ImageTags = { Primary: imageTag(backdrop) };
+    view.BackdropImageTags = [imageTag(backdrop)];
   }
   return view;
 }
@@ -117,8 +118,8 @@ function boxSetItem(serverId: string, collection: CollectionDraft, folder: Folde
     DisplayPreferencesId: id,
     Tags: [],
     PrimaryImageAspectRatio: folder.shape === 'LANDSCAPE' ? 1.7777777777777777 : folder.shape === 'SQUARE' ? 1 : 0.6666666666666666,
-    ImageTags: cover ? { Primary: 'p', ...(logo ? { Logo: 'l' } : {}) } : logo ? { Logo: 'l' } : {},
-    BackdropImageTags: backdrop ? ['b'] : [],
+    ImageTags: { ...(cover ? { Primary: imageTag(cover) } : {}), ...(logo ? { Logo: imageTag(logo) } : {}) },
+    BackdropImageTags: backdrop ? [imageTag(backdrop)] : [],
     ImageBlurHashes: {},
     LocationType: 'FileSystem',
     MediaType: 'Unknown',

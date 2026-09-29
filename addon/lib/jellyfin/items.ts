@@ -1,4 +1,5 @@
 import consola from 'consola';
+import { imageTag, readImageTag } from './imageTags';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId, parseStremioId } from './ids';
@@ -494,7 +495,7 @@ function peopleFrom(meta: any, serverId: string): any[] {
     // A client only asks for a portrait when the tag is present, so registering
     // the photo and setting it have to happen together.
     if (member?.photo) rememberImages(serverId, id, { primary: member.photo });
-    return { Name: member?.name, Id: id, Role: role, Type: type, PrimaryImageTag: member?.photo ? 'p' : undefined };
+    return { Name: member?.name, Id: id, Role: role, Type: type, PrimaryImageTag: member?.photo ? imageTag(member.photo) : undefined };
   };
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
 
@@ -567,9 +568,9 @@ export function metaToBaseItem(
   rememberImages(serverId, id, images);
 
   const imageTags: Record<string, string> = {};
-  if (images.primary) imageTags.Primary = 'p';
-  if (images.logo) imageTags.Logo = 'l';
-  if (images.thumb) imageTags.Thumb = 't';
+  if (images.primary) imageTags.Primary = imageTag(images.primary);
+  if (images.logo) imageTags.Logo = imageTag(images.logo);
+  if (images.thumb) imageTags.Thumb = imageTag(images.thumb);
 
   return {
     Name: meta.name,
@@ -599,7 +600,7 @@ export function metaToBaseItem(
     Taglines: [],
     RemoteTrailers: remoteTrailers(meta),
     ImageTags: imageTags,
-    BackdropImageTags: images.backdrop ? ['b'] : [],
+    BackdropImageTags: images.backdrop ? [imageTag(images.backdrop)] : [],
     ImageBlurHashes: {},
     UserData: { ...EMPTY_USER_DATA, Key: id, ItemId: id },
     LocationType: 'FileSystem',
@@ -754,19 +755,19 @@ function parentArt(meta: any, seriesId: string, serverId: string): Record<string
   if (serverId && seriesId) rememberImages(serverId, seriesId, images);
 
   const art: Record<string, any> = {};
-  if (images.primary) art.SeriesPrimaryImageTag = 'p';
+  if (images.primary) art.SeriesPrimaryImageTag = imageTag(images.primary);
   if (images.backdrop) {
     art.ParentBackdropItemId = seriesId;
-    art.ParentBackdropImageTags = ['b'];
+    art.ParentBackdropImageTags = [imageTag(images.backdrop)];
   }
   if (images.logo) {
     art.ParentLogoItemId = seriesId;
-    art.ParentLogoImageTag = 'l';
+    art.ParentLogoImageTag = imageTag(images.logo);
   }
   if (images.thumb) {
     art.ParentThumbItemId = seriesId;
-    art.ParentThumbImageTag = 't';
-    art.SeriesThumbImageTag = 't';
+    art.ParentThumbImageTag = imageTag(images.thumb);
+    art.SeriesThumbImageTag = art.ParentThumbImageTag;
   }
   return art;
 }
@@ -808,7 +809,7 @@ export function buildSeasons(
       ChildCount: episodes.length,
       RecursiveItemCount: episodes.length,
       UserData: { ...EMPTY_USER_DATA, Key: id, ItemId: id },
-      ImageTags: primary ? { Primary: 'p' } : {},
+      ImageTags: primary ? { Primary: imageTag(primary) } : {},
       BackdropImageTags: [],
       ImageBlurHashes: {},
       ...art,
@@ -937,7 +938,7 @@ export function buildEpisode(
       DateCreated: isoDate(video.released) || EPOCH_DATE,
       RunTimeTicks: parseRuntimeTicks(video.runtime),
       ProviderIds: {},
-      ImageTags: video.thumbnail ? { Primary: 'p' } : {},
+      ImageTags: video.thumbnail ? { Primary: imageTag(video.thumbnail) } : {},
       BackdropImageTags: [],
       ImageBlurHashes: {},
       ...art,
