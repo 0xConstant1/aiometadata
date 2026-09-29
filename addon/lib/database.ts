@@ -294,6 +294,7 @@ class Database {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_recent ON jellyfin_playstate(user_uuid, profile, updated_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_played ON jellyfin_playstate(last_played_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_user_played ON jellyfin_playstate(user_uuid, profile, played, last_played_at DESC, video_id)`,
       `CREATE TABLE IF NOT EXISTS jellyfin_preferences (
         user_uuid TEXT NOT NULL,
         profile TEXT NOT NULL DEFAULT '',
@@ -508,6 +509,7 @@ class Database {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_recent ON jellyfin_playstate(user_uuid, profile, updated_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_played ON jellyfin_playstate(last_played_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_jellyfin_playstate_user_played ON jellyfin_playstate(user_uuid, profile, played, last_played_at DESC, video_id)`,
       `CREATE TABLE IF NOT EXISTS jellyfin_preferences (
         user_uuid VARCHAR(64) NOT NULL,
         profile TEXT NOT NULL DEFAULT '',
@@ -1176,11 +1178,23 @@ class Database {
   }
 
   // Only plays with a time: history a sync copied from a tracker carries none.
-  async listRecentlyPlayed(userUUID: string, since: number, limit: number, profile = '', offset = 0): Promise<any[]> {
-    const query = this.type === 'sqlite'
-      ? "SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND profile = ? AND played = 1 AND last_played_at >= ? AND video_id LIKE '%:%:%' ORDER BY last_played_at DESC, video_id LIMIT ? OFFSET ?"
-      : "SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND profile = $2 AND played = 1 AND last_played_at >= $3 AND video_id LIKE '%:%:%' ORDER BY last_played_at DESC, video_id LIMIT $4 OFFSET $5";
-    return (await this.allQuery(query, [userUUID, profile, since, limit, offset])) || [];
+  async listRecentlyPlayed(
+    userUUID: string,
+    since: number,
+    limit: number,
+    profile = '',
+    after: { at: number; videoId: string } | null = null
+  ): Promise<Array<{ video_id: string; last_played_at: number; updated_at: number }>> {
+    const p = this.type === 'sqlite' ? () => '?' : ((n = 0) => () => `$${++n}`)();
+    const params: any[] = [userUUID, profile, since];
+    let query = `SELECT video_id, last_played_at, updated_at FROM jellyfin_playstate WHERE user_uuid = ${p()} AND profile = ${p()} AND played = 1 AND last_played_at >= ${p()} AND video_id LIKE '%:%:%'`;
+    if (after) {
+      query += ` AND (last_played_at < ${p()} OR (last_played_at = ${p()} AND video_id > ${p()}))`;
+      params.push(after.at, after.at, after.videoId);
+    }
+    query += ` ORDER BY last_played_at DESC, video_id LIMIT ${p()}`;
+    params.push(limit);
+    return (await this.allQuery(query, params)) || [];
   }
 
   async countPlayedSince(since: number): Promise<number> {

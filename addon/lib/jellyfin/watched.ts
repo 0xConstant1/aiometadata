@@ -21,13 +21,16 @@ export async function ownNextUpRows(userUUID: string, profile: string): Promise<
 
   const rows: NextUpRow[] = [];
   const seen = new Set<string>();
-  for (let offset = 0; rows.length < shows && offset < scanCap; offset += batch) {
+  let after: { at: number; videoId: string } | null = null;
+  for (let scanned = 0; rows.length < shows && scanned < scanCap; scanned += batch) {
     let records: any[];
     try {
-      records = await database.listRecentlyPlayed(userUUID, since, batch, profile, offset);
+      records = await database.listRecentlyPlayed(userUUID, since, batch, profile, after);
     } catch {
       return rows;
     }
+    const last = records[records.length - 1];
+    if (last) after = { at: Number(last.last_played_at), videoId: String(last.video_id) };
     for (const r of records) {
       if (rows.length >= shows) break;
       const parsed = parseStremioId(String(r.video_id));
