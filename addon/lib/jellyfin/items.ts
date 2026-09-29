@@ -1,5 +1,5 @@
 import consola from 'consola';
-import { imageTag, readImageTag } from './imageTags';
+import { imageTag, wideTag } from './imageTags';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId, parseStremioId } from './ids';
@@ -634,10 +634,9 @@ export function isLandscapeCatalog(config: any, catalog: { id: string; type: str
 
 export function showLandscape(items: any[]): void {
   for (const item of items) {
-    const thumb = readImageTag(item?.ImageTags?.Thumb);
-    const art = thumb ?? readImageTag(item?.BackdropImageTags?.[0]);
+    const art = item?.ImageTags?.Thumb ?? item?.BackdropImageTags?.[0];
     if (!art) continue;
-    item.ImageTags = { ...item.ImageTags, Primary: imageTag(art.url, { wide: true, backdrop: !thumb }) };
+    item.ImageTags = { ...item.ImageTags, Primary: wideTag(art) };
     item.PrimaryImageAspectRatio = 16 / 9;
   }
 }
