@@ -835,10 +835,6 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const extras: Record<string, string> = {};
     if (genreNames.length) extras.genre = genreNames[0];
-    if (searchTerm) {
-      extras.search = String(searchTerm);
-      extras.light = '1';
-    }
 
     if (genreNames.length > 1) {
       logger.debug(`Only the first of ${genreNames.length} genres is filterable: ${genreNames[0]}`);
@@ -851,24 +847,24 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
-    if (!parentId) {
-      // Clients build search rows here, one call per section: /Search/Hints is
-      // a single flat list with no way to express them.
-      if (searchTerm) {
-        const found = await searchAcross(
-          userUUID,
-          config,
-          serverId,
-          String(searchTerm),
-          startIndex + limit,
-          includeItemTypes
-        );
-        const page = found.slice(startIndex, startIndex + limit);
-        await applyWatchedState(page, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
-        res.json(itemList(page, found.length, startIndex));
-        return;
-      }
+    // Clients build search rows here, one call per section: /Search/Hints is
+    // a single flat list with no way to express them.
+    if (searchTerm) {
+      const found = await searchAcross(
+        userUUID,
+        config,
+        serverId,
+        String(searchTerm),
+        startIndex + limit,
+        includeItemTypes
+      );
+      const page = found.slice(startIndex, startIndex + limit);
+      await applyWatchedState(page, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
+      res.json(itemList(page, found.length, startIndex));
+      return;
+    }
 
+    if (!parentId) {
       const recursive = String(req.query.Recursive ?? req.query.recursive ?? '')
         .toLowerCase() === 'true';
 
