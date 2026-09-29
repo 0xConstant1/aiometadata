@@ -617,6 +617,31 @@ export function metaToBaseItem(
   };
 }
 
+function catalogSettingsFor(config: any, catalog: { id: string; type: string }): any {
+  const catalogs: any[] = Array.isArray(config?.catalogs) ? config.catalogs : [];
+  const exact = catalogs.find((c) => c.id === catalog.id && (c.type === catalog.type || c.displayType === catalog.type));
+  if (exact) return exact;
+  const suffix = catalog.id.match(/_(movie|series|anime|all)$/);
+  if (!suffix) return undefined;
+  const stripped = catalog.id.slice(0, -suffix[0].length);
+  return catalogs.find((c) => c.id === stripped && c.type === suffix[1])
+    ?? catalogs.find((c) => c.id === stripped && (c.type === catalog.type || c.displayType === catalog.type));
+}
+
+export function isLandscapeCatalog(config: any, catalog: { id: string; type: string }): boolean {
+  return catalogSettingsFor(config, catalog)?.metadata?.posterShape === 'landscape';
+}
+
+export function showLandscape(items: any[]): void {
+  for (const item of items) {
+    const thumb = readImageTag(item?.ImageTags?.Thumb);
+    const art = thumb ?? readImageTag(item?.BackdropImageTags?.[0]);
+    if (!art) continue;
+    item.ImageTags = { ...item.ImageTags, Primary: imageTag(art.url, { wide: true, backdrop: !thumb }) };
+    item.PrimaryImageAspectRatio = 16 / 9;
+  }
+}
+
 export interface ChildPageOptions {
   filters: string[];
   sortBy: string;

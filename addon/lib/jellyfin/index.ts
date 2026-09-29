@@ -27,7 +27,7 @@ import {
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
 import { decodeJellyfinId } from './ids';
 import { imageTag, readImageTag } from './imageTags';
-import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths } from './items';
+import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -1074,6 +1074,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const items = window.items
       .filter((meta: any) => meta && meta.id)
       .map((meta: any) => metaToBaseItem(meta, catalog.type, serverId, String(parentId)));
+    if (isLandscapeCatalog(config, catalog)) showLandscape(items);
 
     const filtered = filterByIncludeTypes(items, includeItemTypes ? String(includeItemTypes) : undefined)
       .slice(0, pageLimit);
@@ -1847,7 +1848,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(404).end();
       return;
     }
-    const kind = tagged?.wide ? 'thumb' : requested;
+    const kind = tagged?.wide ? (tagged.backdrop ? 'backdrop' : 'thumb') : requested;
     let url = tagged
       ? tagged.url
       : kind === 'primary' ? images!.primary
@@ -2056,6 +2057,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const items = window.items
       .filter((meta: any) => meta && meta.id)
       .map((meta: any) => metaToBaseItem(meta, catalog.type, serverId, String(parentId)));
+    if (isLandscapeCatalog(config, catalog)) showLandscape(items);
 
     const latest = filterByIncludeTypes(items, includeItemTypes ? String(includeItemTypes) : undefined).slice(0, limit);
     await applyWatchedState(latest, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
