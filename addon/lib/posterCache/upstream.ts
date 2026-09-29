@@ -393,6 +393,17 @@ export interface UpstreamStream {
   notModified: boolean;
 }
 
+// `data` is a stream axios pipes the response into, and destroying it leaves the
+// response itself holding its pooled socket.
+function releaseSocketWith(response: any): void {
+  const incoming = response.request?.res;
+  if (!incoming || incoming === response.data) return;
+  response.data.once('close', () => {
+    if (incoming.complete) incoming.resume();
+    else incoming.destroy();
+  });
+}
+
 export async function openImageStream(rawUrl: string, opts: FetchOptions = {}): Promise<UpstreamStream> {
   let current = rawUrl;
 
@@ -415,6 +426,7 @@ export async function openImageStream(rawUrl: string, opts: FetchOptions = {}): 
       validateStatus: (status: number) => (status >= 200 && status < 300) || (status >= 300 && status < 400),
       headers,
     });
+    releaseSocketWith(response);
 
     // Before the redirect branch: a 304 sits in the 3xx range but carries no
     // Location, and would otherwise be rejected as a broken redirect.
