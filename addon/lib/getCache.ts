@@ -1039,6 +1039,7 @@ function buildMetaComponentCacheKeys({ config, metaId, type, useShowPoster = fal
   const commonProvider = {
     ...metaIdentityProfile(ctx, config),
     ...(ctx.isAnime && config.mal?.useImdbIdForCatalogAndSearch ? { resolvesToImdb: true } : {}),
+    ...(ctx.useShowPoster ? { useShowPosterForUpNext: true } : {}),
   };
   const artCommon = {
     ...ctx.base,
