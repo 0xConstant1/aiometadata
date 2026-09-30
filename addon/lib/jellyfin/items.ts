@@ -489,6 +489,38 @@ function providerIds(meta: any): Record<string, string> {
   return ids;
 }
 
+const LINKS: Array<[string, string, (id: string, show: boolean) => string]> = [
+  ['Imdb', 'IMDb', (id) => `https://www.imdb.com/title/${id}`],
+  ['Tmdb', 'TMDB', (id, show) => `https://www.themoviedb.org/${show ? 'tv' : 'movie'}/${id}`],
+  ['Tvdb', 'TheTVDB', (id, show) => `https://thetvdb.com/dereferrer/${show ? 'series' : 'movie'}/${id}`],
+  ['MyAnimeList', 'MyAnimeList', (id) => `https://myanimelist.net/anime/${id}`],
+  ['AniList', 'AniList', (id) => `https://anilist.co/anime/${id}`],
+  ['Kitsu', 'Kitsu', (id) => `https://kitsu.app/anime/${id}`],
+  ['AniDB', 'AniDB', (id) => `https://anidb.net/anime/${id}`],
+];
+
+function externalUrls(ids: Record<string, string>, show: boolean): Array<{ Name: string; Url: string }> {
+  return LINKS.filter(([key]) => ids[key]).map(([key, name, url]) => ({ Name: name, Url: url(ids[key], show) }));
+}
+
+const CONTINUING = new Set(['continuing', 'returning series', 'running', 'ongoing', 'currently_airing', 'current']);
+const ENDED = new Set(['ended', 'canceled', 'cancelled', 'finished_airing', 'finished']);
+
+function seriesStatus(meta: any): 'Continuing' | 'Ended' | undefined {
+  const status = String(meta.status ?? '').trim().toLowerCase();
+  if (CONTINUING.has(status)) return 'Continuing';
+  if (ENDED.has(status)) return 'Ended';
+  const info = String(meta.releaseInfo ?? '');
+  if (/\d{4}\s*[-\u2013]\s*$/.test(info)) return 'Continuing';
+  if (/\d{4}\s*[-\u2013]\s*\d{4}/.test(info)) return 'Ended';
+  return undefined;
+}
+
+function endDate(meta: any): string | null {
+  const end = /\d{4}\s*[-\u2013]\s*(\d{4})/.exec(String(meta.releaseInfo ?? ''))?.[1];
+  return end ? new Date(Date.UTC(Number(end), 11, 31)).toISOString() : null;
+}
+
 function peopleFrom(meta: any, serverId: string): any[] {
   const extras = meta.app_extras || {};
   const person = (member: any, type: string, role: string) => {
@@ -572,6 +604,7 @@ export function metaToBaseItem(
   if (images.primary) imageTags.Primary = imageTag(images.primary);
   if (images.logo) imageTags.Logo = imageTag(images.logo);
   if (images.thumb) imageTags.Thumb = imageTag(images.thumb);
+  const ids = providerIds(meta);
 
   return {
     Name: meta.name,
@@ -595,7 +628,8 @@ export function metaToBaseItem(
     CommunityRating: parseRating(meta.imdbRating),
     OfficialRating: meta.app_extras?.certification || null,
     RunTimeTicks: parseRuntimeTicks(meta.runtime),
-    ProviderIds: providerIds(meta),
+    ProviderIds: ids,
+    ExternalUrls: externalUrls(ids, itemType === 'Series'),
     People: peopleFrom(meta, serverId),
     Studios: [],
     Tags: Array.isArray(meta.keywords) ? meta.keywords : [],
@@ -613,9 +647,8 @@ export function metaToBaseItem(
     LockedFields: [],
     LockData: false,
     ChildCount: null,
-    ...(itemType === 'Movie'
-      ? { EnableMediaSourceDisplay: true, MediaSources: placeholderSources(id) }
-      : {}),
+    ...(itemType === 'Movie' ? { EnableMediaSourceDisplay: true, MediaSources: placeholderSources(id) } : {}),
+    ...(itemType === 'Series' ? { Status: seriesStatus(meta), EndDate: endDate(meta) } : {}),
   };
 }
 
