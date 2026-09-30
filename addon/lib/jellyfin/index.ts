@@ -39,7 +39,7 @@ import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickCo
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
-import { allBoxSets, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
+import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
 import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
@@ -1013,7 +1013,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           return;
         }
         const wantedTypes = includeItemTypes ? String(includeItemTypes).split(',').map((t) => t.trim()) : [];
-        const children = !wantedTypes.length || wantedTypes.includes('BoxSet')
+        const children = !extras.genre && (!wantedTypes.length || wantedTypes.includes('BoxSet'))
           ? await boxSetsUnder(userUUID, config, serverId, collection, folder)
           : [];
         const pageCap = envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20);
@@ -1022,7 +1022,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const titlesFrom = Math.max(0, startIndex - children.length);
         const room = folderLimit - ahead.length;
         const page = room > 0
-          ? await boxSetMembers(userUUID, config, serverId, collection, folder, titlesFrom, room, includeItemTypes ? String(includeItemTypes) : undefined)
+          ? await boxSetMembers(userUUID, config, serverId, collection, folder, titlesFrom, room, includeItemTypes ? String(includeItemTypes) : undefined, extras.genre)
           : { items: [], hasMore: true };
         await applyWatchedState(page.items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
         const items = [...ahead, ...page.items];
@@ -1509,6 +1509,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (!config || !parentId) return { catalog: null, genres: [] };
 
     const descriptor = await decodeJellyfinId(String(parentId));
+    if (descriptor?.k === 'boxset') {
+      const folder = folderById(collectionById(config, descriptor.c), descriptor.f);
+      return folder ? boxSetGenres(req.params.userUUID, config, folder) : { catalog: null, genres: [] };
+    }
     if (!descriptor || descriptor.k !== 'view') return { catalog: null, genres: [] };
 
     const catalog = await findCatalogByViewId(req.params.userUUID, config, descriptor.t, descriptor.c);
