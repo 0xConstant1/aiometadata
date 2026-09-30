@@ -582,14 +582,22 @@ export function jellyfinTypeFor(metaType: string): 'Movie' | 'Series' {
   return metaType === 'movie' || metaType === 'anime.movie' ? 'Movie' : 'Series';
 }
 
+export function isBoxSetMeta(meta: any): boolean {
+  return String(meta?.id ?? '').startsWith('tvdbc:');
+}
+
+function itemTypeOf(meta: any, mediaType: string): 'Movie' | 'Series' | 'BoxSet' {
+  return isBoxSetMeta(meta) ? 'BoxSet' : jellyfinTypeFor(meta?.type || mediaType);
+}
+
 export function metaToBaseItem(
   meta: any,
   mediaType: string,
   serverId: string,
   parentId: string | null
 ): any {
-  const itemType = jellyfinTypeFor(meta.type || mediaType);
-  const kind = itemType === 'Movie' ? 'movie' : 'series';
+  const itemType = itemTypeOf(meta, mediaType);
+  const kind = itemType === 'Series' ? 'series' : 'movie';
   const id = encodeJellyfinId({ k: kind, t: mediaType, i: String(meta.id) });
 
   const images: ItemImages = {
@@ -614,7 +622,7 @@ export function metaToBaseItem(
     Etag: id,
     Type: itemType,
     MediaType: itemType === 'Movie' ? 'Video' : 'Unknown',
-    IsFolder: itemType === 'Series',
+    IsFolder: itemType !== 'Movie',
     ParentId: parentId,
     Overview: meta.description || null,
     ProductionYear: productionYear(meta),
@@ -627,7 +635,7 @@ export function metaToBaseItem(
     })),
     CommunityRating: parseRating(meta.imdbRating),
     OfficialRating: meta.app_extras?.certification || null,
-    RunTimeTicks: parseRuntimeTicks(meta.runtime),
+    RunTimeTicks: itemType === 'BoxSet' ? null : parseRuntimeTicks(meta.runtime),
     ProviderIds: ids,
     ExternalUrls: externalUrls(ids, itemType === 'Series'),
     People: peopleFrom(meta, serverId),
@@ -646,7 +654,7 @@ export function metaToBaseItem(
     PlayAccess: 'Full',
     LockedFields: [],
     LockData: false,
-    ChildCount: null,
+    ChildCount: itemType === 'BoxSet' && Array.isArray(meta.videos) ? meta.videos.length : null,
     ...(itemType === 'Movie' ? { EnableMediaSourceDisplay: true, MediaSources: placeholderSources(id) } : {}),
     ...(itemType === 'Series' ? { Status: seriesStatus(meta), EndDate: endDate(meta) } : {}),
   };
@@ -725,9 +733,9 @@ export function includeTypesFilter(
   if (!includeItemTypes) return undefined;
 
   const wanted = new Set(includeItemTypes.split(',').map((t) => t.trim()).filter(Boolean));
-  if (!wanted.size || (!wanted.has('Movie') && !wanted.has('Series'))) return undefined;
+  if (!wanted.size || (!wanted.has('Movie') && !wanted.has('Series') && !wanted.has('BoxSet'))) return undefined;
 
-  return (meta: any) => wanted.has(jellyfinTypeFor(meta?.type || mediaType));
+  return (meta: any) => wanted.has(itemTypeOf(meta, mediaType));
 }
 
 export function filterByIncludeTypes(items: any[], includeItemTypes: string | undefined): any[] {
