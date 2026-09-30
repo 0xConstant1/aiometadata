@@ -933,6 +933,7 @@ function getMetaCacheContext(config: any, metaId: string, type: string | null, u
         allowEpisodeMarking: config.mal?.allowEpisodeMarking || false,
         useImdbIdForCatalogAndSearch: config.mal?.useImdbIdForCatalogAndSearch || false,
       },
+      ...(context.metaProvider === 'tvdb' ? { tvdbSeasonType: config.tvdbSeasonType || 'default' } : {}),
     };
   } else if (type === 'movie') {
     context.metaProvider = config.providers?.movie || 'tmdb';
