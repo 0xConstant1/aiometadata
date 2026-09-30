@@ -267,6 +267,21 @@ class ConfigApi {
     return { valid: true };
   }
 
+  newerThanBase(req, stored) {
+    const base = Number(req.body?.baseVersion);
+    if (!Number.isFinite(base) || req.body?.force === true) return null;
+    const current = Number(stored?.configVersion) || 0;
+    return current > base ? current : null;
+  }
+
+  rejectStaleSave(res, newer) {
+    return res.status(409).json({
+      error: 'This configuration was changed in another tab or device after this page loaded.',
+      code: 'CONFIG_CHANGED',
+      configVersion: newer,
+    });
+  }
+
   // Save configuration with password
   async saveConfig(req, res) {
     logger.debug('saveConfig called - starting function');
@@ -366,6 +381,9 @@ class ConfigApi {
         // User might not exist yet, that's fine
         logger.debug(`No existing config found for user ${userUUID}, treating as new config`);
       }
+
+      const newerInSave = this.newerThanBase(req, oldConfig);
+      if (newerInSave) return this.rejectStaleSave(res, newerInSave);
       
       // Add a config version that changes when config is updated
       // This helps with cache invalidation
@@ -590,6 +608,7 @@ class ConfigApi {
         success: true,
         userUUID,
         installUrl,
+        configVersion: persistedConfig?.configVersion ?? configWithTimestamp.configVersion,
         message: existingUUID ? 'Configuration updated successfully' : 'Configuration saved successfully'
       });
     } catch (error) {
@@ -776,6 +795,9 @@ class ConfigApi {
       } catch (error) {
         logger.debug(`Could not retrieve old config for user ${userUUID}:`, error.message);
       }
+
+      const newerInUpdate = this.newerThanBase(req, oldConfig);
+      if (newerInUpdate) return this.rejectStaleSave(res, newerInUpdate);
 
       // Add timestamp to track config changes
       // Use a slightly higher timestamp to ensure it's always different
@@ -996,6 +1018,7 @@ class ConfigApi {
         success: true,
         userUUID,
         installUrl: buildInstallUrl(process.env.HOST_NAME, req.get('host'), manifestIdentifier(userUUID)),
+        configVersion: persistedConfig?.configVersion ?? configWithTimestamp.configVersion,
         message: 'Configuration updated successfully'
       });
     } catch (error) {
