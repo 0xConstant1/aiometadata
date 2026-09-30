@@ -2239,7 +2239,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
     const shelfKey = `${userUUID}:${profileKey(config)}:${sourceFor(config) ?? ''}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
     const memoKey = `${userUUID}:${profileKey(config)}:${digest}:${q('EnableResumable')}:${q('EnableRewatching')}:${q('SeriesId') || q('ParentId')}`;
-    const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config), undefined, {
+    let firstPending: number | null = null;
+    const notePending = (at: number) => {
+      if (firstPending === null || at < firstPending) firstPending = at;
+    };
+    const found = await memoNextUp(userUUID, memoKey, () => buildNextUp(req, userUUID, config, notePending), () => firstPending, {
       ms: envInt('JELLYFIN_NEXTUP_DEADLINE_MS', 10000, 1000),
       shelfKey,
     });
@@ -2248,11 +2252,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     warmSeriesMetas(req, userUUID, page);
   });
 
-  const buildNextUp = async (req: any, userUUID: string, config: any): Promise<any[]> => {
+  const buildNextUp = async (req: any, userUUID: string, config: any, notePending: (at: number) => void = () => {}): Promise<any[]> => {
     const t0 = Date.now();
     const lap = { snapshot: 0, resumable: 0, own: 0, meta: 0, episodes: 0, state: 0 };
     const snapshot = await watchedSnapshot(userUUID, config);
     lap.snapshot = Date.now() - t0;
+    const followedTimes = upcomingFollowed(config, envInt('JELLYFIN_UPCOMING_DAYS', 90, 1));
 
     // The client's recency cutoff is deliberately not applied: the tracker's own
     // view of what is in progress is the one people expect to see.
@@ -2291,8 +2296,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     await mapWithConcurrency([...new Set(offered.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
       identities.set(metaId, await showIdentity(metaId, config));
     });
-    const trackerTimes = new Map<string, NextUpRow>();
-    for (const row of snapshot.nextUp) if (row.airsAt && !trackerTimes.has(row.metaId)) trackerTimes.set(row.metaId, row);
+    const trackerTimes = new Map<string, Omit<NextUpRow, 'lastWatchedAt'>>();
+    for (const row of [...snapshot.nextUp, ...(await followedTimes)]) {
+      if ((row.airsAt || row.aired) && !trackerTimes.has(row.metaId)) trackerTimes.set(row.metaId, row);
+    }
     const taken = new Set<string>();
     const merged = offered
       .filter((row) => {
@@ -2320,11 +2327,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const counted = !includeRewatching && !seriesParam ? await seriesCountsAmong(snapshot, scoped.map((row) => row.metaId)) : new Map();
+    const listedAt = Date.now();
     const rows = scoped.filter((row) => {
       if (resumable && (resumable.has(row.metaId) || resumable.has(identities.get(row.metaId) ?? row.metaId))) return false;
       if (!includeRewatching && !seriesParam) {
         const counts = counted.get(row.metaId);
-        if (counts && counts.total > 0 && counts.watched >= counts.total) return false;
+        const timed = trackerTimes.get(row.metaId);
+        const airedSinceCounted = Boolean(timed?.aired) || (timed?.airsAt ?? Infinity) <= listedAt;
+        if (counts && counts.total > 0 && counts.watched >= counts.total && !airedSinceCounted) return false;
       }
       return true;
     });
@@ -2340,9 +2350,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     let skipped = 0;
     await warmSeriesIndex(userUUID, rows.map((row) => row.metaId));
     await mapWithConcurrency(rows, shelfConcurrency(), async (row, index) => {
-      const locate = async (episodes: any[], metaId: string): Promise<any | undefined> =>
-        row.videoId
-          ? locateEpisode(episodes, row.videoId, row.mediaType, metaId)
+      const locate = async (episodes: any[], metaId: string, videoId = row.videoId): Promise<any | undefined> =>
+        videoId
+          ? locateEpisode(episodes, videoId, row.mediaType, metaId)
           : episodes.find(
               (episode: any) =>
                 episode.IndexNumber === row.episode &&
@@ -2399,10 +2409,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       lap.state += Date.now() - ts;
       const nowMs = Date.now();
       const borrowed = row.airsAt ? undefined : trackerTimes.get(row.metaId);
+      const borrowedFits = Boolean(borrowed && next) && (
+        (next.IndexNumber === borrowed!.episode && (borrowed!.season === null || next.ParentIndexNumber === borrowed!.season))
+        || (Boolean(borrowed!.videoId) && (await locate(episodes, String(meta.id), borrowed!.videoId)) === next)
+      );
       const airedAt = next === target && row.airsAt
         ? row.airsAt
-        : borrowed && next && next.IndexNumber === borrowed.episode && (borrowed.season === null || next.ParentIndexNumber === borrowed.season)
-          ? borrowed.airsAt as number
+        : borrowedFits
+          ? borrowed!.airsAt ?? Math.min(Date.parse(next.PremiereDate || '') || nowMs, nowMs)
           : Date.parse(next?.PremiereDate || '');
       if (!next) {
         skipped += 1;
@@ -2410,6 +2424,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return;
       }
       if (Number.isFinite(airedAt) && airedAt > nowMs) {
+        notePending(airedAt);
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} airs ${next.PremiereDate}`);
         return;
@@ -2536,7 +2551,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const { snapshot, caughtUp, followed } = await showsInView(userUUID, config, days);
     const named = new Map<string, NextUpRow>();
-    for (const row of snapshot.nextUp) if (row.airsAt) named.set(row.metaId, row);
+    for (const row of snapshot.nextUp) if (row.airsAt || row.aired) named.set(row.metaId, row);
     // MDBList names each followed show's next episode and when it airs, in progress or not,
     // so its time is used only once the show passes the caught-up check below.
     const timed = new Map<string, (typeof caughtUp)[number]>();
@@ -2559,7 +2574,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const episode = row.videoId
           ? await locateEpisode(episodes, row.videoId, mediaType, String(meta.id))
           : episodes.find((e: any) => e.IndexNumber === row.episode && (row.season === null || e.ParentIndexNumber === row.season));
-        if (within(row.airsAt as number)) {
+        if (row.airsAt && within(row.airsAt)) {
           if (episode) {
             episode.PremiereDate = new Date(row.airsAt as number).toISOString();
             premieres.push(episode);
