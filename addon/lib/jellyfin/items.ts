@@ -246,7 +246,7 @@ export function knownCatalogLength(userUUID: string, catalog: CatalogRef, extras
 
 const walkConcurrency = (): number => envInt('JELLYFIN_CATALOG_WALK_CONCURRENCY', 4, 1);
 const lengthTtl = (): number => envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60);
-const catalogLengthRedisKey = (key: string): string => `jf:len:v2:catalog:${key}`;
+const catalogLengthRedisKey = (key: string): string => `jf:len:v3:catalog:${key}`;
 const pageLengthRedisKey = (key: string): string => `jf:len:v2:page:${key}`;
 
 function rememberLength(kind: 'catalog' | 'page', key: string, value: number): void {
@@ -419,7 +419,8 @@ export async function fetchWindow(
       }
 
       const size = pageLength || minPage;
-      staleRun = fresh > 0 ? 0 : staleRun + 1;
+      const filteredOut = page.length === 0 && advance > 0;
+      staleRun = fresh > 0 || filteredOut ? 0 : staleRun + 1;
       const dropped = !sequential && advance < size && advance * 2 >= size && staleRun < 2;
       skip = skips[i] + (dropped ? size : advance);
       if ((advance < size && !dropped) || staleRun >= 2) {
