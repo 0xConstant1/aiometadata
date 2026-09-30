@@ -24,7 +24,7 @@ import {
   userDto,
   SERVER_NAME,
 } from './dto';
-import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable } from './views';
+import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBrowsable, requiresGenre } from './views';
 import { decodeJellyfinId } from './ids';
 import { imageTag, isWideTag } from './imageTags';
 import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
@@ -888,7 +888,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return;
       }
 
-      const pool = (await getCatalogs(userUUID, config)).filter(isBrowsable).filter((catalog: any) => {
+      const pool = (await getCatalogs(userUUID, config)).filter((catalog: any) => isBrowsable(catalog) && !requiresGenre(catalog)).filter((catalog: any) => {
         if (!wanted || !wanted.size) return true;
         const kind = collectionTypeFor(catalog.type);
         if (kind === 'movies') return wanted.has('Movie');
@@ -2049,7 +2049,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const catalog = await findCatalogByViewId(userUUID, config, descriptor.t, descriptor.c);
-    if (!catalog) {
+    if (!catalog || requiresGenre(catalog)) {
       res.json([]);
       return;
     }
