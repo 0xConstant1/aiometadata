@@ -246,6 +246,7 @@ export interface AppConfig {
     originalLangFallback: boolean;
   };
   tvdbSeasonType: string;
+  tvdbEpisodeOrders?: Record<string, string>;
   mal: {
     skipFiller: boolean;
     skipRecap: boolean;

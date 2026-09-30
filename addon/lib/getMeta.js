@@ -24,6 +24,7 @@ var nameToImdb = require("name-to-imdb");
 const consola = require('consola');
 const { cp } = require("fs");
 const wikiMappings = require('./wiki-mapper.js');
+const { withEpisodeOrder } = require('../utils/episodeOrder');
 
 
 const logger = consola.withTag('Meta');
@@ -453,6 +454,7 @@ async function getMeta(type, language, stremioId, config = {}, userUUID, include
       if (detectedAnimeMapping.anilist_id) prefetchedAnimeIds.anilistId = detectedAnimeMapping.anilist_id;
     }
     const allIds =  await resolveAllIds(stremioId, type, config, prefetchedAnimeIds, Array.from(targetProviders));
+    if (type !== 'movie') config = withEpisodeOrder(config, allIds?.tvdbId);
     switch (finalType) {
       case 'movie':
         meta = await getMovieMeta(stremioId, preferredProvider, language, config, userUUID, allIds);

@@ -185,6 +185,19 @@ class ConfigApi {
     return { valid: true };
   }
 
+  validateEpisodeOrders(config) {
+    const { countEpisodeOrders } = require('../utils/episodeOrder');
+    const max = Math.max(1, parseInt(require('./settingsService').getSetting('TVDB_EPISODE_ORDER_MAX') || '', 10) || 100);
+    const count = countEpisodeOrders(config);
+    if (count <= max) return { valid: true };
+    return {
+      valid: false,
+      count,
+      max,
+      message: `Too many shows with their own episode order (${count}); the maximum on this instance is ${max}. Remove some and try again.`,
+    };
+  }
+
   validateCatalogCount(config) {
     const maxCatalogs = getMaxCatalogs();
     if (!maxCatalogs) return { valid: true };
@@ -336,6 +349,15 @@ class ConfigApi {
           error: catalogCheck.message,
           catalogCount: catalogCheck.count,
           maxCatalogs: catalogCheck.max,
+        });
+      }
+
+      const episodeOrderCheck = this.validateEpisodeOrders(config);
+      if (!episodeOrderCheck.valid) {
+        return res.status(400).json({
+          error: episodeOrderCheck.message,
+          episodeOrderCount: episodeOrderCheck.count,
+          maxEpisodeOrders: episodeOrderCheck.max,
         });
       }
 
@@ -746,6 +768,15 @@ class ConfigApi {
           error: catalogCheck.message,
           catalogCount: catalogCheck.count,
           maxCatalogs: catalogCheck.max,
+        });
+      }
+
+      const episodeOrderCheck = this.validateEpisodeOrders(config);
+      if (!episodeOrderCheck.valid) {
+        return res.status(400).json({
+          error: episodeOrderCheck.message,
+          episodeOrderCount: episodeOrderCheck.count,
+          maxEpisodeOrders: episodeOrderCheck.max,
         });
       }
 

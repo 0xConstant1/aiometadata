@@ -93,6 +93,7 @@ export interface UserConfig {
   exclusionGenres?: string;
   exclusionTmdbKeywords?: string[];
   tvdbSeasonType?: string;
+  tvdbEpisodeOrders?: Record<string, string>;
   castCount?: number;
   blurThumbs?: boolean;
   displayAgeRating?: boolean;
