@@ -597,6 +597,7 @@ export function metaToBaseItem(
     ProviderIds: providerIds(meta),
     People: peopleFrom(meta, serverId),
     Studios: [],
+    Tags: Array.isArray(meta.keywords) ? meta.keywords : [],
     Taglines: [],
     RemoteTrailers: remoteTrailers(meta),
     ImageTags: imageTags,
