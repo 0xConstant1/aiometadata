@@ -3,7 +3,7 @@ import { envInt } from '../../utils/envNumber';
 import { sourceFor } from './trackerSource';
 import { getPlaystatesAcross, upsertPlaystateEverywhere } from './aliases';
 import { profileKey, scopeConfigToProfile } from './profiles';
-import { accountOwner, holderCards } from '../accounts';
+import { accountOwner } from '../accounts';
 import { runAsAccountOwner } from './viewer';
 
 const logger = consola.withTag('Jellyfin');
@@ -147,7 +147,7 @@ function withinTime<T>(work: Promise<T>, ms: number): Promise<T | typeof TIMED_O
   return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
-/** One configuration and each user holding its own accounts: tracker positions and watches, then Next Up. */
+/** One configuration and each user keeping its own history: tracker positions and watches, then Next Up. */
 async function syncConfiguration(userUUID: string): Promise<{ added: number } | null> {
   let stored: any;
   try {
@@ -156,8 +156,12 @@ async function syncConfiguration(userUUID: string): Promise<{ added: number } | 
     return null;
   }
   if (!stored) return null;
-  const targets = [stored, ...holderCards(stored).map((card: any) => scopeConfigToProfile(stored, userUUID, card.id))]
-    .filter((config: any) => sourceFor(config));
+  const cards = Array.isArray(stored.jellyfinUsers) ? stored.jellyfinUsers : [];
+  const users = cards
+    .filter((card: any) => typeof card?.id === 'string' && card.id)
+    .map((card: any) => scopeConfigToProfile(stored, userUUID, card.id))
+    .filter((config: any) => profileKey(config));
+  const targets = [stored, ...users].filter((config: any) => sourceFor(config));
   if (!targets.length) return null;
 
   let added = 0;
