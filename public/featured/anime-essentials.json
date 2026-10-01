@@ -1,0 +1,1939 @@
+{
+  "exportType": "fusionWidgets",
+  "exportVersion": 1,
+  "requiredAddons": [],
+  "widgets": [
+    {
+      "id": "catalog.7c1e0f7a-3b52-4a1e-9d6c-2f0b8a4e61d3",
+      "title": "Airing Now",
+      "type": "row.classic",
+      "cacheTTL": 1800,
+      "limit": 20,
+      "presentation": {
+        "aspectRatio": "poster",
+        "cardStyle": "medium",
+        "badges": {
+          "providers": false,
+          "ratings": true
+        }
+      },
+      "dataSource": {
+        "kind": "addonCatalog",
+        "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "anime::mal.airing_anime",
+          "type": "anime",
+          "aiometadata": {
+            "version": 1,
+            "catalog": {
+              "id": "mal.airing",
+              "type": "anime",
+              "name": "MAL Airing Now",
+              "source": "mal",
+              "enabled": true,
+              "showInHome": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "catalog.b54a9e2d-8f03-4c7b-a1e6-5d92c3f7b804",
+      "title": "Trending on AniList",
+      "type": "row.classic",
+      "cacheTTL": 1800,
+      "limit": 20,
+      "presentation": {
+        "aspectRatio": "poster",
+        "cardStyle": "medium",
+        "badges": {
+          "providers": false,
+          "ratings": true
+        }
+      },
+      "dataSource": {
+        "kind": "addonCatalog",
+        "payload": {
+          "addonId": "YOUR_AIOMETADATA",
+          "catalogId": "anime::anilist.trending",
+          "type": "anime",
+          "aiometadata": {
+            "version": 1,
+            "catalog": {
+              "id": "anilist.trending",
+              "type": "anime",
+              "name": "AniList Trending",
+              "source": "anilist",
+              "enabled": true,
+              "showInHome": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "collection.collection-fcf0a429",
+      "title": "Anime",
+      "type": "collection.row",
+      "dataSource": {
+        "kind": "collection",
+        "payload": {
+          "items": [
+            {
+              "id": "folder-0f53ca94",
+              "title": "Airing now",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://i.postimg.cc/xd7RHS0J/DERNIERS-AJOUTS(4).png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.airing_anime",
+                    "type": "anime"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-f3f75338",
+              "title": "Popular",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://i.postimg.cc/j5L10XjG/DERNIERS-AJOUTS(1).png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.most_popular_anime",
+                    "type": "anime",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.most_popular",
+                        "type": "anime",
+                        "name": "MAL Most Popular",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": true
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-38f673c2",
+              "title": "Upcoming",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://i.postimg.cc/k4BH3c5h/DERNIERS-AJOUTS(3).png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.upcoming_anime",
+                    "type": "anime",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.upcoming",
+                        "type": "anime",
+                        "name": "MAL Upcoming Season",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": true
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-19b5cce4",
+              "title": "Most Favorited",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://i.postimg.cc/ydkG4PNG/DERNIERS-AJOUTS(2).png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.most_favorites_anime",
+                    "type": "anime",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.most_favorites",
+                        "type": "anime",
+                        "name": "MAL Most Favorites",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": true
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "collection.collection-fb89a4a8",
+      "title": "Anime Studios",
+      "type": "collection.row",
+      "dataSource": {
+        "kind": "collection",
+        "payload": {
+          "items": [
+            {
+              "id": "folder-d049cf7f",
+              "title": "A-1 Pictures",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://i.ibb.co/Xr0QMNDD/st-small-507x507-pad-600x600-f8f8f8.jpg",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "A-1 Pictures",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.studios",
+                        "type": "anime",
+                        "name": "MAL By Studio",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-41564aa9",
+              "title": "Mad House",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://i.ibb.co/RGtzJNTd/31-400.webp",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Madhouse"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-c4ee9cd6",
+              "title": "Studio Pierrot",
+              "hideTitle": false,
+              "imageAspect": "square",
+              "imageURL": "https://ih1.redbubble.net/image.5221021342.6521/st,small,507x507-pad,600x600,f8f8f8.webp",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Studio Pierrot"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-2cb1b4bf",
+              "title": "Ufotable",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://api.duniagames.co.id/api/content//upload/file/3168418521757742014.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "ufotable"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-dadd7490",
+              "title": "Production I.G",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://ih1.redbubble.net/image.5213991999.5502/st,medium,507x507-pad,600x600,f8f8f8.webp",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Production I.G"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-86bf967c",
+              "title": "Ghibli",
+              "hideTitle": false,
+              "imageAspect": "square",
+              "imageURL": "https://logos-world.net/wp-content/uploads/2024/07/Studio-Ghibli-Logo.jpg",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Studio Ghibli"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-aa7565ee",
+              "title": "Wit Studio",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://images.teepublic.com/derived/production/designs/21226254_0/1618872599/i_m:pid_2834,c_s_auto,bc_ffffff,s_630,q_90.jpg",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Wit Studio"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-915c0cd0",
+              "title": "Kyoto Animation",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://www.animeclick.it/prove/img_tmp/50103.jpg",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Kyoto Animation"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-fb085f0e",
+              "title": "Bones",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://animateusaonlineshop.com/cdn/shop/collections/bones_collection.jpg?v=1642339752",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Bones"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-f01dec69",
+              "title": "Mappa",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR7ZfCOzvaa4Y1nY3CIiwc70X1YpQvhh6qn0w&s",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "MAPPA"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-07486001",
+              "title": "Toei Animation",
+              "hideTitle": true,
+              "imageAspect": "square",
+              "imageURL": "https://pbs.twimg.com/media/G5A_3hvXsAA4ojA.jpg",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Toei Animation"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "collection.collection-d4b46cd2",
+      "title": "Anime by Genre",
+      "type": "collection.row",
+      "dataSource": {
+        "kind": "collection",
+        "payload": {
+          "items": [
+            {
+              "id": "folder-e471ad42",
+              "title": "Action",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/01-action.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Action",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.genres",
+                        "type": "anime",
+                        "name": "MAL Genres",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "67488278-94f2-4a54-bc70-39dd550a83df",
+              "title": "Adult Cast",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/22-adult-cast.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Adult Cast"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-b2e82a6e",
+              "title": "Adventure",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/02-adventure.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Adventure"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "7ce1f37b-a282-4df0-9f4c-a7ae0c641f60",
+              "title": "Anthropomorphic",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/23-anthropomorphic.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Anthropomorphic"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "dd7e95b6-f5ac-407f-9e51-e231f153484b",
+              "title": "Avant Garde",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/03-avant-garde.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Avant Garde"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "9c2b4454-240a-4b43-9daf-656c337a0284",
+              "title": "Award Winning",
+              "hideTitle": false,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/04-award-winning.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Award Winning"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "453353fb-ca9b-46fb-a2b3-d45773063423",
+              "title": "CGDCT",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/24-cgdct.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "CGDCT"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "fbf0c112-8cdd-4cb6-bee5-7006530ca227",
+              "title": "Childcare",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/25-childcare.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Childcare"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "8b9efe82-9a8a-4293-b535-9fc3557d32ea",
+              "title": "Combat Sports",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/26-combat-sports.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Combat Sports"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-dafff854",
+              "title": "Comedy",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/06-comedy.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Comedy"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "ba337f68-fb39-44f5-a884-0f28e5bff41c",
+              "title": "Delinquents",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/28-delinquents.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Delinquents"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "26c0dcee-8b15-42f5-98d3-c83ff2a0e0c5",
+              "title": "Detective",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/29-detective.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Detective"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-cdd265e0",
+              "title": "Drama",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/07-drama.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Drama"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "3a6c389c-95f3-40e9-9fb8-6f1e4239b68c",
+              "title": "Ecchi",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/19-ecchi.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Ecchi"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "353d4745-323a-4013-a32b-aacc3dfb555b",
+              "title": "Educational",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/30-educational.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Educational"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "56fd3143-90bc-4fec-8172-7381a4b10987",
+              "title": "Erotica",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/20-erotica.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Erotica"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "8f0ec86a-8540-4f9e-b380-ddc18947b9fb",
+              "title": "Fantasy",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/08-fantasy.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Fantasy"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "a9d230ad-4e51-456f-b55b-b93e63ad04b4",
+              "title": "Gag Humor",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/31-gag-humor.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Gag Humor"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "dbcdf96a-39a8-495a-9370-d0e40f1bc0d3",
+              "title": "Gore",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/32-gore.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Gore"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "7a7b5ec9-6504-40f8-b9ad-b4fa993e461f",
+              "title": "Gourmet",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/10-gourmet.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Gourmet"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "f3c0aceb-5737-4e7e-91ae-8ffa6933a50b",
+              "title": "Harem",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/33-harem.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Harem"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "84002ede-f8eb-43bb-b6b3-8e7e9a32afdc",
+              "title": "Hentai",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/21-hentai.png?v=5",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Hentai"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "09da2315-af9f-4d50-8bc8-db7b0edc5636",
+              "title": "High Stakes Game",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/34-high-stakes-game.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "High Stakes Game"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "488b9ad7-08c9-4941-b9ea-244fcb57cfcc",
+              "title": "Historical",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/35-historical.png?v=2",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Historical"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-9e61d86a",
+              "title": "Horror",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/11-horror.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Horror"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "5a3b6994-d5c1-4cce-8954-1f404275ff8b",
+              "title": "Idols (Female)",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/36-idols-female.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Idols (Female)"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "e1c82fb7-b9a5-437f-8ce1-1fdd390b9e01",
+              "title": "Idols (Male)",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/37-idols-male.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Idols (Male)"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-5152c27b",
+              "title": "Isekai",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/38-isekai.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Isekai"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "394b7c66-3688-4f1d-900b-3fcab7c17fc7",
+              "title": "Iyashikei",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/39-iyashikei.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Iyashikei"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "d5e39b0d-2aa0-4151-a273-e18c2e841219",
+              "title": "Josei",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/74-josei.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Josei"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "dbe0994f-461b-4970-b386-15121dd0379c",
+              "title": "Kids",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/75-kids.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Kids"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "27345aab-618d-4212-9844-bdd735384b21",
+              "title": "Love Polygon",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/40-love-polygon.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Love Polygon"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "8b14df0c-6168-40da-b1cd-edd8d66b7398",
+              "title": "Love Status Quo",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/41-love-status-quo.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Love Status Quo"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "11bb19b1-be98-47c8-931d-8e72ae8bbc13",
+              "title": "Magical Sex Shift",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/42-magical-sex-shift.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Magical Sex Shift"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "0b150bae-4c7d-464e-98bb-61469a7484de",
+              "title": "Mahou Shoujo",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/43-mahou-shoujo.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Mahou Shoujo"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "80be82ea-17d4-4bed-8fc5-b61e065b712f",
+              "title": "Martial Arts",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/44-martial-arts.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Martial Arts"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-6c678dac",
+              "title": "Mecha",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/45-mecha.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Mecha"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "a191a0da-3046-413e-9f38-e701017549b4",
+              "title": "Medical",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/46-medical.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Medical"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "8b7724d0-d902-42f0-bf54-a5434b89b9fd",
+              "title": "Military",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/47-military.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Military"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "ec0a9f73-c9f1-4739-b29a-5a8b69534a0b",
+              "title": "Music",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/48-music.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Music"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "83d583b1-6340-42f5-9bd7-81668e0544e3",
+              "title": "Mystery",
+              "hideTitle": false,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/12-mystery.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Mystery"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "d5c93773-7cd9-42e9-b52b-76f8e665a7c8",
+              "title": "Mythology",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/49-mythology.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Mythology"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "20f8997b-0337-4767-bdf7-cd07aa10ade2",
+              "title": "Organized Crime",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/50-organized-crime-v2.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Organized Crime"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "dc0ca990-f23c-41ec-8117-53006adfecc1",
+              "title": "Otaku Culture",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/51-otaku-culture.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Otaku Culture"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "b45413e2-920f-490c-b0b9-d3ed33332563",
+              "title": "Parody",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/52-parody.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Parody"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "061f7037-8983-4df1-8714-ccbf38a65bed",
+              "title": "Performing Arts",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/53-performing-arts.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Performing Arts"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "d42a2c7e-c68a-4f5a-a555-e647f97ebcf2",
+              "title": "Pets",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/54-pets.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Pets"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "7f58be1c-e851-401c-a0cc-65c205c679f2",
+              "title": "Psychological",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/55-psychological.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Psychological"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "307cb12e-0a2e-4296-85ce-59050ca68ebe",
+              "title": "Racing",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/56-racing.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Racing"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "718a3e3f-d3ad-4b99-bfa2-eddf7b0668be",
+              "title": "Reincarnation",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/57-reincarnation.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Reincarnation"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "5edc94d3-7d91-4103-8c0a-6730b31f4f60",
+              "title": "Reverse Harem",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/58-reverse-harem.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Reverse Harem"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "d851d806-8f11-4cae-beb6-19d731069da2",
+              "title": "Romance",
+              "hideTitle": false,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/13-romance.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Romance"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "0e35624d-ae55-48ea-89a4-651921396dee",
+              "title": "Samurai",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/59-samurai.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Samurai"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "8724e2a6-992c-4e09-8030-6f9223f81a1b",
+              "title": "School",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/60-school.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "School"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "6f6205db-e5c3-483f-8195-4b4b6573f713",
+              "title": "Sci-Fi",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/14-sci-fi.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Sci-Fi"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-25a2dee5",
+              "title": "Seinen",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/76-seinen.png?v=2",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Seinen"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "185f0be8-7c71-4dd4-936a-1f2edb21881b",
+              "title": "Shoujo",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/77-shoujo.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Shoujo"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-d9a8c060",
+              "title": "Shounen",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/78-shounen.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Shounen"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "ec2c15e5-b641-4b2a-967f-a5d3d2698572",
+              "title": "Showbiz",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/61-showbiz.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Showbiz"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-cb60bb7c",
+              "title": "Slice Of Life",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/15-slice-of-life.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Slice of Life"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "947a3153-55c9-4834-a338-fae9e489eaf5",
+              "title": "Space",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/62-space.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Space"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "e69d1372-33cc-4c60-a9e0-55f607b803cf",
+              "title": "Sports",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/16-sports.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Sports"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "35e8497e-faad-497a-b61c-d9315e450ca6",
+              "title": "Strategy Game",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/63-strategy-game.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Strategy Game"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "03c8ce78-5830-47ac-b3ca-ca396789ac53",
+              "title": "Super Power",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/64-super-power.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Super Power"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "95ef6276-cf50-4f7c-96e2-18607fa58f4f",
+              "title": "Supernatural",
+              "hideTitle": false,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/17-supernatural.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Supernatural"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "23eef9ba-9f01-4fcd-8bdb-449a39bf4b71",
+              "title": "Survival",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/65-survival.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Survival"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "27f167f7-b614-4990-8075-c461ce8f0e25",
+              "title": "Suspense",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/18-suspense.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Suspense"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1b19bf37-37f0-4940-9864-d74b10c0ef6c",
+              "title": "Team Sports",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/66-team-sports.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Team Sports"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "a6983e26-a913-4337-83af-2589db0422ca",
+              "title": "Time Travel",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/67-time-travel.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Time Travel"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "b5730350-3124-440f-b694-418e4c4e91c8",
+              "title": "Urban Fantasy",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/68-urban-fantasy.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Urban Fantasy"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "23f281f5-e6b8-490c-9482-ae23f39c18e7",
+              "title": "Vampire",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/69-vampire.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Vampire"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "89c50018-cb27-4fd4-ab7b-39a64faadab8",
+              "title": "Video Game",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/70-video-game.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Video Game"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "d23e051a-65b3-4238-a792-ccca1dbf6bab",
+              "title": "Villainess",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/71-villainess.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Villainess"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "57b7b867-2601-410c-9ad7-45e6ac3ea4e4",
+              "title": "Visual Arts",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/72-visual-arts.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Visual Arts"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "35145e4c-47fe-4b35-89dd-74ef271bb2be",
+              "title": "Workplace",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/73-workplace.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Workplace"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "collection.collection-9030bd54",
+      "title": "Anime by Decade",
+      "type": "collection.row",
+      "dataSource": {
+        "kind": "collection",
+        "payload": {
+          "items": [
+            {
+              "id": "e67abdf5-5d91-4796-96c7-4d41f83dc467",
+              "title": "1980s",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/alternates/81-1980s.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.80sDecade_anime",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.80sDecade",
+                        "type": "anime",
+                        "name": "MAL Best of 80s",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "b3489c96-77a7-43eb-b965-4afc42f5695f",
+              "title": "1990s",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/alternates/82-1990s.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.90sDecade_anime",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.90sDecade",
+                        "type": "anime",
+                        "name": "MAL Best of 90s",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "d1e54897-defe-4c66-a64d-83ffe233d3e7",
+              "title": "2000s",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/83-2000s.png?v=2",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.00sDecade_anime",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.00sDecade",
+                        "type": "anime",
+                        "name": "MAL Best of 2000s",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "6103d480-fad8-4ab0-b6cd-aedb32fb7046",
+              "title": "2010s",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/84-2010s.png?v=2",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.10sDecade_anime",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.10sDecade",
+                        "type": "anime",
+                        "name": "MAL Best of 2010s",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "9fcc9d62-cf77-4724-85c2-860115f703dd",
+              "title": "2020s",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/85-2020s.png?v=2",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.20sDecade_anime",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.20sDecade",
+                        "type": "anime",
+                        "name": "MAL Best of 2020s",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
