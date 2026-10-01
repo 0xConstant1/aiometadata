@@ -20,8 +20,6 @@ export interface BlockingInput {
   headroom: number;
   /** Required API keys the configuration is still missing, by display name. */
   missingKeys: string[];
-  /** Classic rows whose type Fusion will not import. */
-  unsupportedRows: Array<{ id: string; title: string; type: string }>;
 }
 
 export interface IssueCenterArgs {
@@ -40,14 +38,6 @@ export interface SaveVerdict {
 
 const RANK: Record<IssueSeverity, number> = { blocking: 0, warning: 1, info: 2 };
 
-/** Also shown inside the row's own editor, so both places say the same thing. */
-export function unsupportedRowMessage(type: string, target: 'nuvio' | 'fusion'): string {
-  const move = `Move it into a collection folder, or add the row by hand in Fusion. Both work: only the JSON import refuses ${type}.`;
-  return target === 'fusion'
-    ? `Fusion cannot import this row: its catalog is type ${type}, and one such row makes Fusion reject the whole file rather than just this row. ${move}`
-    : `Nuvio serves this, but Fusion cannot import it as a classic row: its catalog is type ${type}. ${move}`;
-}
-
 /**
  * The two conditions that refuse a save outright, as rows so they sit in the
  * same list as everything else rather than ambushing the user at the button.
@@ -59,22 +49,8 @@ export function blockingIssues({
   pendingCount,
   headroom,
   missingKeys,
-  unsupportedRows,
 }: BlockingInput): IssueRow[] {
   const rows: IssueRow[] = [];
-
-  // One per row and anchored to it, so the rail marks the row at fault and
-  // selecting the issue opens it. Said on both targets, because the design is one
-  // thing: Nuvio serves these types, so there it is only worth knowing.
-  for (const row of unsupportedRows) {
-    rows.push({
-      key: `block-row-type-${row.id}`,
-      severity: target === 'fusion' ? 'blocking' : 'warning',
-      message: unsupportedRowMessage(row.type, target),
-      entryId: row.id,
-      folderId: null,
-    });
-  }
 
   if (missingKeys.length > 0) {
     rows.push({

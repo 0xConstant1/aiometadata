@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { AlertTriangle, Plus, Rows3 } from 'lucide-react';
+import { Plus, Rows3 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { TagDef } from '@/contexts/config';
@@ -27,7 +27,6 @@ export function ClassicRowEditor({
   userTags = [],
   focusTitle,
   onTitleFocused,
-  unsupportedNote,
 }: {
   entry: ClassicRowDraft;
   catalogs: ManifestCatalog[];
@@ -40,8 +39,6 @@ export function ClassicRowEditor({
   userTags?: TagDef[];
   focusTitle?: boolean;
   onTitleFocused?: () => void;
-  /** Set when this row's catalog carries a type Fusion will not import. */
-  unsupportedNote?: string | null;
 }) {
   const terms = TERMS[target];
   const update = (patch: Partial<ClassicRowDraft>) => onChange({ ...entry, ...patch });
@@ -57,17 +54,6 @@ export function ClassicRowEditor({
 
   return (
     <div className="space-y-4">
-      {unsupportedNote && (
-        <div className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${
-          target === 'fusion'
-            ? 'border-red-400/20 bg-red-500/10 text-red-400'
-            : 'border-amber-400/20 bg-amber-500/10 text-amber-500'
-        }`}>
-          <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
-          {unsupportedNote}
-        </div>
-      )}
-
       <div className="flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-xs text-violet-300">
         <Rows3 className="h-4 w-4 shrink-0" />
         Classic rows are Fusion only. Nuvio has no equivalent, so this row is left out of the Nuvio export.

@@ -90,31 +90,6 @@ function resolveFusionCatalogType(catalogId: string, currentType?: string): stri
   return PREFIX_TYPES[prefix] ?? (declared || 'movie');
 }
 
-/**
- * Types Fusion will take on a classic row. Anything else, `anime` and `all` among
- * them, makes the whole file unimportable rather than just that row: the same
- * catalog inside a collection is accepted, so that is where it has to go.
- */
-const CLASSIC_ROW_TYPES = new Set(['movie', 'series']);
-
-/** Classic rows Fusion would reject, by title, so the editor can say which. */
-export function unsupportedClassicRows(
-  entries: BuilderEntry[]
-): Array<{ id: string; title: string; type: string }> {
-  const rows: Array<{ id: string; title: string; type: string }> = [];
-  for (const entry of entries) {
-    if (entry.kind !== 'classicRow' || !entry.source) continue;
-    if (isNativeSource(entry.source)) continue;
-    const plainId = trimmed(entry.source.catalogId);
-    const manifestType = trimmed(entry.source.type);
-    if (!plainId || !manifestType) continue;
-    const type = resolveFusionCatalogType(`${manifestType}::${plainId}`, manifestType);
-    if (CLASSIC_ROW_TYPES.has(type)) continue;
-    rows.push({ id: entry.id, title: trimmed(entry.title) || 'Untitled row', type });
-  }
-  return rows;
-}
-
 function normalizeCatalogId(catalogId: string, catalogType: string): string {
   const value = catalogId.trim();
   if (!value) return '';

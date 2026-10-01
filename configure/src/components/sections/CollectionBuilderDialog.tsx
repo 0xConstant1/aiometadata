@@ -78,7 +78,7 @@ import {
   type ImportResult,
   type MissingCatalogGroup,
 } from '@shared/importers';
-import { toFusionWidgets, unsupportedClassicRows } from '@shared/fusionExport';
+import { toFusionWidgets } from '@shared/fusionExport';
 import {
   buildIdentity,
   buildManifestUrl,
@@ -104,7 +104,6 @@ import {
   blockingIssues,
   buildIssueCenter,
   saveVerdict,
-  unsupportedRowMessage,
   type IssueRow,
   type IssueSeverity,
 } from '@/lib/collectionBuilder/issueCenter';
@@ -904,9 +903,8 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
   /** False when a gate took over, so callers can hold off on closing. */
   const handleSave = (mode: 'apply' | 'save', limits?: InstanceLimits | null): boolean => {
-    // Save is already disabled on these two, but Apply only is not, so they
-    // still have to be caught here. The issue list is the advance notice.
-    if (rowTypeBlocked()) return false;
+    // Save is already disabled here, but Apply only is not, so it still has to
+    // be caught here. The issue list is the advance notice.
     if (strandedNative > 0) {
       setPendingMode(mode);
       setNativeBlockFor('apply');
@@ -1253,13 +1251,6 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     );
   }, [target, nuvioResult, fusionResult]);
 
-  const unsupportedRows = useMemo(() => unsupportedClassicRows(committedEntries), [committedEntries]);
-
-  const unsupportedById = useMemo(
-    () => new Map(unsupportedRows.map(row => [row.id, unsupportedRowMessage(row.type, target)])),
-    [unsupportedRows, target]
-  );
-
   const strandedNative = useMemo(
     () => committedEntries.reduce((sum, entry) => sum + countStranded(entry), 0),
     [committedEntries, countStranded]
@@ -1313,9 +1304,9 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const blocking = useMemo(
     () => blockingIssues({
       target, strandedNative, overBy, pendingCount, headroom,
-      missingKeys: missingKeyNames, unsupportedRows,
+      missingKeys: missingKeyNames,
     }),
-    [target, strandedNative, overBy, pendingCount, headroom, missingKeyNames, unsupportedRows]
+    [target, strandedNative, overBy, pendingCount, headroom, missingKeyNames]
   );
 
   const problems = useMemo(
@@ -1409,18 +1400,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     );
   };
 
-  /** Fusion refuses the whole file over one of these, so it must not leave here. */
-  const rowTypeBlocked = (): boolean => {
-    if (target !== 'fusion' || unsupportedRows.length === 0) return false;
-    const types = [...new Set(unsupportedRows.map(row => row.type))].join(' and ');
-    toast.error(`Fusion cannot import a row of type ${types}`, {
-      description: `${unsupportedRows.map(row => `"${row.title}"`).join(', ')}. One makes it reject the whole file. Move ${unsupportedRows.length === 1 ? 'it' : 'them'} into a collection folder, or add the row by hand in Fusion.`,
-    });
-    return true;
-  };
-
   const handleCopyUrl = async () => {
-    if (rowTypeBlocked()) return;
     if (strandedNative > 0) {
       setNativeBlockFor('link');
       return;
@@ -1432,7 +1412,6 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   };
 
   const handleCopy = async () => {
-    if (rowTypeBlocked()) return;
     if (strandedNative > 0) {
       setNativeBlockFor('copy');
       return;
@@ -1444,7 +1423,6 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   };
 
   const handleDownload = () => {
-    if (rowTypeBlocked()) return;
     if (strandedNative > 0) {
       setNativeBlockFor('download');
       return;
@@ -2082,7 +2060,6 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       onRenameCatalog={renameCatalog}
                       focusTitle={titleFocusId === selected.id}
                       onTitleFocused={clearTitleFocus}
-                      unsupportedNote={unsupportedById.get(selected.id) ?? null}
                     />
                   )}
                   {selected && selected.id === draftId && (
