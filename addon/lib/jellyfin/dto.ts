@@ -24,6 +24,7 @@ const EXTENSIONS = {
   refreshVersions: 1,
   versions: 1,
   genreRequired: 1,
+  ranked: 1,
 } as const;
 
 export function extensionInfo(origin: string): any {

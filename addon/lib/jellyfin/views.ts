@@ -119,10 +119,16 @@ export async function buildViews(
 ): Promise<any[]> {
   const { boxSetsFor, collectionView, entryVisible } = require('./collections');
   const catalogs = (await getCatalogs(userUUID, config)).filter(isBrowsable);
-  const catalogView = (catalog: CatalogRef) => ({
-    ...collectionFolder(viewIdFor(catalog), serverId, catalog.name, viewTypeFor(catalog), null),
-    ...(requiresGenre(catalog) ? { aiostreams: { genreRequired: true } } : {}),
-  });
+  const catalogView = (catalog: CatalogRef, ranked = false) => {
+    const extensions = {
+      ...(requiresGenre(catalog) ? { genreRequired: true } : {}),
+      ...(ranked ? { ranked: true } : {}),
+    };
+    return {
+      ...collectionFolder(viewIdFor(catalog), serverId, catalog.name, viewTypeFor(catalog), null),
+      ...(Object.keys(extensions).length > 0 ? { aiostreams: extensions } : {}),
+    };
+  };
 
   const views: any[] = [];
   const placed = new Set<CatalogRef>();
@@ -135,7 +141,7 @@ export async function buildViews(
       );
       if (catalog && !placed.has(catalog)) {
         placed.add(catalog);
-        views.push(catalogView(catalog));
+        views.push(catalogView(catalog, entry.numbered === true));
       }
     } else if (entry?.kind === 'collection' && entry.id && typeof entry.title === 'string') {
       const folders = await boxSetsFor(userUUID, config, serverId, entry);
