@@ -989,6 +989,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 0,
   },
   {
+    key: 'JELLYFIN_CALENDAR_EMPTY_TTL',
+    envVar: 'JELLYFIN_CALENDAR_EMPTY_TTL',
+    label: 'Jellyfin Empty Calendar Cache (seconds)',
+    description: 'How long a calendar range with no episodes is kept before it is built again. Kept short, since an empty answer can come from a tracker that has not loaded yet.',
+    category: 'Features',
+    type: 'number',
+    default: 30,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_CALENDAR_FUTURE_DAYS',
     envVar: 'JELLYFIN_CALENDAR_FUTURE_DAYS',
     label: 'Jellyfin Calendar Future Window (days)',

@@ -680,7 +680,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
       const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
       const memoKey = `${userUUID}:${profileKey(config)}:calendar:${from}:${to}:${digest}`;
-      const episodes = await memoNextUp(userUUID, memoKey, () => buildCalendar(userUUID, config, from, to));
+      const episodes = await memoNextUp(userUUID, memoKey, () => buildCalendar(userUUID, config, from, to), (built) =>
+        built.length === 0 ? Date.now() + envInt('JELLYFIN_CALENDAR_EMPTY_TTL', 30, 1) * 1000 : null);
       const pageSize = (req.query.Limit ?? req.query.limit) === undefined ? 500 : limit;
       res.json(itemList(episodes.slice(startIndex, startIndex + pageSize), episodes.length, startIndex));
       return;
