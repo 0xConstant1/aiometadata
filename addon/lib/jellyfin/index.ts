@@ -2951,7 +2951,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   // Home rows, sort choices and the like live here per user and client.
   const prefsClient = (req: any): string => String(req.query.client ?? req.query.Client ?? '');
-  const prefsScope = async (req: any): Promise<[string, string]> => [req.params.userUUID, profileKey(await loadConfig(req))];
+  const prefsScope = async (req: any): Promise<[string, string]> => {
+    const config = await loadConfig(req);
+    return [req.params.userUUID, typeof config?.jellyfinProfileId === 'string' ? config.jellyfinProfileId : ''];
+  };
 
   router.get('/DisplayPreferences/:id', async (req: any, res: any) => {
     const [userUUID, profile] = await prefsScope(req);
