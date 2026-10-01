@@ -23,6 +23,7 @@ export interface ResumeRow {
   updatedAt: number;
   /** Table rows only: when the row itself was last written. */
   writtenAt?: number;
+  service?: Capable;
 }
 
 interface HeldRows {
@@ -430,7 +431,9 @@ export async function trackerPositions(userUUID: string, config: any): Promise<M
 // that app's tracker. The same video on two of them takes the newer position.
 export async function trackerSnapshot(userUUID: string, config: any): Promise<ResumeRow[]> {
   const parts = await Promise.all(
-    resumeSourcesFor(config).map((service) => serviceSnapshot(userUUID, config, service))
+    resumeSourcesFor(config).map(async (service) =>
+      (await serviceSnapshot(userUUID, config, service)).map((row) => ({ ...row, service }))
+    )
   );
   const merged = new Map<string, ResumeRow>();
   for (const row of parts.flat()) {

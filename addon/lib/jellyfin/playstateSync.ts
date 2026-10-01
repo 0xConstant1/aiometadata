@@ -52,6 +52,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
       positionMs: Math.round((runtimeMs * row.progress) / 100),
       runtimeMs,
       lastPlayedAt: row.updatedAt || null,
+      origin: row.service ?? null,
     }, profile);
     added += 1;
   }
@@ -60,6 +61,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
   // history lists as watched after that point, was finished elsewhere: the
   // tracker's last word on it is the watch. A watch older than the point, or
   // one the tracker cannot date, is the earlier viewing this row is a rewatch of.
+  const origin = sourceFor(config);
   const paused = new Set(resume.map((row) => row.videoId));
   const watched = await allWatched(snapshot);
   const finished = [...watched.episodes, ...watched.movies];
@@ -68,13 +70,13 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
     const row = known.get(videoId);
     // An import written without a date takes the tracker's once it has one.
     if (row && row.played && !row.last_played_at && !Number(row.position_ms) && watched.at.get(videoId)) {
-      await upsertPlaystateEverywhere(userUUID, videoId, { lastPlayedAt: watched.at.get(videoId) }, profile);
+      await upsertPlaystateEverywhere(userUUID, videoId, { lastPlayedAt: watched.at.get(videoId), origin }, profile);
       added += 1;
       continue;
     }
     const watchedAt = watched.at.get(videoId) ?? 0;
     if (row && row.played && Number(row.position_ms) > 0 && !paused.has(videoId) && watchedAt > Number(row.updated_at)) {
-      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, played: true, lastPlayedAt: watchedAt }, profile);
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, played: true, lastPlayedAt: watchedAt, origin }, profile);
       added += 1;
       continue;
     }
@@ -88,7 +90,7 @@ export async function syncPlaystateFor(userUUID: string, config: any): Promise<{
       skipped += 1;
       continue;
     }
-    await upsertPlaystateEverywhere(userUUID, videoId, row ? { positionMs: 0, played: true } : { positionMs: 0, played: true, lastPlayedAt: watched.at.get(videoId) ?? null }, profile);
+    await upsertPlaystateEverywhere(userUUID, videoId, row ? { positionMs: 0, played: true, origin } : { positionMs: 0, played: true, lastPlayedAt: watched.at.get(videoId) ?? null, origin }, profile);
     added += 1;
   }
 
@@ -120,6 +122,16 @@ export async function runtimeFromMeta(userUUID: string, row: any): Promise<numbe
   } catch {
     return 0;
   }
+}
+
+export async function forgetImported(userUUID: string, profile: string): Promise<number> {
+  const removed = await database.deleteImportedPlaystate(userUUID, profile);
+  const { writeGlobalCache } = require('../getCache');
+  await writeGlobalCache(`jellyfin_playstate_pass_v1:${userUUID}${profile ? `:${profile}` : ''}`, { digest: null }, 60);
+  const { invalidateResume } = require('./resume');
+  invalidateResume(userUUID);
+  logger.info(`Forgot ${removed} imported playstate row(s) of ${userUUID}${profile ? ` (${profile})` : ''}`);
+  return removed;
 }
 
 let running = false;

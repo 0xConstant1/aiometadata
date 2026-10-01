@@ -307,18 +307,18 @@ async function recordPlaystate(
 
   try {
     if (event === 'unplayed') {
-      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, played: false, lastPlayedAt: null }, profile, session.aliases);
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, played: false, lastPlayedAt: null, origin: 'server' }, profile, session.aliases);
       return;
     }
     if (event === 'played') {
-      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now() }, profile, session.aliases);
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now(), origin: 'server' }, profile, session.aliases);
       return;
     }
     if (event === 'stop' && played === true) {
-      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now() }, profile, session.aliases);
+      await upsertPlaystateEverywhere(userUUID, videoId, { positionMs: 0, runtimeMs, played: true, lastPlayedAt: Date.now(), origin: 'server' }, profile, session.aliases);
       return;
     }
-    await upsertPlaystateEverywhere(userUUID, videoId, { positionMs, runtimeMs, lastPlayedAt: Date.now() }, profile, session.aliases);
+    await upsertPlaystateEverywhere(userUUID, videoId, { positionMs, runtimeMs, lastPlayedAt: Date.now(), origin: 'server' }, profile, session.aliases);
   } catch (error: any) {
     logger.warn(`Playstate write failed for ${videoId}: ${error?.message || error}`);
   }
@@ -682,7 +682,7 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
   const { profileKey } = require('./profiles');
   const profile = profileKey(config);
   deletePosition(`${userUUID}:${profile}:${itemId}`);
-  await upsertPlaystateEverywhere(userUUID, session.videoId, { positionMs, runtimeMs: session.runtimeMs ?? 0 }, profile, session.aliases);
+  await upsertPlaystateEverywhere(userUUID, session.videoId, { positionMs, runtimeMs: session.runtimeMs ?? 0, ...(positionMs > 0 ? { lastPlayedAt: Date.now() } : {}), origin: 'server' }, profile, session.aliases);
 
   const { invalidateResume } = require('./resume');
   invalidateResume(userUUID);

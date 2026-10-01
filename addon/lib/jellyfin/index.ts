@@ -36,7 +36,7 @@ import { isAnimeTitle, showIdentity } from './canonicalIds';
 import { keepsAnimeOnly, sourceFor } from './trackerSource';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
-import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, type Profile } from './profiles';
+import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, scopeConfigToProfile, type Profile } from './profiles';
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, similarTitles } from './people';
 import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
@@ -3191,6 +3191,26 @@ export function register(addon: any, options: { loginRateLimit?: any; enabled?: 
     }
 
     res.json({ approved: true, device: request.deviceName, app: request.appName, profile: profile.name });
+  });
+
+  addon.post('/api/jellyfin/:userUUID/forget-imported', gate, approveRateLimit, async (req: any, res: any) => {
+    const userUUID = String(req.params.userUUID);
+    const password = req.body?.password;
+
+    const accountId = req.session?.accountId;
+    const owns = Boolean(accountId) && (await database.ownsConfig(accountId, userUUID));
+    const verified = !owns && password ? await database.verifyUserAndGetConfig(userUUID, String(password)) : null;
+    if (!owns && !verified) {
+      res.status(401).json({ error: 'Sign in or enter the configuration password to forget imported history' });
+      return;
+    }
+
+    const config = verified ?? (await database.getUserConfig(userUUID).catch(() => null));
+    const requested = typeof req.body?.profile === 'string' && req.body.profile ? req.body.profile : null;
+    const scoped = scopeConfigToProfile(config, userUUID, requested);
+    const { forgetImported } = require('./playstateSync');
+    const removed = await forgetImported(userUUID, profileKey(scoped));
+    res.json({ removed });
   });
 }
 

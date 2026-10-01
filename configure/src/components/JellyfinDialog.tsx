@@ -7,6 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Copy, Loader2, Plus, Save, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -99,10 +109,11 @@ interface UserRowProps {
   showHandoff?: boolean;
   onChange: (patch: Partial<JellyfinUser>) => void;
   onRemove?: () => void;
+  onForget?: () => void;
   children?: ReactNode;
 }
 
-function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, showHandoff, onChange, onRemove, children }: UserRowProps) {
+function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, showHandoff, onChange, onRemove, onForget, children }: UserRowProps) {
   const chosen = user?.tags ?? [];
   const toggleTag = (tag: string) =>
     onChange({ tags: chosen.includes(tag) ? chosen.filter((t) => t !== tag) : [...chosen, tag] });
@@ -200,6 +211,16 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             </SelectContent>
           </Select>
           <p className="text-[11px] text-muted-foreground">{trackerCaption}</p>
+          {onForget && (main || !samePerson) && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-muted-foreground">
+                The tracker read here is also imported into this server, history and resume points alike, and what is imported stays when the choice changes, even to This server only.
+              </p>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onForget}>
+                Forget imported history
+              </Button>
+            </div>
+          )}
           {main && (
             <p className="text-[11px] text-muted-foreground">
               Whatever is picked, what is played through this server is remembered here and always wins over a tracker's view of the same title. Only services that store a playback position are offered, so AniList and MyAnimeList are not.
@@ -414,6 +435,8 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const [quickConnectCode, setQuickConnectCode] = useState('');
   const [quickConnectProfile, setQuickConnectProfile] = useState('');
   const [approving, setApproving] = useState(false);
+  const [forgetFor, setForgetFor] = useState<{ profile: string | null; name: string } | null>(null);
+  const [forgetting, setForgetting] = useState(false);
 
 
   // Only services that store a playback position can answer the Continue
@@ -466,7 +489,50 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
     }
   };
 
+  const forgetImported = async () => {
+    if (!forgetFor) return;
+    setForgetting(true);
+    try {
+      const response = await fetch(`/api/jellyfin/${encodeURIComponent(userUUID)}/forget-imported`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: auth.password || undefined, profile: forgetFor.profile || undefined }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'Could not forget the imported history');
+      toast.success(`Imported history forgotten for ${forgetFor.name}`, {
+        description: `${result?.removed ?? 0} imported ${result?.removed === 1 ? 'entry' : 'entries'} removed. Plays through this server stay.`,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not forget the imported history');
+    } finally {
+      setForgetting(false);
+      setForgetFor(null);
+    }
+  };
+
   return (
+    <>
+    <AlertDialog open={!!forgetFor} onOpenChange={(next) => !next && !forgetting && setForgetFor(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Forget imported history?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This removes the watches and resume points imported from trackers for {forgetFor?.name}. What was played or marked through this server stays, and nothing changes on the trackers themselves. If a tracker is still picked, its history is imported again on the next sync.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={forgetting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            disabled={forgetting}
+            onClick={(event) => { event.preventDefault(); void forgetImported(); }}
+          >
+            {forgetting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Forget'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] w-[min(96vw,80rem)] overflow-y-auto sm:max-w-none">
         <DialogHeader>
@@ -664,6 +730,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
               watchlistOptions={watchlistOptions}
               hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
               showHandoff={config.playbackReporting === true}
+              onForget={() => setForgetFor({ profile: null, name: mainName })}
               onChange={(patch) => setConfig(prev => ({
                 ...prev,
                 ...('name' in patch ? { jellyfinUserName: patch.name } : {}),
@@ -691,6 +758,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                   showHandoff={config.playbackReporting === true}
                   onChange={(patch) => updateUser(user.id, patch)}
                   onRemove={() => { void removeUser(user); }}
+                  onForget={() => setForgetFor({ profile: user.id, name: user.name })}
                 >
                   {user.trackers !== true ? (
                     <UserAccounts user={user} catalogs={config.catalogs ?? []} onChange={(next) => updateUser(user.id, next)} onAddCatalogs={addCatalogs} />
@@ -729,5 +797,6 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

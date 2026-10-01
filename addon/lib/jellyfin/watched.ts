@@ -1222,7 +1222,7 @@ async function clearUnmarked(userUUID: string, profile: string, config: any, bef
     if (rows.some((row: any) => Number(row.position_ms) > 0 || Number(row.last_played_at) > seenAt)) continue;
 
     for (const row of rows) {
-      await database.upsertPlaystate(userUUID, row.video_id, { positionMs: 0, played: false, lastPlayedAt: null }, profile);
+      await database.upsertPlaystate(userUUID, row.video_id, { positionMs: 0, played: false, lastPlayedAt: null, origin: sourceFor(config) }, profile);
     }
     cleared += 1;
   }
