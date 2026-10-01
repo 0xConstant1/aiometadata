@@ -632,6 +632,7 @@ async function markEpisodes(
 async function unwatch(parsedId: ParsedMediaId, config: any, only?: TrackedService): Promise<void> {
   const mediaType = parsedId.type === 'movie' ? 'movie' : 'series';
   await eachHistoryService(parsedId, config, mediaType, 'removeFromHistory', 'Unwatch', only);
+  if (!only || only === 'simkl') await eachHistoryService(parsedId, config, mediaType, 'clearPlayback', 'Clear resume point', 'simkl');
   if (!only || only === 'mdblist') await clearMdblistResumePoint(parsedId, config, mediaType);
   if (!only || only === 'publicmetadb') await publicMetaDbHistory(parsedId, config, mediaType, 'unwatch');
 }
