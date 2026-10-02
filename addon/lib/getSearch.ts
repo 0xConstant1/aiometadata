@@ -369,6 +369,7 @@ async function performKitsuSearch(type: string, query: string, language: string,
             episodeCount: item.episodeCount || null,
             runtime: Utils.parseRunTime(item.episodeLength),
             certification: item.ageRating,
+            ...(tmdbId ? { _tmdbId: String(tmdbId) } : {}),
           };
         } catch (error: any) {
           logger.error(`Error parsing Kitsu result for ${item.id}:`, error.message);
@@ -666,6 +667,7 @@ async function performTmdbSearch(type: string, query: string, language: string, 
         if(allIds.imdbId) parsed.imdb_id = allIds.imdbId;
         if(allIds.tmdbId) parsed._tmdbId = String(allIds.tmdbId);
         if(allIds.tvdbId) parsed._tvdbId = String(allIds.tvdbId);
+        parsed.keywords = moviedb.keywordNamesOf(details) ?? [];
         parsed.runtime = type === 'movie' ? Utils.parseRunTime(details.runtime) : null;
         if(type === 'series') parsed.runtime  = Utils.parseRunTime(details.episode_run_time?.[0] ?? details.last_episode_to_air?.runtime ?? details.next_episode_to_air?.runtime ?? null);
         parsed.app_extras = { releaseDates: details.release_dates, certification, certificationLocal: certLocal };
@@ -1434,6 +1436,7 @@ async function matchAndEnrichFromTMDB(suggestion: { title: string; year: string 
     if (allIds.imdbId) parsed.imdb_id = allIds.imdbId;
     if (allIds.tmdbId) parsed._tmdbId = String(allIds.tmdbId);
     if (allIds.tvdbId) parsed._tvdbId = String(allIds.tvdbId);
+    parsed.keywords = moviedb.keywordNamesOf(details) ?? [];
     parsed.runtime = type === 'movie' ? Utils.parseRunTime(details.runtime) : null;
     if (type === 'series') {
       parsed.runtime = Utils.parseRunTime(

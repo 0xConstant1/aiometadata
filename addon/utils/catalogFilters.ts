@@ -88,6 +88,16 @@ function excludedTmdbKeywords(config: any): Set<string> {
   return new Set(list.map((keyword: unknown) => String(keyword).trim().toLowerCase()).filter(Boolean));
 }
 
+async function attachTmdbKeywords(metas: any[], config: any): Promise<void> {
+  const { titleKeywordNames } = require('../lib/getTmdb');
+  await Promise.all(metas.map(async (meta: any) => {
+    if (!meta || meta.keywords !== undefined) return;
+    const tmdbId = meta._tmdbId || (typeof meta.id === 'string' && meta.id.startsWith('tmdb:') ? meta.id.slice(5) : null);
+    if (!tmdbId) return;
+    meta.keywords = (await titleKeywordNames(tmdbId, meta.type === 'movie' ? 'movie' : 'series', config)) ?? [];
+  }));
+}
+
 async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, cleanId }: CatalogFilterOptions): Promise<any[]> {
   if (!Array.isArray(metas) || metas.length === 0) return metas;
 
@@ -289,6 +299,7 @@ async function applyCatalogFilters(metas: any[], { type, config, catalogConfig, 
 
   const blockedKeywords = excludedTmdbKeywords(config);
   if (blockedKeywords.size) {
+    if (isSearch) await attachTmdbKeywords(metas, config);
     const before = metas.length;
     metas = metas.filter((meta: any) =>
       !(Array.isArray(meta?.keywords) && meta.keywords.some((keyword: unknown) => blockedKeywords.has(String(keyword).toLowerCase())))
