@@ -2613,11 +2613,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       // the metadata often has only a day, or no date yet.
       let next: any;
       const timedRow = timed.get(metaId);
-      if (timedRow && within(timedRow.airsAt as number)) {
-        next = timedRow.videoId
+      if (timedRow) {
+        const named = timedRow.videoId
           ? await locateEpisode(episodes, timedRow.videoId, mediaType, String(meta.id))
           : episodes.find((e: any) => e.IndexNumber === timedRow.episode && (timedRow.season === null || e.ParentIndexNumber === timedRow.season));
-        if (next) next.PremiereDate = new Date(timedRow.airsAt as number).toISOString();
+        if (named) named.PremiereDate = new Date(timedRow.airsAt as number).toISOString();
+        if (named && within(timedRow.airsAt as number)) next = named;
       }
       next ??= episodes
         .filter((episode: any) => within(premiereAt(episode)))
