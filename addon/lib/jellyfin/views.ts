@@ -48,7 +48,7 @@ export function collectionTypeFor(type: string): string | null {
 const BOXSET_CATALOGS = new Set(['tvdb.collections']);
 
 export function isBoxSetCatalog(catalog: { id: string }): boolean {
-  return BOXSET_CATALOGS.has(catalog.id);
+  return BOXSET_CATALOGS.has(catalog.id.replace(/_(movie|series|anime|all)$/, ''));
 }
 
 export function viewTypeFor(catalog: { id: string; type: string }): string | null {
