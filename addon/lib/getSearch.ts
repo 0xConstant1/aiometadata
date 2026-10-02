@@ -1572,7 +1572,8 @@ async function performTvdbCollectionsSearch(query: string, language: string, con
             poster: details.image || collection.image_url,
             description: translatedOverview || details.overview || '',
             genres: [],
-            releaseInfo: details.entities?.length ? `${details.entities.length} items` : ''
+            releaseInfo: details.entities?.length ? `${details.entities.length} items` : '',
+            collection: {}
           };
         } catch (error: any) {
           logger.warn(`Error parsing collection ${collection.id}:`, error.message);

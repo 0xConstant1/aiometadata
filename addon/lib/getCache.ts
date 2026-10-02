@@ -1288,6 +1288,7 @@ const CATALOG_META_FIELDS = [
   'links',
   'behaviorHints',
   'trailers',
+  'collection',
 ];
 
 function projectAppExtrasForCatalogCache(appExtras: any): any {

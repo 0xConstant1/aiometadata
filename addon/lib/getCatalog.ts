@@ -671,7 +671,8 @@ async function getTvdbCollectionsCatalog(type: string, id: string, page: number,
         name,
         poster,
         description: overview,
-        year: extended.year || null
+        year: extended.year || null,
+        collection: {}
       };
     }));
     return metas.filter(Boolean);

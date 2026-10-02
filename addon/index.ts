@@ -5781,6 +5781,18 @@ const metaRoute = async function (req, res) {
       }
     }*/
     
+    if (stremioId.startsWith('tvdbc:') && result?.meta && Array.isArray(result.meta.videos)) {
+      result.meta.collection = {
+        items: result.meta.videos.map((video) => ({
+          id: video.id,
+          type: 'movie',
+          name: video.title || video.name,
+          poster: video.thumbnail,
+          ...(video.released ? { releaseInfo: String(video.released).slice(0, 4) } : {}),
+        })),
+      };
+    }
+
     // Use aggressive cache control for meta routes to ensure fresh data when config changes
     // Don't pass cacheOpts to let the respond function use the aggressive cache control
     respond(req, res, result);
