@@ -1885,7 +1885,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const descriptor = await decodeJellyfinId(String(req.params.itemId));
     const collectionArt = descriptor?.k === 'collection' || descriptor?.k === 'boxset';
 
-    const cached = throughPosterCache(url, collectionArt ? 'collection' : kind);
+    const cached = throughPosterCache(url, collectionArt ? 'collection' : descriptor?.k === 'episode' && kind === 'primary' ? 'thumb' : kind);
     if (cached) {
       const local = builtinPosterCachePath(cached);
       if (local) {
