@@ -902,6 +902,18 @@ export async function seasonAnimeEntry(tvdb: number, season: number): Promise<Re
   return ids;
 }
 
+export async function withSeasonAnimeIds(meta: any, seasons: any[]): Promise<any[]> {
+  const tvdb = Number(meta?._tvdbId);
+  if (!tvdb || PER_ENTRY_ANIME.test(String(meta?.id ?? ''))) return seasons;
+  await Promise.all(seasons.map(async (season) => {
+    const ids = await seasonAnimeEntry(tvdb, season.IndexNumber);
+    if (!ids) return;
+    season.ProviderIds = ids;
+    season.ExternalUrls = externalUrls(ids, false);
+  }));
+  return seasons;
+}
+
 export function buildEpisodes(
   meta: any,
   mediaType: string,

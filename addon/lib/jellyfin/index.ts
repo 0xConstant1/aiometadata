@@ -27,7 +27,7 @@ import {
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBoxSetCatalog, isBrowsable, requiresGenre, viewTypeFor } from './views';
 import { decodeJellyfinId } from './ids';
 import { imageTag, isWideTag } from './imageTags';
-import { buildEpisodes, buildSeasons, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
+import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -987,7 +987,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
         const children = wantsEpisodes
           ? buildEpisodes(meta, descriptor.t, encodeSeriesId(descriptor), serverId, descriptor.k === 'season' ? descriptor.s : null)
-          : buildSeasons(meta, descriptor.t, String(parentId), serverId);
+          : await withSeasonAnimeIds(meta, buildSeasons(meta, descriptor.t, String(parentId), serverId));
 
         const { page, total } = await pageChildren(
           children,
@@ -2190,7 +2190,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.json(itemList([], 0, 0));
       return;
     }
-    const seasons = buildSeasons(found.meta, found.descriptor.t, String(req.params.seriesId), serverIdFor(req.params.userUUID));
+    const seasons = await withSeasonAnimeIds(found.meta, buildSeasons(found.meta, found.descriptor.t, String(req.params.seriesId), serverIdFor(req.params.userUUID)));
     const seasonsConfig = await loadConfig(req);
     if (seasonsConfig) await applyRatings(seasons, req.params.userUUID, profileKey(seasonsConfig));
     res.json(itemList(seasons, seasons.length, 0));
@@ -2845,6 +2845,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         res.status(404).json({ Message: 'Item not found' });
         return;
       }
+      await withSeasonAnimeIds(meta, [season]);
 
       const seasonConfig = await loadConfig(req);
       if (seasonConfig) {
