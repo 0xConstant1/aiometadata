@@ -100,3 +100,55 @@ export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
     classicRows: 14,
   },
 ];
+
+export interface ArtworkResource {
+  id: string;
+  name: string;
+  author: string;
+  url: string;
+  summary: string;
+  tags: string[];
+  images: string[];
+  accent: string;
+}
+
+export const ARTWORK_RESOURCES: ArtworkResource[] = [
+  {
+    id: 'jeor-anime',
+    name: 'Anime Card Collection',
+    author: 'Jeor',
+    url: 'https://jeor.github.io/Anime/',
+    summary: 'Wide cards for anime studios, every genre and theme, decades, trending and popular, many with an alternate design.',
+    tags: ['Wide', 'Studios', 'Genres', 'Decades'],
+    images: [
+      'https://jeor.github.io/Anime/previews/14-sci-fi.jpg',
+      'https://jeor.github.io/Anime/previews/studios/studio-ghibli.jpg',
+      'https://jeor.github.io/Anime/previews/studios/mappa.jpg',
+    ],
+    accent: 'from-violet-500/25 via-fuchsia-500/10',
+  },
+  {
+    id: 'grainy-covers',
+    name: 'Minimalist Covers',
+    author: 'grainy',
+    url: 'https://grainy.works/covers/',
+    summary: 'Soft grain gradients for streaming services, genres, decades, anime and Letterboxd lists, in vertical and horizontal, with downloadable packs.',
+    tags: ['Vertical', 'Horizontal', 'Anime', 'Packs'],
+    images: [
+      'https://grainy.works/covers/img/row3-1.jpg',
+      'https://grainy.works/covers/img/row2-1.jpg',
+      'https://grainy.works/covers/img/row2-2.jpg',
+    ],
+    accent: 'from-amber-400/25 via-rose-500/10',
+  },
+  {
+    id: 'betterer-covers',
+    name: 'betterer covers',
+    author: 'Renoria',
+    url: 'https://dev.betterer.cc/',
+    summary: 'A cover maker: choose a layout, pick your colors and artwork, and export a cover for any movie or TV collection.',
+    tags: ['Cover maker', 'Your colors', 'Movies & TV'],
+    images: ['https://dev.betterer.cc/social/preview-2-1.jpg'],
+    accent: 'from-sky-500/25 via-indigo-500/10',
+  },
+];

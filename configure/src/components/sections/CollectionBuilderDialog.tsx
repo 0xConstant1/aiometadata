@@ -96,7 +96,7 @@ import {
   type ManifestCatalog,
 } from '@/lib/collectionBuilder/manifestSources';
 import { buildProblemTargets, withStagedCatalogs } from '@/lib/collectionBuilder/problems';
-import { FEATURED_COLLECTIONS, type FeaturedCollection } from '@/lib/collectionBuilder/featured';
+import { ARTWORK_RESOURCES, FEATURED_COLLECTIONS, type FeaturedCollection } from '@/lib/collectionBuilder/featured';
 import { FeaturedDetail } from './collectionBuilder/FeaturedDetail';
 import { FeaturedGallery } from './collectionBuilder/FeaturedGallery';
 import { entryKey, withoutEntries } from '@/lib/collectionBuilder/importSelection';
@@ -1768,6 +1768,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
             ) : (
               <FeaturedGallery
                 items={FEATURED_COLLECTIONS}
+                artwork={ARTWORK_RESOURCES}
                 headroom={headroom}
                 busy={importFetching}
                 error={featuredError}
