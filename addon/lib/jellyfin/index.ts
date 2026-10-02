@@ -1622,18 +1622,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       for (const page of pages) {
         const meta = page.items[rank];
         if (!meta?.id) continue;
+        if (seen.has(String(meta.id))) continue;
+        // An untyped catalog such as AI search would give the same film a
+        // second id, and a client merging two calls then shows it twice.
+        const kind = collectionTypeFor(page.catalog.type) ? page.catalog.type : meta.type === 'movie' ? 'movie' : 'series';
+        const item = metaToBaseItem(meta, kind, serverId, null);
         // The same title reaches us from more than one catalog under different
         // ids, so identity alone cannot spot the repeat. Only the leading year
         // is compared: one catalog says '2023-' where another says '2023-2024'.
         const year = String(meta.year ?? meta.releaseInfo ?? '').slice(0, 4);
-        const title = `${String(meta.name || '').toLowerCase()}|${year}`;
-        if (seen.has(String(meta.id)) || (meta.name && seen.has(title))) continue;
+        const title = `${String(meta.name || '').toLowerCase()}|${year}|${item.Type}`;
+        if (meta.name && seen.has(title)) continue;
         seen.add(String(meta.id));
         if (meta.name) seen.add(title);
-        // An untyped catalog such as AI search would give the same film a
-        // second id, and a client merging two calls then shows it twice.
-        const kind = collectionTypeFor(page.catalog.type) ? page.catalog.type : meta.type === 'movie' ? 'movie' : 'series';
-        items.push(metaToBaseItem(meta, kind, serverId, null));
+        items.push(item);
       }
     }
 
