@@ -5382,9 +5382,7 @@ const catalogRoute = async function (req, res) {
             break;
           }
           case "tvdb.collections": {
-            // TVDB expects 0-based page
-            const tvdbPage = Math.max(0, page - 1);
-            metas = (await getCatalog(actualType, language, tvdbPage, cleanId, genreName, config, userUUID)).metas;
+            metas = (await getCatalog(actualType, language, page, cleanId, genreName, config, userUUID)).metas;
             break;
           }
           case 'mal.genres': {

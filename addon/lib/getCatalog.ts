@@ -640,44 +640,62 @@ async function getTvdbCatalog(type: string, catalogId: string, genreName: string
   return validMetas;
 }
 
-async function getTvdbCollectionsCatalog(type: string, id: string, page: number, language: string, config: UserConfig): Promise<any[]> {
-  const langCode = language.split('-')[0];
-  if (id === 'tvdb.collections') {
-    // Cache the collections list for this specific page
-    const collections = await cacheWrapTvdbApi(`collections-list:${page}`, () => tvdb.getCollectionsList(config, page));
-    if (!collections || !collections.length) return [];
-    
-    logger.info(`Page ${page}: fetched ${collections.length} collections from TVDB API`);
-    
-    // Fetch extended details and translations for each collection in parallel
-    const metas = await Promise.all(collections.map(async (col: any) => {
-      const extended = await cacheWrapTvdbApi(`collection-extended:${col.id}`, () => tvdb.getCollectionDetails(col.id, config));
-      if (!extended || !Array.isArray(extended.entities)) return null;
-      
-      // Only include collections that have at least one movie
-      const hasMovies = extended.entities.some((e: any) => e.movieId);
-      if (!hasMovies) return null;
-      
-      const langCode3 = await to3LetterCode(language, config);
-      let translation = await tvdb.getCollectionTranslations(col.id, langCode3, config);
+function tvdbCollectionDetails(collectionId: number | string, config: UserConfig): Promise<any> {
+  return cacheWrapTvdbApi(`collection-extended:${collectionId}`, () => tvdb.getCollectionDetails(String(collectionId), config));
+}
 
-      const name = translation && translation.name ? translation.name : extended.name;
-      if (!name) return null;
-      const overview = translation && translation.overview ? translation.overview : extended.overview;
-      const poster = extended.image ? (extended.image.startsWith('http') ? extended.image : `${TVDB_IMAGE_BASE}${extended.image}`) : undefined;
-      return {
-        id: `tvdbc:${col.id}`,
-        type: 'movie', // Collections are movies only
-        name,
-        poster,
-        description: overview,
-        year: extended.year || null,
-        collection: {}
-      };
-    }));
-    return metas.filter(Boolean);
+function servesAsCollection(extended: any): boolean {
+  return !!extended?.name && Array.isArray(extended.entities) && extended.entities.some((e: any) => e.movieId);
+}
+
+async function servedCollectionIds(tvdbPage: number, config: UserConfig): Promise<number[] | null> {
+  const collections = await cacheWrapTvdbApi(`collections-list:${tvdbPage}`, () => tvdb.getCollectionsList(config, tvdbPage));
+  if (!collections || !collections.length) return null;
+
+  const details = () => Promise.all(collections.map((col: any) => tvdbCollectionDetails(col.id, config)));
+  const pick = (found: any[]) => collections.filter((_: any, i: number) => servesAsCollection(found[i])).map((col: any) => col.id);
+  const complete = await cacheWrapTvdbApi(`collections-served:${tvdbPage}`, async () => {
+    const found = await details();
+    return found.some((d) => !d) ? null : pick(found);
+  });
+  return complete ?? pick(await details());
+}
+
+async function getTvdbCollectionsCatalog(type: string, id: string, page: number, language: string, config: UserConfig): Promise<any[]> {
+  if (id !== 'tvdb.collections') return [];
+  const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE || '20');
+  const start = Math.max(0, (page - 1) * pageSize);
+
+  const picked: number[] = [];
+  let before = 0;
+  for (let tvdbPage = 0; picked.length < pageSize; tvdbPage++) {
+    const ids = await servedCollectionIds(tvdbPage, config);
+    if (ids === null) break;
+    if (before + ids.length > start) {
+      const from = Math.max(0, start - before);
+      picked.push(...ids.slice(from, from + pageSize - picked.length));
+    }
+    before += ids.length;
   }
-  return [];
+  if (!picked.length) return [];
+
+  const langCode3 = await to3LetterCode(language, config);
+  const metas = await Promise.all(picked.map(async (collectionId) => {
+    const extended = await tvdbCollectionDetails(collectionId, config);
+    if (!servesAsCollection(extended)) return null;
+    const translation = await tvdb.getCollectionTranslations(String(collectionId), langCode3, config);
+    const poster = extended.image ? (extended.image.startsWith('http') ? extended.image : `${TVDB_IMAGE_BASE}${extended.image}`) : undefined;
+    return {
+      id: `tvdbc:${collectionId}`,
+      type: 'movie', // Collections are movies only
+      name: translation?.name || extended.name,
+      poster,
+      description: translation?.overview || extended.overview,
+      year: extended.year || null,
+      collection: {}
+    };
+  }));
+  return metas.filter(Boolean);
 }
 
 async function getTvdbListCatalog(type: string, id: string, page: number, language: string, config: UserConfig, userUUID: string, includeVideos: boolean = false): Promise<any[]> {
