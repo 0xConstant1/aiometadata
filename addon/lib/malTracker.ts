@@ -620,6 +620,16 @@ async function setPlanToWatch(malId: number, listed: boolean, accessToken: strin
   }
 }
 
+/** The score on a title already on the list; 0 clears it. An anime not on the list is left alone. */
+async function setScore(malId: number, score: number, accessToken: string): Promise<boolean> {
+  const current = await getAnimeStatus(malId, accessToken);
+  if (!current?.listStatus) return false;
+  await makeRateLimitedRequest(() =>
+    malRequest(`${MAL_API_BASE}/anime/${malId}/my_list_status`, { method: 'PATCH', form: { score: String(score) }, accessToken })
+  );
+  return true;
+}
+
 async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID: string): Promise<{ success: boolean; reason?: string; updated?: boolean }> {
   const startTime = Date.now();
 
@@ -706,6 +716,7 @@ export {
   getAnimeStatus,
   fetchPlanToWatchIds,
   setPlanToWatch,
+  setScore,
   determineStatus,
   updateProgress,
   shouldTrackMal,

@@ -652,10 +652,27 @@ export async function recordProgress(req: any, body: any): Promise<void> {
  * played flag, or a resume position, which cleared is what drops the item from
  * continue watching. Answers the state the item is now in.
  */
-export async function recordUserData(req: any, body: any): Promise<{ played: boolean; positionMs: number } | null> {
+export async function recordUserData(req: any, body: any): Promise<{ played: boolean; positionMs: number; rating?: number | null } | null> {
   const userUUID = req.params?.userUUID;
   const itemId = bodyItemId(req, body);
   if (!userUUID || !itemId) return null;
+
+  const rated = body && ('Rating' in body || 'rating' in body);
+  if (rated) {
+    const { ratingFrom, rateItem } = require('./ratings');
+    const { loadConfig } = require('./context');
+    const config = await loadConfig(req);
+    const descriptor = await decodeJellyfinId(itemId);
+    const rating = ratingFrom(body.Rating ?? body.rating);
+    if (!config || !descriptor || !(await rateItem(userUUID, config, descriptor, rating))) return null;
+    const hasMore = ['Played', 'played', 'PlaybackPositionTicks', 'playbackPositionTicks'].some((key) => key in body);
+    if (!hasMore) {
+      const { profileKey } = require('./profiles');
+      const video = stremioIdFor(descriptor);
+      const row = video ? await require('../database').getPlaystate(userUUID, video, profileKey(config)).catch(() => null) : null;
+      return { played: Boolean(row?.played), positionMs: Number(row?.position_ms) || 0, rating };
+    }
+  }
 
   const played = body?.Played ?? body?.played;
   if (played === true || played === false) {

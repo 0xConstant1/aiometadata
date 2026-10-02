@@ -15,7 +15,7 @@ export const WATCH_STATE_VERSION = 2;
 export const PLAYBACK_MANIFEST_EVENTS = ['start', 'pause', 'stop', 'played', 'unplayed'];
 
 /** Changes to a title rather than a video, sent only to an addon that lists them. */
-export const TITLE_EVENTS = ['watchlisted', 'unwatchlisted', 'dropped', 'undropped'] as const;
+export const TITLE_EVENTS = ['watchlisted', 'unwatchlisted', 'dropped', 'undropped', 'rated', 'unrated'] as const;
 export const WATCH_STATE_PUSH_EVENTS = [...PLAYBACK_MANIFEST_EVENTS, ...TITLE_EVENTS];
 
 export interface PlaybackReport {
@@ -224,6 +224,21 @@ async function handleTitleReport(
   const anime = Boolean(ids.kitsu || ids.mal || ids.anilist || ids.anidb) || /^(kitsu|mal|anilist|anidb):/.test(metaId);
   const descriptor = { k: type, t: anime ? 'anime' : type, i: metaId };
   logger.info(`${event} ${type}/${metaId}`);
+
+  if (event === 'rated' || event === 'unrated') {
+    const scope = String(body.scope || type);
+    const season = num(body.season);
+    const episode = num(body.episode);
+    if (scope === 'episode' && episode === null) return { status: 400, reason: 'no episode' };
+    if (scope === 'season' && season === null) return { status: 400, reason: 'no season' };
+    const { ratingFrom, rateItem } = require('./jellyfin/ratings');
+    const rated =
+      scope === 'episode' ? { k: 'episode', t: descriptor.t, i: metaId, s: season, e: episode }
+      : scope === 'season' ? { k: 'season', t: descriptor.t, i: metaId, s: season }
+      : descriptor;
+    if (!(await rateItem(userUUID, config, rated, event === 'rated' ? ratingFrom(body.rating) : null))) return { status: 400, reason: 'unknown title' };
+    return { status: 204 };
+  }
 
   if (event === 'watchlisted' || event === 'unwatchlisted') {
     const { setWatchlisted } = require('./jellyfin/watchlist');

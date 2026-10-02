@@ -888,6 +888,20 @@ export function buildSeasons(
   });
 }
 
+export async function seasonAnimeEntry(tvdb: number, season: number): Promise<Record<string, string> | null> {
+  if (!tvdb || !(season > 0)) return null;
+  const { resolveAnidbEpisodeFromTvdbEpisode } = require('../anime-list-mapper');
+  const { getMappingByAnidbId } = require('../id-mapper');
+  const anidb = (await resolveAnidbEpisodeFromTvdbEpisode(tvdb, season, 1).catch(() => null))?.anidbId;
+  if (!anidb) return null;
+  const mapping = getMappingByAnidbId(anidb) ?? {};
+  const ids: Record<string, string> = { AniDB: String(anidb) };
+  if (mapping.mal_id) ids.MyAnimeList = String(mapping.mal_id);
+  if (mapping.anilist_id) ids.AniList = String(mapping.anilist_id);
+  if (mapping.kitsu_id) ids.Kitsu = String(mapping.kitsu_id);
+  return ids;
+}
+
 export function buildEpisodes(
   meta: any,
   mediaType: string,

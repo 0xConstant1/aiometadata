@@ -1538,4 +1538,30 @@ export async function applyWatchedState(
       logger.debug(`Watchlist state unavailable: ${error?.message || error}`)
     );
   }
+
+  if (userUUID) await withRatings(items, descriptors, userUUID, profile);
+}
+
+async function withRatings(items: any[], descriptors: Map<string, any>, userUUID: string, profile: string): Promise<void> {
+  const { ratingsAmong, ratingKeyFor } = require('./ratings');
+  const rated = new Map<string, string>();
+  for (const [itemId, d] of descriptors) {
+    const key = ratingKeyFor(d);
+    if (key) rated.set(itemId, key);
+  }
+  const ratings: Map<string, number> = await ratingsAmong(userUUID, profile, [...rated.values()]).catch(() => new Map());
+  for (const item of items) {
+    const rating = ratings.get(rated.get(String(item?.Id)) ?? '');
+    if (rating) item.UserData = { ...item.UserData, Rating: rating };
+  }
+}
+
+export async function applyRatings(items: any[], userUUID: string, profile: string): Promise<void> {
+  const { decodeJellyfinId } = require('./ids');
+  const descriptors = new Map<string, any>();
+  await Promise.all(items.map(async (item: any) => {
+    const d = item?.Id ? await decodeJellyfinId(String(item.Id)) : null;
+    if (d) descriptors.set(String(item.Id), d);
+  }));
+  await withRatings(items, descriptors, userUUID, profile);
 }

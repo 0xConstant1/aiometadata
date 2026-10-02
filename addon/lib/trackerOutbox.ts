@@ -17,7 +17,7 @@ import type { WatchTrackingService } from './watchTracking';
 const logger = consola.withTag('TrackerOutbox');
 const database: any = require('./database');
 
-export type OutboxOp = 'scrobble' | 'credit' | 'unwatch' | 'clearResume' | 'anime' | 'episodes' | 'dropped' | 'watchlist';
+export type OutboxOp = 'scrobble' | 'credit' | 'unwatch' | 'clearResume' | 'anime' | 'episodes' | 'dropped' | 'watchlist' | 'rate';
 
 export interface OutboxJob {
   service: WatchTrackingService;
@@ -42,6 +42,7 @@ const executors: Record<OutboxOp, Executor> = {
   episodes: (service, p, config) => require('./subtitleHandler').markEpisodes(p.videos, config, p.method, p.scope, service),
   dropped: (service, p, config) => require('./jellyfin/dropped').writeDropped(config, p.ids, p.dropped, service),
   watchlist: (service, p, config, userUUID) => require('./jellyfin/watchlistSources').writeWatchlist(config, userUUID, p.ids, p.kind, p.listed, service),
+  rate: (service, p, config, userUUID) => require('./jellyfin/ratings').writeRating(config, p, service, userUUID),
 };
 
 // Writes that change what the trackers report as watched, rather than only where playback stands.

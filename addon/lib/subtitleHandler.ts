@@ -821,6 +821,7 @@ export {
   creditWatch,
   creditHistory,
   markEpisodes,
+  resolveSeriesIds,
   shouldTrackMdblistWatch,
   shouldTrackAniList
 };
@@ -835,6 +836,7 @@ module.exports = {
   creditWatch,
   creditHistory,
   markEpisodes,
+  resolveSeriesIds,
   shouldTrackMdblistWatch,
   shouldTrackAniList
 };

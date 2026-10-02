@@ -413,6 +413,15 @@ class Database {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_ratings (
+        user_uuid TEXT NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
+        meta_id TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        pmdb_id TEXT,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_uuid, profile, meta_id)
+      )`,
       `CREATE TABLE IF NOT EXISTS jellyfin_tokens (
         token_hash TEXT PRIMARY KEY,
         user_uuid TEXT NOT NULL,
@@ -626,6 +635,15 @@ class Database {
         user_uuid VARCHAR(64) NOT NULL,
         profile TEXT NOT NULL DEFAULT '',
         meta_id TEXT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (user_uuid, profile, meta_id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS jellyfin_ratings (
+        user_uuid VARCHAR(64) NOT NULL,
+        profile TEXT NOT NULL DEFAULT '',
+        meta_id TEXT NOT NULL,
+        rating SMALLINT NOT NULL,
+        pmdb_id TEXT,
         updated_at BIGINT NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
@@ -1737,6 +1755,41 @@ class Database {
         await this.runQuery(query, [userUUID, profile, metaId]);
       }
     }
+  }
+
+  async listRatings(userUUID: string, profile: string, metaIds: string[]): Promise<any[]> {
+    if (!metaIds.length) return [];
+    const marks = metaIds.map((_, i) => (this.type === 'sqlite' ? '?' : `$${i + 3}`)).join(', ');
+    const query = this.type === 'sqlite'
+      ? `SELECT meta_id, rating, pmdb_id, updated_at FROM jellyfin_ratings WHERE user_uuid = ? AND profile = ? AND meta_id IN (${marks})`
+      : `SELECT meta_id, rating, pmdb_id, updated_at FROM jellyfin_ratings WHERE user_uuid = $1 AND profile = $2 AND meta_id IN (${marks})`;
+    return this.allQuery(query, [userUUID, profile, ...metaIds]);
+  }
+
+  async setRating(userUUID: string, profile: string, metaIds: string[], rating: number | null): Promise<void> {
+    for (const metaId of metaIds) {
+      if (rating !== null) {
+        const query = this.type === 'sqlite'
+          ? 'INSERT INTO jellyfin_ratings (user_uuid, profile, meta_id, rating, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at'
+          : 'INSERT INTO jellyfin_ratings (user_uuid, profile, meta_id, rating, updated_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET rating = EXCLUDED.rating, updated_at = EXCLUDED.updated_at';
+        await this.runQuery(query, [userUUID, profile, metaId, rating, Date.now()]);
+      } else {
+        const query = this.type === 'sqlite'
+          ? 'DELETE FROM jellyfin_ratings WHERE user_uuid = ? AND profile = ? AND meta_id = ?'
+          : 'DELETE FROM jellyfin_ratings WHERE user_uuid = $1 AND profile = $2 AND meta_id = $3';
+        await this.runQuery(query, [userUUID, profile, metaId]);
+      }
+    }
+  }
+
+  async setRatingRemoteId(userUUID: string, profile: string, metaIds: string[], pmdbId: string): Promise<number> {
+    if (!metaIds.length) return 0;
+    const marks = metaIds.map((_, i) => (this.type === 'sqlite' ? '?' : `$${i + 4}`)).join(', ');
+    const query = this.type === 'sqlite'
+      ? `UPDATE jellyfin_ratings SET pmdb_id = ? WHERE user_uuid = ? AND profile = ? AND meta_id IN (${marks})`
+      : `UPDATE jellyfin_ratings SET pmdb_id = $1 WHERE user_uuid = $2 AND profile = $3 AND meta_id IN (${marks})`;
+    const result: any = await this.runQuery(query, [pmdbId, userUUID, profile, ...metaIds]);
+    return Number(result?.changes ?? result?.rowCount ?? 0);
   }
 
   async insertJellyfinToken(tokenHash: string, userUUID: string, profileId: string | null, now: number): Promise<void> {

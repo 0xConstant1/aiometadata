@@ -494,6 +494,24 @@ export interface PmdbPlaybackOptions {
   runtimeMs?: number;
 }
 
+async function createRating(apiKey: string, tmdbId: number, mediaType: 'movie' | 'tv', score: number): Promise<string | null> {
+  const data = await makeRequest('/api/external/ratings', apiKey, 'POST', { tmdb_id: tmdbId, media_type: mediaType, score, label: 'Overall' });
+  return data?.item?.id ? String(data.item.id) : null;
+}
+
+async function deleteRating(apiKey: string, id: string): Promise<void> {
+  await makeRequest(`/api/external/ratings/${encodeURIComponent(id)}`, apiKey, 'DELETE');
+}
+
+async function createEpisodeRating(apiKey: string, tmdbId: number, season: number, episode: number, score: number): Promise<string | null> {
+  const data = await makeRequest('/api/external/episode-ratings', apiKey, 'POST', { tmdb_id: tmdbId, media_type: 'tv', season, episode, score, label: 'overall' });
+  return data?.item?.id ? String(data.item.id) : null;
+}
+
+async function deleteEpisodeRating(apiKey: string, id: string): Promise<void> {
+  await makeRequest(`/api/external/episode-ratings/${encodeURIComponent(id)}`, apiKey, 'DELETE');
+}
+
 // Each mark-watched creates a play rather than setting a flag, so unmarking
 // deletes them all: removing one by record id would leave a rewatch behind.
 async function removeWatched(
@@ -666,6 +684,10 @@ export {
   clearResume,
   tmdbIdFrom,
   removeWatched,
+  createRating,
+  deleteRating,
+  createEpisodeRating,
+  deleteEpisodeRating,
   fetchLists,
   fetchListItems,
   publicMetaDBListType,

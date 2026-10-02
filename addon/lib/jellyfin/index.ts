@@ -41,7 +41,7 @@ import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segme
 import { personByName, personCredits, similarTitles } from './people';
 import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
 import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
-import { applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
+import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { registerStubs } from './stubs';
 import { recordPlayed, recordPlayedUpTo, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
@@ -2191,6 +2191,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
     const seasons = buildSeasons(found.meta, found.descriptor.t, String(req.params.seriesId), serverIdFor(req.params.userUUID));
+    const seasonsConfig = await loadConfig(req);
+    if (seasonsConfig) await applyRatings(seasons, req.params.userUUID, profileKey(seasonsConfig));
     res.json(itemList(seasons, seasons.length, 0));
   });
 
@@ -3094,6 +3096,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         ...playedState(id, state.played),
         PlaybackPositionTicks: Math.round(state.positionMs * 10000),
         PlayedPercentage: state.played ? 100 : 0,
+        ...(state.rating !== undefined ? { Rating: state.rating } : {}),
       });
     } catch (error: any) {
       logger.debug(`User data update failed: ${error.message}`);

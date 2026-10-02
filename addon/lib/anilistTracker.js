@@ -574,6 +574,24 @@ async function setPlanning(anilistId, listed, accessToken) {
   }
 }
 
+/** The score, on AniList's own 0 to 100 whatever format the user shows, on a title already on the list; 0 clears it. */
+async function setScore(anilistId, scoreRaw, accessToken) {
+  const entry = (await getMediaStatus(anilistId, accessToken))?.mediaListEntry;
+  if (!entry?.id) return false;
+  await anilistRequest(
+    'mutation ($mediaId: Int, $scoreRaw: Int) { SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw) { id } }',
+    { mediaId: parseInt(anilistId, 10), scoreRaw },
+    accessToken
+  );
+  return true;
+}
+
+/** The AniList id of an anime known by its MyAnimeList id. */
+async function anilistIdForMal(malId, accessToken) {
+  const data = await anilistRequest('query ($idMal: Int) { Media(idMal: $idMal, type: ANIME) { id } }', { idMal: parseInt(malId, 10) }, accessToken);
+  return data?.Media?.id ?? null;
+}
+
 async function resolveAniListId(parsedId) {
   if (!parsedId || !parsedId.provider || !parsedId.id) {
     logger.warn('[AniList Tracker] Invalid parsedId provided to resolveAniListId');
@@ -926,6 +944,8 @@ module.exports = {
   updateProgress,
   fetchPlanningIds,
   setPlanning,
+  setScore,
+  anilistIdForMal,
   resolveAniListId,
   determineStatus,
   
