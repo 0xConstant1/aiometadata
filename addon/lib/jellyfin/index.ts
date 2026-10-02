@@ -1068,6 +1068,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       if (genreExtra) extras.genre = String(genreExtra.default);
     }
 
+    // A library that needs a genre lists nothing until one is picked.
+    if (!extras.genre && requiresGenre(catalog)) {
+      res.json(itemList([], 0, startIndex));
+      return;
+    }
+
     // A grid asking for hundreds at once is answered a folder page at a time, as
     // collection folders are, and reads on by the count; a row is filled as asked.
     const pageCap = envInt('JELLYFIN_LIST_PAGE_MAX', 50, 20);
@@ -1538,7 +1544,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const options = Array.isArray(extra?.options) ? extra.options : [];
     return {
       catalog,
-      genres: options.filter((g: any) => typeof g === 'string' && g && g !== 'None'),
+      genres: options.filter((g: any) => typeof g === 'string' && g),
     };
   };
 
