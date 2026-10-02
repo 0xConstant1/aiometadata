@@ -3,7 +3,7 @@ import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId } from './ids';
 import { collectionFolder, EMPTY_USER_DATA } from './dto';
-import { fetchWindow, includeTypesFilter, knownCatalogLength, metaToBaseItem, rememberImages } from './items';
+import { fetchWindow, includeTypesFilter, isLandscapeCatalog, knownCatalogLength, metaToBaseItem, rememberImages, showLandscape } from './items';
 import { getCatalogs, type CatalogRef } from './views';
 import { viewerAccountOwner } from './viewer';
 import { profileTags } from './profiles';
@@ -278,6 +278,7 @@ export async function boxSetMembers(
     const { catalog } = sources[sourceIndex];
     const extras = extrasOf(sources[sourceIndex]);
     const keep = includeTypesFilter(catalog.type, includeItemTypes);
+    const landscape = isLandscapeCatalog(config, catalog);
     const page = await fetchWindow(userUUID, catalog, from, toSkip + limit - collected.length, extras, keep, tags, includeItemTypes ?? '')
       .catch(() => ({ items: [] as any[], hasMore: false }));
 
@@ -288,7 +289,9 @@ export async function boxSetMembers(
         toSkip -= 1;
         continue;
       }
-      collected.push(metaToBaseItem(meta, catalog.type, serverId, parentId));
+      const item = metaToBaseItem(meta, catalog.type, serverId, parentId);
+      if (landscape) showLandscape([item]);
+      collected.push(item);
       nextIndex += 1;
     }
     from += page.items.length;
