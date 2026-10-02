@@ -72,64 +72,58 @@
       }
     },
     {
-      "id": "collection.collection-fcf0a429",
-      "title": "Anime",
+      "id": "collection.d4e3f84f-9118-43bf-8d4e-f8771866c360",
+      "title": "Discover - Anime",
       "type": "collection.row",
       "dataSource": {
         "kind": "collection",
         "payload": {
           "items": [
             {
-              "id": "folder-0f53ca94",
-              "title": "Airing now",
-              "hideTitle": true,
+              "id": "be0de4ff-2f56-4c25-a8e1-49e858ce4c74",
+              "title": "Watchlist",
+              "hideTitle": false,
               "imageAspect": "wide",
-              "imageURL": "https://i.postimg.cc/xd7RHS0J/DERNIERS-AJOUTS(4).png",
+              "imageURL": "https://grainy.works/i/Anime/Discover/animewatchlist.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
                   "payload": {
                     "addonId": "YOUR_AIOMETADATA",
-                    "catalogId": "anime::mal.airing_anime",
+                    "catalogId": "all::mdblist.watchlist",
+                    "type": "all",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mdblist.watchlist",
+                        "type": "all",
+                        "name": "Watchlist",
+                        "source": "mdblist",
+                        "enabled": true,
+                        "showInHome": false,
+                        "cacheTTL": 300,
+                        "sort": "default"
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::anilist.Watching",
                     "type": "anime"
                   }
                 }
               ]
             },
             {
-              "id": "folder-f3f75338",
-              "title": "Popular",
-              "hideTitle": true,
-              "imageAspect": "wide",
-              "imageURL": "https://i.postimg.cc/j5L10XjG/DERNIERS-AJOUTS(1).png",
-              "dataSources": [
-                {
-                  "kind": "addonCatalog",
-                  "payload": {
-                    "addonId": "YOUR_AIOMETADATA",
-                    "catalogId": "anime::mal.most_popular_anime",
-                    "type": "anime",
-                    "aiometadata": {
-                      "version": 1,
-                      "catalog": {
-                        "id": "mal.most_popular",
-                        "type": "anime",
-                        "name": "MAL Most Popular",
-                        "source": "mal",
-                        "enabled": true,
-                        "showInHome": true
-                      }
-                    }
-                  }
-                }
-              ]
-            },
-            {
-              "id": "folder-38f673c2",
+              "id": "3793c78f-88a1-4e12-873b-9ce17179be6e",
               "title": "Upcoming",
-              "hideTitle": true,
+              "hideTitle": false,
               "imageAspect": "wide",
-              "imageURL": "https://i.postimg.cc/k4BH3c5h/DERNIERS-AJOUTS(3).png",
+              "imageURL": "https://grainy.works/i/Anime/Discover/animeupcoming.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -153,24 +147,99 @@
               ]
             },
             {
-              "id": "folder-19b5cce4",
-              "title": "Most Favorited",
-              "hideTitle": true,
+              "id": "598e2044-1529-4100-9255-ce24ab9266ca",
+              "title": "Trending",
+              "hideTitle": false,
               "imageAspect": "wide",
-              "imageURL": "https://i.postimg.cc/ydkG4PNG/DERNIERS-AJOUTS(2).png",
+              "imageURL": "https://jeor.github.io/Anime/cards/86-trending.png?v=2",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
                   "payload": {
                     "addonId": "YOUR_AIOMETADATA",
-                    "catalogId": "anime::mal.most_favorites_anime",
+                    "catalogId": "anime::anilist.discover.anime.trending_on_anilist.mo59tg24",
                     "type": "anime",
                     "aiometadata": {
                       "version": 1,
                       "catalog": {
-                        "id": "mal.most_favorites",
+                        "id": "anilist.discover.anime.trending_on_anilist.mo59tg24",
                         "type": "anime",
-                        "name": "MAL Most Favorites",
+                        "name": "Trending on Anilist",
+                        "source": "anilist",
+                        "enabled": true,
+                        "showInHome": true,
+                        "cacheTTL": 42000,
+                        "metadata": {
+                          "discover": {
+                            "version": 2,
+                            "source": "anilist",
+                            "mediaType": "anime",
+                            "params": {
+                              "sort": "TRENDING_DESC",
+                              "isAdult": false
+                            },
+                            "formState": {
+                              "catalogName": "Trending on Anilist",
+                              "discoverSource": "anilist",
+                              "sortBy": "TRENDING_DESC",
+                              "cacheTTL": 42000,
+                              "catalogType": "movie",
+                              "anilistFormats": [],
+                              "anilistStatus": "",
+                              "anilistSeason": "",
+                              "anilistSeasonYear": "",
+                              "anilistCountry": "",
+                              "anilistSelectedStudios": [],
+                              "anilistIncludeGenres": [],
+                              "anilistExcludeGenres": [],
+                              "anilistIncludeTags": [],
+                              "anilistExcludeTags": [],
+                              "anilistScoreRange": [
+                                0,
+                                100
+                              ],
+                              "anilistPopularityMin": 0,
+                              "anilistEpisodesRange": [
+                                0,
+                                200
+                              ],
+                              "anilistDurationRange": [
+                                0,
+                                180
+                              ],
+                              "anilistIsAdult": false,
+                              "anilistStartDateFrom": "",
+                              "anilistStartDateTo": ""
+                            }
+                          },
+                          "description": "ANILIST Discover (anime)",
+                          "url": "https://anilist.co/search/anime"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "4619c3aa-0c21-431d-8302-56de8d510e72",
+              "title": "Popular",
+              "hideTitle": false,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/87-popular.png?v=2",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.most_popular_anime",
+                    "type": "anime",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.most_popular",
+                        "type": "anime",
+                        "name": "MAL Most Popular",
                         "source": "mal",
                         "enabled": true,
                         "showInHome": true
@@ -193,11 +262,227 @@
         "payload": {
           "items": [
             {
+              "id": "folder-86bf967c",
+              "title": "Studio Ghibli",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/01-studio-ghibli.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Studio Ghibli"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-915c0cd0",
+              "title": "Kyoto Animation",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/02-kyoto-animation.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Kyoto Animation"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-41564aa9",
+              "title": "Madhouse",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/03-madhouse.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Madhouse"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-fb085f0e",
+              "title": "Bones",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/04-bones.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Bones"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-2cb1b4bf",
+              "title": "ufotable",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/05-ufotable.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "ufotable"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-aa7565ee",
+              "title": "WIT Studio",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/06-wit-studio.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Wit Studio"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-f01dec69",
+              "title": "MAPPA",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/07-mappa.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "MAPPA"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-dadd7490",
+              "title": "Production I.G",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/08-production-ig.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Production I.G"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "32ca0f82-8152-4859-b55e-a1d4a7b2acd2",
+              "title": "Sunrise",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/09-sunrise.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Sunrise"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "cccc09d3-1f91-490f-878c-e11443677a98",
+              "title": "Trigger",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/10-trigger.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Trigger"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "4662c3bb-7943-491a-807f-a8742fcb29c2",
+              "title": "Science SARU",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/11-science-saru.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "Science SARU"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "5533f016-5507-4790-9376-d3774438e88b",
+              "title": "CloverWorks",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/12-cloverworks.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.studios_anime",
+                    "type": "anime",
+                    "genre": "CloverWorks"
+                  }
+                }
+              ]
+            },
+            {
               "id": "folder-d049cf7f",
               "title": "A-1 Pictures",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://i.ibb.co/Xr0QMNDD/st-small-507x507-pad-600x600-f8f8f8.jpg",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/13-a-1-pictures.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -222,11 +507,81 @@
               ]
             },
             {
-              "id": "folder-41564aa9",
-              "title": "Mad House",
+              "id": "6a3c88d8-2432-4b2a-9c3d-ee141d2f5c2b",
+              "title": "Shaft",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://i.ibb.co/RGtzJNTd/31-400.webp",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/14-shaft.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.discover.anime.shaft.ov6igo",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.discover.anime.shaft.ov6igo",
+                        "type": "anime",
+                        "name": "Shaft",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false,
+                        "metadata": {
+                          "description": "MAL Discover (anime)",
+                          "url": "https://myanimelist.net/anime.php",
+                          "discover": {
+                            "version": 2,
+                            "source": "mal",
+                            "mediaType": "anime",
+                            "params": {
+                              "order_by": "members",
+                              "sort": "desc",
+                              "producers": "44",
+                              "sfw": true
+                            },
+                            "formState": {
+                              "catalogName": "Shaft",
+                              "discoverSource": "mal",
+                              "sortBy": "members",
+                              "cacheTTL": null,
+                              "catalogType": "anime",
+                              "malType": "",
+                              "malStatus": "",
+                              "malRating": "",
+                              "malSortDirection": "desc",
+                              "malIncludeGenreIds": [],
+                              "malExcludeGenreIds": [],
+                              "malProducers": [
+                                {
+                                  "id": 44,
+                                  "label": "Shaft"
+                                }
+                              ],
+                              "malMinScore": 0,
+                              "malMaxScore": 10,
+                              "malStartDate": "",
+                              "malEndDate": "",
+                              "malSeason": "",
+                              "malSeasonYear": "",
+                              "malSfw": true
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "folder-07486001",
+              "title": "Toei Animation",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/15-toei-animation.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -234,17 +589,17 @@
                     "addonId": "YOUR_AIOMETADATA",
                     "catalogId": "anime::mal.studios_anime",
                     "type": "anime",
-                    "genre": "Madhouse"
+                    "genre": "Toei Animation"
                   }
                 }
               ]
             },
             {
               "id": "folder-c4ee9cd6",
-              "title": "Studio Pierrot",
-              "hideTitle": false,
-              "imageAspect": "square",
-              "imageURL": "https://ih1.redbubble.net/image.5221021342.6521/st,small,507x507-pad,600x600,f8f8f8.webp",
+              "title": "Pierrot",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/16-pierrot.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -258,29 +613,81 @@
               ]
             },
             {
-              "id": "folder-2cb1b4bf",
-              "title": "Ufotable",
+              "id": "e0e4a119-a106-4cc4-bd98-2524a1280621",
+              "title": "White Fox",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://api.duniagames.co.id/api/content//upload/file/3168418521757742014.png",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/17-white-fox.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
                   "payload": {
                     "addonId": "YOUR_AIOMETADATA",
-                    "catalogId": "anime::mal.studios_anime",
+                    "catalogId": "anime::mal.discover.anime.white_fox.1mslana",
                     "type": "anime",
-                    "genre": "ufotable"
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.discover.anime.white_fox.1mslana",
+                        "type": "anime",
+                        "name": "White Fox",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false,
+                        "metadata": {
+                          "description": "MAL Discover (anime)",
+                          "url": "https://myanimelist.net/anime.php",
+                          "discover": {
+                            "version": 2,
+                            "source": "mal",
+                            "mediaType": "anime",
+                            "params": {
+                              "order_by": "members",
+                              "sort": "desc",
+                              "producers": "314",
+                              "sfw": true
+                            },
+                            "formState": {
+                              "catalogName": "White Fox",
+                              "discoverSource": "mal",
+                              "sortBy": "members",
+                              "cacheTTL": null,
+                              "catalogType": "anime",
+                              "malType": "",
+                              "malStatus": "",
+                              "malRating": "",
+                              "malSortDirection": "desc",
+                              "malIncludeGenreIds": [],
+                              "malExcludeGenreIds": [],
+                              "malProducers": [
+                                {
+                                  "id": 314,
+                                  "label": "White Fox"
+                                }
+                              ],
+                              "malMinScore": 0,
+                              "malMaxScore": 10,
+                              "malStartDate": "",
+                              "malEndDate": "",
+                              "malSeason": "",
+                              "malSeasonYear": "",
+                              "malSfw": true
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               ]
             },
             {
-              "id": "folder-dadd7490",
-              "title": "Production I.G",
+              "id": "9ad8f2f6-057b-4c28-9b56-7ddd658741e8",
+              "title": "David Production",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://ih1.redbubble.net/image.5213991999.5502/st,medium,507x507-pad,600x600,f8f8f8.webp",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/18-david-production.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -288,17 +695,17 @@
                     "addonId": "YOUR_AIOMETADATA",
                     "catalogId": "anime::mal.studios_anime",
                     "type": "anime",
-                    "genre": "Production I.G"
+                    "genre": "David Production"
                   }
                 }
               ]
             },
             {
-              "id": "folder-86bf967c",
-              "title": "Ghibli",
-              "hideTitle": false,
-              "imageAspect": "square",
-              "imageURL": "https://logos-world.net/wp-content/uploads/2024/07/Studio-Ghibli-Logo.jpg",
+              "id": "93b16d30-7779-438b-a595-c01b25675be0",
+              "title": "Orange",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/19-orange.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -306,17 +713,17 @@
                     "addonId": "YOUR_AIOMETADATA",
                     "catalogId": "anime::mal.studios_anime",
                     "type": "anime",
-                    "genre": "Studio Ghibli"
+                    "genre": "Orange"
                   }
                 }
               ]
             },
             {
-              "id": "folder-aa7565ee",
-              "title": "Wit Studio",
+              "id": "5f1593a0-5653-44e0-9d84-65c1007a2f54",
+              "title": "TMS Entertainment",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://images.teepublic.com/derived/production/designs/21226254_0/1618872599/i_m:pid_2834,c_s_auto,bc_ffffff,s_630,q_90.jpg",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/20-tms-entertainment.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -324,53 +731,157 @@
                     "addonId": "YOUR_AIOMETADATA",
                     "catalogId": "anime::mal.studios_anime",
                     "type": "anime",
-                    "genre": "Wit Studio"
+                    "genre": "TMS Entertainment"
                   }
                 }
               ]
             },
             {
-              "id": "folder-915c0cd0",
-              "title": "Kyoto Animation",
+              "id": "3ad4f78c-db09-41df-8ef1-ba791c01c359",
+              "title": "P.A. Works",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://www.animeclick.it/prove/img_tmp/50103.jpg",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/21-pa-works.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
                   "payload": {
                     "addonId": "YOUR_AIOMETADATA",
-                    "catalogId": "anime::mal.studios_anime",
+                    "catalogId": "anime::mal.discover.anime.p_a_works.1x1d3jk",
                     "type": "anime",
-                    "genre": "Kyoto Animation"
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.discover.anime.p_a_works.1x1d3jk",
+                        "type": "anime",
+                        "name": "P.A. Works",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false,
+                        "metadata": {
+                          "description": "MAL Discover (anime)",
+                          "url": "https://myanimelist.net/anime.php",
+                          "discover": {
+                            "version": 2,
+                            "source": "mal",
+                            "mediaType": "anime",
+                            "params": {
+                              "order_by": "members",
+                              "sort": "desc",
+                              "producers": "132",
+                              "sfw": true
+                            },
+                            "formState": {
+                              "catalogName": "P.A. Works",
+                              "discoverSource": "mal",
+                              "sortBy": "members",
+                              "cacheTTL": null,
+                              "catalogType": "anime",
+                              "malType": "",
+                              "malStatus": "",
+                              "malRating": "",
+                              "malSortDirection": "desc",
+                              "malIncludeGenreIds": [],
+                              "malExcludeGenreIds": [],
+                              "malProducers": [
+                                {
+                                  "id": 132,
+                                  "label": "P.A. Works"
+                                }
+                              ],
+                              "malMinScore": 0,
+                              "malMaxScore": 10,
+                              "malStartDate": "",
+                              "malEndDate": "",
+                              "malSeason": "",
+                              "malSeasonYear": "",
+                              "malSfw": true
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               ]
             },
             {
-              "id": "folder-fb085f0e",
-              "title": "Bones",
+              "id": "f0af9e79-a850-4b5e-abda-d3fb913531f4",
+              "title": "Bandai Namco Pictures",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://animateusaonlineshop.com/cdn/shop/collections/bones_collection.jpg?v=1642339752",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/22-bandai-namco-pictures.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
                   "payload": {
                     "addonId": "YOUR_AIOMETADATA",
-                    "catalogId": "anime::mal.studios_anime",
+                    "catalogId": "anime::mal.discover.anime.bandai_namco_pictures.6mxj2m",
                     "type": "anime",
-                    "genre": "Bones"
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.discover.anime.bandai_namco_pictures.6mxj2m",
+                        "type": "anime",
+                        "name": "Bandai Namco Pictures",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false,
+                        "metadata": {
+                          "description": "MAL Discover (anime)",
+                          "url": "https://myanimelist.net/anime.php",
+                          "discover": {
+                            "version": 2,
+                            "source": "mal",
+                            "mediaType": "anime",
+                            "params": {
+                              "order_by": "members",
+                              "sort": "desc",
+                              "producers": "1258",
+                              "sfw": true
+                            },
+                            "formState": {
+                              "catalogName": "Bandai Namco Pictures",
+                              "discoverSource": "mal",
+                              "sortBy": "members",
+                              "cacheTTL": null,
+                              "catalogType": "anime",
+                              "malType": "",
+                              "malStatus": "",
+                              "malRating": "",
+                              "malSortDirection": "desc",
+                              "malIncludeGenreIds": [],
+                              "malExcludeGenreIds": [],
+                              "malProducers": [
+                                {
+                                  "id": 1258,
+                                  "label": "Bandai Namco Pictures"
+                                }
+                              ],
+                              "malMinScore": 0,
+                              "malMaxScore": 10,
+                              "malStartDate": "",
+                              "malEndDate": "",
+                              "malSeason": "",
+                              "malSeasonYear": "",
+                              "malSfw": true
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               ]
             },
             {
-              "id": "folder-f01dec69",
-              "title": "Mappa",
+              "id": "07a0867d-69e3-43f2-b4c5-129f45a5810b",
+              "title": "Gainax",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR7ZfCOzvaa4Y1nY3CIiwc70X1YpQvhh6qn0w&s",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/23-gainax.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -378,17 +889,17 @@
                     "addonId": "YOUR_AIOMETADATA",
                     "catalogId": "anime::mal.studios_anime",
                     "type": "anime",
-                    "genre": "MAPPA"
+                    "genre": "Gainax"
                   }
                 }
               ]
             },
             {
-              "id": "folder-07486001",
-              "title": "Toei Animation",
+              "id": "020f7b38-3b8f-4507-9c21-fd54df77e5a3",
+              "title": "Studio Deen",
               "hideTitle": true,
-              "imageAspect": "square",
-              "imageURL": "https://pbs.twimg.com/media/G5A_3hvXsAA4ojA.jpg",
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/24-studio-deen.png",
               "dataSources": [
                 {
                   "kind": "addonCatalog",
@@ -396,7 +907,217 @@
                     "addonId": "YOUR_AIOMETADATA",
                     "catalogId": "anime::mal.studios_anime",
                     "type": "anime",
-                    "genre": "Toei Animation"
+                    "genre": "Studio Deen"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "5d093943-ee15-4d32-ba11-59b5d74cec87",
+              "title": "Kadokawa",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/25-kadokawa.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.discover.anime.kadokawa.1sxx3wc",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.discover.anime.kadokawa.1sxx3wc",
+                        "type": "anime",
+                        "name": "Kadokawa",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false,
+                        "metadata": {
+                          "description": "MAL Discover (anime)",
+                          "url": "https://myanimelist.net/anime.php",
+                          "discover": {
+                            "version": 2,
+                            "source": "mal",
+                            "mediaType": "anime",
+                            "params": {
+                              "order_by": "members",
+                              "sort": "desc",
+                              "producers": "1696",
+                              "sfw": true
+                            },
+                            "formState": {
+                              "catalogName": "Kadokawa",
+                              "discoverSource": "mal",
+                              "sortBy": "members",
+                              "cacheTTL": null,
+                              "catalogType": "anime",
+                              "malType": "",
+                              "malStatus": "",
+                              "malRating": "",
+                              "malSortDirection": "desc",
+                              "malIncludeGenreIds": [],
+                              "malExcludeGenreIds": [],
+                              "malProducers": [
+                                {
+                                  "id": 1696,
+                                  "label": "Kadokawa"
+                                }
+                              ],
+                              "malMinScore": 0,
+                              "malMaxScore": 10,
+                              "malStartDate": "",
+                              "malEndDate": "",
+                              "malSeason": "",
+                              "malSeasonYear": "",
+                              "malSfw": true
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "b784e52a-2a03-4316-9d9e-e63d9d5ee4b3",
+              "title": "Crunchyroll",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/26-crunchyroll.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.discover.anime.crunchyroll.f43j7x",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.discover.anime.crunchyroll.f43j7x",
+                        "type": "anime",
+                        "name": "Crunchyroll",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false,
+                        "metadata": {
+                          "description": "MAL Discover (anime)",
+                          "url": "https://myanimelist.net/anime.php",
+                          "discover": {
+                            "version": 2,
+                            "source": "mal",
+                            "mediaType": "anime",
+                            "params": {
+                              "order_by": "members",
+                              "sort": "desc",
+                              "producers": "1468",
+                              "sfw": true
+                            },
+                            "formState": {
+                              "catalogName": "Crunchyroll",
+                              "discoverSource": "mal",
+                              "sortBy": "members",
+                              "cacheTTL": null,
+                              "catalogType": "anime",
+                              "malType": "",
+                              "malStatus": "",
+                              "malRating": "",
+                              "malSortDirection": "desc",
+                              "malIncludeGenreIds": [],
+                              "malExcludeGenreIds": [],
+                              "malProducers": [
+                                {
+                                  "id": 1468,
+                                  "label": "Crunchyroll"
+                                }
+                              ],
+                              "malMinScore": 0,
+                              "malMaxScore": 10,
+                              "malStartDate": "",
+                              "malEndDate": "",
+                              "malSeason": "",
+                              "malSeasonYear": "",
+                              "malSfw": true
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1669feba-9907-483d-af38-5b8340be2f9d",
+              "title": "Funimation",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/studios/27-funimation.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.discover.anime.funimation.1ebyuxl",
+                    "type": "anime",
+                    "genre": "None",
+                    "aiometadata": {
+                      "version": 1,
+                      "catalog": {
+                        "id": "mal.discover.anime.funimation.1ebyuxl",
+                        "type": "anime",
+                        "name": "Funimation",
+                        "source": "mal",
+                        "enabled": true,
+                        "showInHome": false,
+                        "metadata": {
+                          "description": "MAL Discover (anime)",
+                          "url": "https://myanimelist.net/anime.php",
+                          "discover": {
+                            "version": 2,
+                            "source": "mal",
+                            "mediaType": "anime",
+                            "params": {
+                              "order_by": "members",
+                              "sort": "desc",
+                              "producers": "102",
+                              "sfw": true
+                            },
+                            "formState": {
+                              "catalogName": "Funimation",
+                              "discoverSource": "mal",
+                              "sortBy": "members",
+                              "cacheTTL": null,
+                              "catalogType": "anime",
+                              "malType": "",
+                              "malStatus": "",
+                              "malRating": "",
+                              "malSortDirection": "desc",
+                              "malIncludeGenreIds": [],
+                              "malExcludeGenreIds": [],
+                              "malProducers": [
+                                {
+                                  "id": 102,
+                                  "label": "Funimation"
+                                }
+                              ],
+                              "malMinScore": 0,
+                              "malMaxScore": 10,
+                              "malStartDate": "",
+                              "malEndDate": "",
+                              "malSeason": "",
+                              "malSeasonYear": "",
+                              "malSfw": true
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               ]
@@ -533,6 +1254,24 @@
               ]
             },
             {
+              "id": "1e31090d-ebb3-440b-95c6-e773ac91e088",
+              "title": "Boys Love",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/05-boys-love.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Boys Love"
+                  }
+                }
+              ]
+            },
+            {
               "id": "453353fb-ca9b-46fb-a2b3-d45773063423",
               "title": "CGDCT",
               "hideTitle": true,
@@ -600,6 +1339,24 @@
                     "catalogId": "anime::mal.genres_anime",
                     "type": "anime",
                     "genre": "Comedy"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "57cbeb0b-25a0-475d-8c0c-182529a32c2f",
+              "title": "Crossdressing",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/27-crossdressing.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Crossdressing"
                   }
                 }
               ]
@@ -744,6 +1501,24 @@
                     "catalogId": "anime::mal.genres_anime",
                     "type": "anime",
                     "genre": "Gag Humor"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "f1a8660f-2a41-4d23-bcda-b16404dda869",
+              "title": "Girls Love",
+              "hideTitle": true,
+              "imageAspect": "wide",
+              "imageURL": "https://jeor.github.io/Anime/cards/09-girls-love.png",
+              "dataSources": [
+                {
+                  "kind": "addonCatalog",
+                  "payload": {
+                    "addonId": "YOUR_AIOMETADATA",
+                    "catalogId": "anime::mal.genres_anime",
+                    "type": "anime",
+                    "genre": "Girls Love"
                   }
                 }
               ]

@@ -20,6 +20,18 @@ export interface FeaturedCollection {
 
 export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
   {
+    id: 'anime-essentials',
+    name: 'Anime Essentials',
+    author: 'Cedya',
+    authorUrl: 'https://github.com/cedya77',
+    url: '/featured/anime-essentials.json',
+    summary: 'Airing now and trending on AniList, your watchlist with upcoming, trending and popular picks, twenty-seven studios, every MAL genre and theme, and five decades.',
+    note: 'The Watchlist tile reads your own MDBList watchlist and AniList Watching list. The studio, genre and decade cards are Jeor\'s, from jeor.github.io/Anime.',
+    catalogs: 21,
+    detail: '4 collections and 2 classic rows, 114 tiles with artwork.',
+    classicRows: 2,
+  },
+  {
     id: 'starter-kit',
     name: 'Starter Kit',
     author: 'Renoria',
@@ -86,17 +98,5 @@ export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
     catalogs: 371,
     detail: '24 designs, 10 collections and 14 classic rows, 271 folders with artwork.',
     classicRows: 14,
-  },
-  {
-    id: 'anime-essentials',
-    name: 'Anime Essentials',
-    author: 'Cedya',
-    authorUrl: 'https://github.com/cedya77',
-    url: '/featured/anime-essentials.json',
-    summary: 'Airing now and trending on AniList, MAL\'s popular, upcoming and most favorited, eleven studios, every MAL genre and theme, and five decades.',
-    note: 'Every tile is a MAL catalog. The genre and decade cards are Jeor\'s, from jeor.github.io/Anime.',
-    catalogs: 12,
-    detail: '4 collections and 2 classic rows, 95 tiles with artwork.',
-    classicRows: 2,
   },
 ];
