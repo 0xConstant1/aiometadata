@@ -5,7 +5,7 @@ import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId } from './ids';
 import { collectionFolder } from './dto';
 import { profileTags } from './profiles';
-import { viewerPicksGenre } from './viewer';
+import { viewerReadsExtensions } from './viewer';
 import { isCollectionCatalogId } from '../collectionBuilder/aiostreamsCollections';
 import { accountOwner, servedAccountsKey } from '../accounts';
 
@@ -79,8 +79,8 @@ export async function getCatalogs(userUUID: string, config: any): Promise<Catalo
 // A catalog with a required extra cannot be listed, only queried, so it would
 // make an empty library.
 export function isBrowsable(catalog: CatalogRef): boolean {
-  const picksGenre = viewerPicksGenre();
-  return !(catalog.extra ?? []).some((e: any) => e?.isRequired && !(picksGenre && e.name === 'genre' && hasGenreOption(e)));
+  const readsExtensions = viewerReadsExtensions();
+  return !(catalog.extra ?? []).some((e: any) => e?.isRequired && !(readsExtensions && e.name === 'genre' && hasGenreOption(e)));
 }
 
 function hasGenreOption(extra: any): boolean {

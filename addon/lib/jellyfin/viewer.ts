@@ -2,20 +2,20 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 interface ViewerScope {
   ownWatchlist: boolean;
-  picksGenre: boolean;
+  readsExtensions: boolean;
   accountOwner: string;
 }
 
 const scope = new AsyncLocalStorage<ViewerScope>();
 
-export function runInViewerScope<T>(ownWatchlist: boolean, fn: () => T, picksGenre = false): T {
-  return scope.run({ ownWatchlist, picksGenre, accountOwner: '' }, fn);
+export function runInViewerScope<T>(ownWatchlist: boolean, fn: () => T, readsExtensions = false): T {
+  return scope.run({ ownWatchlist, readsExtensions, accountOwner: '' }, fn);
 }
 
 /** For work done as a user outside a Jellyfin request: the handoff and the playstate sync. */
 export function runAsAccountOwner<T>(accountOwner: string, fn: () => T): T {
   const held = scope.getStore();
-  return scope.run({ ownWatchlist: held?.ownWatchlist ?? false, picksGenre: held?.picksGenre ?? false, accountOwner }, fn);
+  return scope.run({ ownWatchlist: held?.ownWatchlist ?? false, readsExtensions: held?.readsExtensions ?? false, accountOwner }, fn);
 }
 
 /** Set once a request's config is scoped to the signed-in user. */
@@ -32,6 +32,6 @@ export function viewerOwnsWatchlist(): boolean {
   return scope.getStore()?.ownWatchlist === true;
 }
 
-export function viewerPicksGenre(): boolean {
-  return scope.getStore()?.picksGenre === true;
+export function viewerReadsExtensions(): boolean {
+  return scope.getStore()?.readsExtensions === true;
 }
