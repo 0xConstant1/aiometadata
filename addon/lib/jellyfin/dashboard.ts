@@ -7,6 +7,7 @@ import { syncStatus } from './playstateSync';
 import { seenConfigurations } from './context';
 import { seriesIndex } from './episodeIndex';
 import { fetchMeta } from './items';
+import { groupBySpelling } from './aliases';
 import { defaultUserName, listProfiles } from './profiles';
 import { mapWithConcurrency } from '../../utils/concurrency';
 
@@ -258,21 +259,45 @@ export async function dashboardSearch(query: string): Promise<{ query: string; r
   return { query: q, results: results.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)) };
 }
 
+async function titleCounts(userUUID: string): Promise<Map<string, { played: number; inProgress: number }>> {
+  const rows: any[] = await database.watchedRowsForConfiguration(userUUID);
+  const byProfile = new Map<string, any[]>();
+  for (const row of rows) {
+    const key = String(row.profile ?? '');
+    if (!byProfile.has(key)) byProfile.set(key, []);
+    byProfile.get(key)!.push(row);
+  }
+
+  const out = new Map<string, { played: number; inProgress: number }>();
+  for (const [profile, list] of byProfile) {
+    const groups = await groupBySpelling(list);
+    out.set(profile, {
+      played: groups.filter((group) => group.some((row) => Number(row.played) === 1)).length,
+      inProgress: groups.filter((group) => group.some((row) => Number(row.position_ms) > 0)).length,
+    });
+  }
+  return out;
+}
+
 /** One configuration: its profiles with counts, and the sessions, positions and recent plays of one profile or all. */
 export async function dashboardConfiguration(userUUID: string, profile: string | null, rows?: number): Promise<any> {
   const config = await database.getUserConfig(userUUID).catch(() => null);
   if (!config) return null;
   const names = profileNames(config, userUUID);
   const limit = Math.min(500, Math.max(1, rows || envInt('JELLYFIN_DASHBOARD_ROWS', 50, 1)));
-  const byProfile: any[] = await database.playstateForConfiguration(userUUID);
+  const [byProfile, counts]: [any[], Map<string, { played: number; inProgress: number }>] = await Promise.all([
+    database.playstateForConfiguration(userUUID),
+    titleCounts(userUUID),
+  ]);
   const profiles = historyProfiles(config, userUUID).map(({ key, name, sharedWith }) => {
     const p = byProfile.find((row: any) => String(row.profile ?? '') === key);
+    const titles = counts.get(key);
     return {
       key,
       name,
       sharedWith,
-      inProgress: Number(p?.in_progress) || 0,
-      played: Number(p?.played) || 0,
+      inProgress: titles?.inProgress ?? 0,
+      played: titles?.played ?? 0,
       lastActivity: Math.max(Number(p?.last_played_at) || 0, Number(p?.updated_at) || 0) || null,
     };
   });

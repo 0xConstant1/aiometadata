@@ -111,3 +111,42 @@ export async function dedupeByAlias<T extends { videoId: string }>(rows: T[]): P
   }
   return out;
 }
+
+/** Rows grouped by title: known aliases, and the spellings one play through this server wrote together. */
+export async function groupBySpelling<T extends { video_id: any; last_played_at?: any; origin?: any }>(rows: T[]): Promise<T[][]> {
+  const ids = rows.map((row) => String(row.video_id));
+  const parent = new Map<string, string>(ids.map((id) => [id, id]));
+  const find = (id: string): string => {
+    let root = id;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    parent.set(id, root);
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    if (!parent.has(a) || !parent.has(b)) return;
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  const together = new Map<string, string>();
+  for (const [i, row] of rows.entries()) {
+    const id = ids[i];
+    for (const alias of await videoIdAliases(id).catch(() => [] as string[])) union(id, alias);
+    if (row.origin !== 'server' || !row.last_played_at) continue;
+    const parsed = parseStremioId(id);
+    const at = parsed && parsed.episode !== null && parsed.episode !== undefined ? `${parsed.season ?? ''}:${parsed.episode}` : 'title';
+    const key = `${row.last_played_at}|${at}`;
+    const first = together.get(key);
+    if (first) union(id, first);
+    else together.set(key, id);
+  }
+
+  const groups = new Map<string, T[]>();
+  for (const [i, row] of rows.entries()) {
+    const root = find(ids[i]);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root)!.push(row);
+  }
+  return [...groups.values()];
+}

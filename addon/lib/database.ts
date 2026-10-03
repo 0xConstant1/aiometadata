@@ -1256,6 +1256,15 @@ class Database {
     return (await this.allQuery(query, [userUUID])) || [];
   }
 
+  async watchedRowsForConfiguration(userUUID: string): Promise<any[]> {
+    const query = this.type === 'sqlite'
+      ? `SELECT profile, video_id, played, position_ms, last_played_at, origin FROM jellyfin_playstate
+         WHERE user_uuid = ? AND (played = 1 OR position_ms > 0)`
+      : `SELECT profile, video_id, played, position_ms, last_played_at, origin FROM jellyfin_playstate
+         WHERE user_uuid = $1 AND (played = 1 OR position_ms > 0)`;
+    return (await this.allQuery(query, [userUUID])) || [];
+  }
+
   async findUserUUIDsByPrefix(prefix: string, limit: number): Promise<string[]> {
     const query = this.type === 'sqlite'
       ? 'SELECT user_uuid FROM user_configs WHERE user_uuid LIKE ? LIMIT ?'
