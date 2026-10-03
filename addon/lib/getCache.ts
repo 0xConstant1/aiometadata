@@ -1112,11 +1112,14 @@ function buildMetaHashLayout({ config, metaId, type, useShowPoster = false }: { 
   return { key: `meta-h:${hashOf(legacyKeys.basic)}:${metaId}`, fields };
 }
 
-function getBlurProxyPrefix(): string {
-  const host = process.env.HOST_NAME?.startsWith('http')
+function publicHost(): string {
+  return process.env.HOST_NAME?.startsWith('http')
     ? process.env.HOST_NAME
     : `https://${process.env.HOST_NAME}`;
-  return `${host}/api/image/blur?url=`;
+}
+
+function getBlurProxyPrefix(): string {
+  return `${publicHost()}/api/image/blur?url=`;
 }
 
 function unwrapBlurThumbnail(thumbnail: string | null | undefined): string | null | undefined {
@@ -1138,8 +1141,9 @@ function applyBlurThumbProjection(meta: any, config: any): any {
   if (!meta?.videos || !Array.isArray(meta.videos)) return meta;
   const shouldBlur = !!config.blurThumbs;
   const blurPrefix = getBlurProxyPrefix();
+  const missingThumbnail = `${publicHost()}/missing_thumbnail.png`;
   meta.videos = meta.videos.map((video: any) => {
-    const rawThumbnail = unwrapBlurThumbnail(video.thumbnail);
+    const rawThumbnail = unwrapBlurThumbnail(video.thumbnail) || missingThumbnail;
     if (!shouldBlur || !rawThumbnail || rawThumbnail.endsWith('/missing_thumbnail.png')) {
       return { ...video, thumbnail: rawThumbnail };
     }
