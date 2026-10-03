@@ -1010,6 +1010,9 @@ export function buildEpisode(
 
     if (video.thumbnail) rememberImages(serverId, id, { primary: video.thumbnail });
 
+    const premiere = isoDate(video.released);
+    const unaired = video.available === false || (premiere ? Date.parse(premiere) > Date.now() : false);
+
     return {
       Name: video.title || `Episode ${video.episode}`,
       SortName: `${String(video.episode).padStart(4, '0')} - ${sortNameFor(video.title || `Episode ${video.episode}`)}`,
@@ -1027,8 +1030,8 @@ export function buildEpisode(
       ParentIndexNumber: hasSeason ? video.season : null,
       IndexNumber: Number(video.episode),
       Overview: video.overview || null,
-      PremiereDate: isoDate(video.released),
-      DateCreated: isoDate(video.released) || EPOCH_DATE,
+      PremiereDate: premiere,
+      DateCreated: premiere || EPOCH_DATE,
       RunTimeTicks: parseRuntimeTicks(video.runtime),
       ProviderIds: {},
       ImageTags: video.thumbnail ? { Primary: imageTag(video.thumbnail) } : {},
@@ -1036,14 +1039,13 @@ export function buildEpisode(
       ImageBlurHashes: {},
       ...art,
       UserData: { ...EMPTY_USER_DATA, Key: id, ItemId: id },
-      LocationType: 'FileSystem',
+      LocationType: unaired ? 'Virtual' : 'FileSystem',
       PrimaryImageAspectRatio: 1.7777777777777777,
       CanDelete: false,
       CanDownload: false,
       LockedFields: [],
       LockData: false,
-      EnableMediaSourceDisplay: true,
-      MediaSources: placeholderSources(id),
+      ...(unaired ? {} : { EnableMediaSourceDisplay: true, MediaSources: placeholderSources(id) }),
     };
   }
 }
