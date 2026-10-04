@@ -2240,15 +2240,21 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const at = episodes.findIndex((e: any) => e.Id === wanted);
       if (at > 0) from = at;
     }
-    const startIndex = from + Math.max(0, qInt(req, 'StartIndex', 0));
-    const limit = Math.max(1, qInt(req, 'Limit', episodes.length || 1));
-    const page = episodes.slice(startIndex, startIndex + limit);
+    let list = episodes.slice(from);
+    const adjacentTo = req.query.AdjacentTo ?? req.query.adjacentTo;
+    if (adjacentTo) {
+      const at = list.findIndex((e: any) => e.Id === normaliseJellyfinId(String(adjacentTo)));
+      list = at < 0 ? [] : list.slice(Math.max(0, at - 1), at + 2);
+    }
+    const startIndex = Math.max(0, qInt(req, 'StartIndex', 0));
+    const limit = Math.max(1, qInt(req, 'Limit', list.length || 1));
+    const page = list.slice(startIndex, startIndex + limit);
 
     const episodesConfig = await loadConfig(req);
     if (episodesConfig) {
       await applyWatchedState(page, await watchedSnapshot(req.params.userUUID, episodesConfig), req.params.userUUID, profileKey(episodesConfig), episodesConfig);
     }
-    res.json(itemList(page, episodes.length - from, startIndex - from));
+    res.json(itemList(page, list.length, startIndex));
   });
 
   router.get('/Shows/NextUp', async (req: any, res: any) => {
