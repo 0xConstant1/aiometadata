@@ -51,6 +51,8 @@ const tvdbSeasonTypes: SelectableOption[] = [
   { value: 'absolute', label: 'Absolute Order' },
   { value: 'alternate', label: 'Alternate Order' },
   { value: 'regional', label: 'Regional Order' },
+  { value: 'alttwo', label: 'Alternate Order 2' },
+  { value: 'altdvd', label: 'Alternate DVD Order' },
 ];
 
 export function ProvidersSettings() {

@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 config();
 import { cacheWrapTvdbApi, stableStringify } from './getCache.js';
 import { to3LetterCode } from './language-map.js';
+import { readsBySeason } from '../utils/episodeOrder';
 import { httpPost, httpGet } from '../utils/httpClient.js';
 import { UserConfig } from '../types/index.js';
 import consola from 'consola';
@@ -813,14 +814,42 @@ async function _fetchEpisodesBySeasonType(tvdbId: string, seasonType: string, la
   return { episodes: allEpisodes };
 }
 
+async function _fetchEpisodesFromSeasons(tvdbId: string, seasonType: string, language: string, config: UserConfig): Promise<{ episodes: TvdbEpisode[] } | null> {
+  const series = await getSeriesExtended(tvdbId, config);
+  const seasons = (series?.seasons || []).filter((season: any) => season?.type?.type === seasonType && season.id != null);
+  if (!seasons.length) return null;
+
+  const { mapWithConcurrency } = require('../utils/concurrency');
+  const [aired, details] = await Promise.all([
+    _fetchEpisodesBySeasonType(tvdbId, 'official', language, config),
+    mapWithConcurrency(seasons, 4, (season: any) => getSeasonExtended(String(season.id), config)),
+  ]);
+  const airedById = new Map((aired?.episodes || []).map((episode) => [episode.id, episode]));
+
+  const episodes: TvdbEpisode[] = [];
+  seasons.forEach((season: any, index: number) => {
+    for (const episode of (details[index] as any)?.episodes || []) {
+      const base = airedById.get(episode.id) ?? episode;
+      episodes.push({ ...base, seasonNumber: season.number, number: episode.number });
+    }
+  });
+  episodes.sort((a, b) => a.seasonNumber - b.seasonNumber || a.number - b.number);
+  return { episodes };
+}
+
 async function getSeriesEpisodes(tvdbId: string, language: string = 'en-US', seasonType: string = 'default', config: UserConfig = {} as UserConfig, bypassCache: boolean = false): Promise<TvdbEpisodesResponse | null> {
-  const cacheKey = `series-episodes:${tvdbId}:${language}:${seasonType}`;
+  const bySeason = readsBySeason(seasonType);
+  const cacheKey = `series-episodes:${tvdbId}:${language}:${seasonType}${bySeason ? ':seasons' : ''}`;
 
   return cacheWrapTvdbApi(cacheKey, async () => {
     const consola = require('consola');
     consola.debug(`[TVDB] Fetching episodes for ${tvdbId} with type: '${seasonType}' and lang: '${language}'`);
-    let result = await _fetchEpisodesBySeasonType(tvdbId, seasonType, language, config);
- 
+    let result = bySeason ? null : await _fetchEpisodesBySeasonType(tvdbId, seasonType, language, config);
+
+    if ((!result || result.episodes.length === 0) && seasonType !== 'official' && seasonType !== 'default') {
+      result = await _fetchEpisodesFromSeasons(tvdbId, seasonType, language, config);
+    }
+
     if ((!result || result.episodes.length === 0) && seasonType !== 'official') {
       logger.debug(`No episodes found for type '${seasonType}'. Falling back to 'official' order.`);
       result = await _fetchEpisodesBySeasonType(tvdbId, 'official', language, config);

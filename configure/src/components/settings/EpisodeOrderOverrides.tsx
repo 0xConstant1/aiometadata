@@ -26,6 +26,7 @@ const ORDER_LABELS: Record<string, string> = {
   alternate: "Alternate Order",
   regional: "Regional Order",
   alttwo: "Alternate Order 2",
+  altdvd: "Alternate DVD Order",
 };
 
 const seriesCache = new Map<string, Promise<SeriesOrders | null>>();

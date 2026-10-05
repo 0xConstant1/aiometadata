@@ -1,4 +1,11 @@
-const ORDERS = new Set(['official', 'default', 'dvd', 'absolute', 'alternate', 'regional', 'alttwo']);
+const ORDERS = new Set(['official', 'default', 'dvd', 'absolute', 'alternate', 'regional', 'alttwo', 'altdvd']);
+
+// TVDB's episodes endpoint answers these orders with no episodes; only their seasons hold them.
+const SEASON_READ_ORDERS = new Set(['alttwo', 'altdvd']);
+
+export function readsBySeason(order: string | null | undefined): boolean {
+  return !!order && SEASON_READ_ORDERS.has(order);
+}
 
 function orderMap(config: any): Record<string, string> | null {
   const map = config?.tvdbEpisodeOrders;
