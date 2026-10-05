@@ -1171,6 +1171,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: false,
   },
   {
+    key: 'JELLYFIN_IMAGE_RESIZE_CONCURRENCY',
+    envVar: 'JELLYFIN_IMAGE_RESIZE_CONCURRENCY',
+    label: 'Jellyfin Image Resizes at Once',
+    description: 'How many images the server shrinks at the same time for clients that ask for a smaller size than the source. A cold home screen asks for dozens at once; the rest wait their turn. Each size is made once and kept with the cached original.',
+    category: 'Features',
+    type: 'number',
+    default: 2,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_IMAGE_CACHE_MB',
     envVar: 'JELLYFIN_IMAGE_CACHE_MB',
     label: 'Jellyfin Shaped Image Cache (MB)',

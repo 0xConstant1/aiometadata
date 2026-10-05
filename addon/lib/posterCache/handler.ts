@@ -13,6 +13,7 @@ import {
   type UpstreamCacheMeta,
 } from './config.js';
 import { applyProxyResponseHeaders, etagMatches } from './proxyResponse.js';
+import { SIZED_WIDTH, resizeToWidth, sizedKey } from './resize.js';
 import * as store from './store.js';
 import { OversizeImage, UpstreamRejected, fetchImage, openImageStream } from './upstream.js';
 
@@ -200,6 +201,38 @@ async function passThrough(req: any, res: any, url: string, imageClass: ImageCla
   await pipeStream(req, res, response.data, contentType, imageClass, url, upstream);
 }
 
+/**
+ * A smaller copy, made from the cached original and kept beside it, when the
+ * caller names a width step. Null sends the request on to the original.
+ */
+async function sizedCopy(req: any, imageClass: ImageClass, cacheKey: string, url: string): Promise<store.FetchResult | null> {
+  const width: number | undefined = req[SIZED_WIDTH];
+  if (!width) return null;
+  try {
+    return await store.getOrFetch(
+      imageClass,
+      sizedKey(cacheKey, width),
+      async () => {
+        const original = await store.getOrFetch(imageClass, cacheKey, (validators) => fetchImage(url, { validators }));
+        const body = await readEntry(original.entry);
+        const resized = await resizeToWidth(body, original.entry.contentType, width);
+        return { ...resized, upstream: original.entry.upstream };
+      },
+      { shaped: true },
+    );
+  } catch (error: any) {
+    log(2, `${imageClass} ${width}w copy failed, serving the original: ${error?.message || error}`);
+    return null;
+  }
+}
+
+async function readEntry(entry: store.CacheEntry): Promise<Buffer> {
+  if (entry.body) return entry.body;
+  const chunks: Buffer[] = [];
+  for await (const chunk of entry.openStream!()) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks);
+}
+
 export function posterCacheHandler() {
   return async function handle(req: any, res: any, next: any): Promise<void> {
     if (!isBuiltinPosterCacheEnabled()) {
@@ -243,7 +276,7 @@ export function posterCacheHandler() {
       let entry: store.CacheEntry;
       let status: string;
       try {
-        const result = await store.getOrFetch(imageClass, cacheKey, (validators) =>
+        const result = (await sizedCopy(req, imageClass, cacheKey, url)) ?? await store.getOrFetch(imageClass, cacheKey, (validators) =>
           fetchImage(url, { validators }));
         entry = result.entry;
         status = result.status;

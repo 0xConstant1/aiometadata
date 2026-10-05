@@ -28,6 +28,7 @@ import { isNotModified, mergeRevalidated, type ConditionalValidators, type Fetch
 import { walkFiles, pruneEmptyDirs } from './walk.js';
 import { shapePoster } from './shape.js';
 import { envInt } from '../../utils/envNumber';
+import { sizedKeys } from './resize.js';
 
 const logger = consola.withTag('PosterCache');
 
@@ -753,7 +754,7 @@ export async function getOrFetch(
   imageClass: ImageClass,
   key: string,
   producer: ImageProducer,
-  options: { awaitRefresh?: boolean } = {}
+  options: { awaitRefresh?: boolean; shaped?: boolean } = {}
 ): Promise<FetchResult> {
   const cached = await get(imageClass, key);
   if (cached && !cached.expired) return { entry: cached, status: 'HIT' };
@@ -793,7 +794,7 @@ export async function getOrFetch(
     try {
       let produced = await producer(revalidationHint(cached));
       if (!isNotModified(produced)) {
-        if (imageClass === 'poster') produced = { ...produced, ...(await shapePoster(produced.body, produced.contentType)) };
+        if (imageClass === 'poster' && !options.shaped) produced = { ...produced, ...(await shapePoster(produced.body, produced.contentType)) };
         return await store(produced);
       }
 
@@ -874,6 +875,10 @@ export async function invalidate(key: string, imageClass?: ImageClass): Promise<
 
     freed += await remove(target, hash);
     removed.push(target);
+    for (const copy of sizedKeys(key)) {
+      const copyHash = hashKey(copy);
+      if (index.has(indexKey(target, copyHash))) freed += await remove(target, copyHash);
+    }
   }
 
   if (removed.length > 0) {

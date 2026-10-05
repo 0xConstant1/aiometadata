@@ -43,6 +43,7 @@ import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSe
 import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
+import { SIZED_WIDTH, resizeToWidth, widthStep } from '../posterCache/resize';
 import { registerStubs } from './stubs';
 import { recordPlayed, recordPlayedUpTo, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
 
@@ -1889,8 +1890,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(404).end();
       return;
     }
-    const maxWidth = qInt(req, 'MaxWidth', 0);
-    url = tmdbSized(url, kind, maxWidth);
+    const maxWidth = qInt(req, 'MaxWidth', 0) || qInt(req, 'FillWidth', 0) || qInt(req, 'Width', 0);
+    url = sourceSized(url, kind, maxWidth);
     const descriptor = await decodeJellyfinId(String(req.params.itemId));
     const collectionArt = descriptor?.k === 'collection' || descriptor?.k === 'boxset';
 
@@ -1898,7 +1899,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (cached) {
       const local = builtinPosterCachePath(cached);
       if (local) {
-        await serveFromPosterCache(req, res, local, cached);
+        const step = hasRenditions(url) ? null : widthStep(maxWidth);
+        await serveFromPosterCache(req, res, local, cached, step);
         return;
       }
       res.set('Cache-Control', 'public, max-age=86400');
@@ -1930,13 +1932,43 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     poster: [92, 154, 185, 342, 500, 780],
     backdrop: [300, 780, 1280],
   };
-  const tmdbSized = (url: string, kind: string, maxWidth: number): string => {
-    if (!url.includes(TMDB_ORIGINAL)) return url;
-    const bucket = kind === 'logo' ? 'logo' : kind === 'backdrop' || kind === 'thumb' ? 'backdrop' : 'poster';
-    const widths = TMDB_WIDTHS[bucket];
-    const wanted = maxWidth > 0 ? maxWidth : bucket === 'backdrop' ? 1280 : bucket === 'logo' ? 500 : 780;
-    const width = widths.find((w) => w >= wanted);
-    return width ? url.replace(TMDB_ORIGINAL, `https://image.tmdb.org/t/p/w${width}/`) : url;
+  const TVDB = 'https://artworks.thetvdb.com/banners/';
+  const TVDB_THUMBS: [RegExp, number][] = [
+    [/\/posters\//, 340],
+    [/\/(fanart|backgrounds)\//, 640],
+  ];
+  const METAHUB = /^https:\/\/images\.metahub\.space\/(poster|background)\/(small|medium|large)\//;
+  const METAHUB_WIDTHS: Record<string, Record<string, number>> = {
+    poster: { small: 300, medium: 500, large: 780 },
+    background: { small: 480, medium: 1920, large: 1920 },
+  };
+
+  /** Hosts that publish each image at several sizes, so a smaller one is a link rather than a resize. */
+  const hasRenditions = (url: string): boolean =>
+    url.startsWith('https://image.tmdb.org/t/p/') || url.startsWith(TVDB) || METAHUB.test(url);
+
+  /** The source's own smallest rendition at least as wide as asked, never larger than the link names. */
+  const sourceSized = (url: string, kind: string, maxWidth: number): string => {
+    if (url.includes(TMDB_ORIGINAL)) {
+      const bucket = kind === 'logo' ? 'logo' : kind === 'backdrop' || kind === 'thumb' ? 'backdrop' : 'poster';
+      const widths = TMDB_WIDTHS[bucket];
+      const wanted = maxWidth > 0 ? maxWidth : bucket === 'backdrop' ? 1280 : bucket === 'logo' ? 500 : 780;
+      const width = widths.find((w) => w >= wanted);
+      return width ? url.replace(TMDB_ORIGINAL, `https://image.tmdb.org/t/p/w${width}/`) : url;
+    }
+    if (!(maxWidth > 0)) return url;
+    if (url.startsWith(TVDB) && !/_t\.\w+$/.test(url)) {
+      const thumb = TVDB_THUMBS.find(([path]) => path.test(url));
+      return thumb && maxWidth <= thumb[1] ? url.replace(/(\.\w+)$/, '_t$1') : url;
+    }
+    const metahub = METAHUB.exec(url);
+    if (metahub) {
+      const [prefix, kindName, size] = metahub;
+      const widths = METAHUB_WIDTHS[kindName];
+      const pick = Object.keys(widths).find((name) => widths[name] >= maxWidth);
+      return pick && widths[pick] < widths[size] ? url.replace(prefix, prefix.replace(`/${size}/`, `/${pick}/`)) : url;
+    }
+    return url;
   };
 
   // With shaping turned off nothing needs reshaping, so a poster is free to redirect.
@@ -1954,13 +1986,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return url.slice(origin.length);
   };
 
-  const serveFromPosterCache = (req: any, res: any, path: string, fallback: string): Promise<void> =>
+  const serveFromPosterCache = (req: any, res: any, path: string, fallback: string, width: number | null = null): Promise<void> =>
     new Promise((resolve) => {
       const inner = Object.create(req, {
         url: { value: path, writable: true },
         originalUrl: { value: path, writable: true },
         baseUrl: { value: '', writable: true },
         method: { value: 'GET' },
+        ...(width ? { [SIZED_WIDTH]: { value: width } } : {}),
       });
       res.once('finish', resolve);
       res.once('close', resolve);
@@ -1977,22 +2010,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   /** Sending more than the client asked for is bytes and a decode it throws away. */
   const narrowed = async (image: ShapedOutput, maxWidth: number): Promise<ShapedOutput> => {
-    if (!(maxWidth > 0)) return image;
-    try {
-      const sharp = require('sharp');
-      const source = sharp(image.body);
-      const meta = await source.metadata();
-      if (!meta.width || meta.width <= maxWidth) return image;
-      return { body: await source.resize({ width: maxWidth }).jpeg({ quality: 88 }).toBuffer(), contentType: 'image/jpeg' };
-    } catch {
-      return image;
-    }
+    const step = widthStep(maxWidth);
+    return step ? resizeToWidth(image.body, image.contentType, step) : image;
   };
 
   // Without a cache the bytes pass through here anyway, so a poster is shaped on the way out.
   const streamPoster = async (res: any, url: string, maxWidth: number, reshape: boolean): Promise<void> => {
     try {
-      const image = await cachedArtwork(`${url}|${maxWidth}|${reshape ? 'shaped' : 'source'}`, async () => {
+      const image = await cachedArtwork(`${url}|${widthStep(maxWidth) ?? 0}|${reshape ? 'shaped' : 'source'}`, async () => {
         const { openImageStream } = require('../posterCache/upstream');
         const { shapePoster } = require('../posterCache/shape');
         const upstream = await openImageStream(url);
