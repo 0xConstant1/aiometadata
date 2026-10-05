@@ -68,7 +68,7 @@ async function recoverTvdbIdViaImdb(imdbId, contentType, config, currentTvdbId) 
 
 const COUNTRY_TIMEZONES = {
   us: 'America/New_York', usa: 'America/New_York',
-  gb: 'Europe/London', uk: 'Europe/London',
+  gb: 'Europe/London', gbr: 'Europe/London', uk: 'Europe/London',
   jp: 'Asia/Tokyo', jpn: 'Asia/Tokyo',
   kr: 'Asia/Seoul', kor: 'Asia/Seoul',
   cn: 'Asia/Shanghai', chn: 'Asia/Shanghai',
