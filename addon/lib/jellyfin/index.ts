@@ -361,21 +361,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   });
 
   // Anonymous, like item art: a client renders it with a plain image tag.
-  router.get(['/Users/:userId/Images/Primary', '/Users/:userId/Images/Primary/:index'], async (req: any, res: any) => {
+  const avatarFor = async (req: any, res: any, userId: string): Promise<void> => {
     const userUUID = req.params.userUUID;
     const config = await database.getUserConfig(userUUID).catch(() => null);
-    const profile = config && profileByUserId(config, userUUID, req.params.userId);
-    if (!profile) {
-      res.status(404).end();
-      return;
-    }
-
-    if (!profile.avatar) {
+    const profile = config && userId && profileByUserId(config, userUUID, userId);
+    if (!profile || !profile.avatar) {
       res.status(404).end();
       return;
     }
     res.redirect(302, profile.avatar);
-  });
+  };
+  router.get(['/Users/:userId/Images/Primary', '/Users/:userId/Images/Primary/:index'], (req: any, res: any) =>
+    avatarFor(req, res, String(req.params.userId)));
+  // Jellyfin 10.9 moved user images here.
+  router.get('/UserImage', (req: any, res: any) => avatarFor(req, res, String(req.query.userId ?? req.query.UserId ?? '')));
 
   // --- Authentication ---
 
