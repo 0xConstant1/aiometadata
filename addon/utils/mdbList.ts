@@ -90,6 +90,7 @@ const RATE_LIMIT_CONFIG = {
   maxRetries: 5,
   baseDelay: 1000,
   maxDelay: 30000,
+  maxRetryAfter: 120000,
   rateLimitDelay: 5000,
   minInterval: 210, 
   backoffMultiplier: 2
@@ -273,6 +274,15 @@ async function makeRateLimitedRequest<T>(
           backoffTime = RATE_LIMIT_CONFIG.rateLimitDelay * Math.pow(2, state.recentRateLimitHits - 1);
           const jitter = Math.random() * 1000;
           backoffTime = Math.min(backoffTime + jitter, RATE_LIMIT_CONFIG.maxDelay);
+        }
+
+        if (backoffTime > RATE_LIMIT_CONFIG.maxRetryAfter) {
+          state.lastRemaining = 0;
+          state.lastReset = Math.ceil((Date.now() + backoffTime) / 1000);
+          const requestTracker = require('../lib/requestTracker.js');
+          requestTracker.trackProviderCall('mdblist', Date.now() - overallStartTime, false);
+          logger.warn(`Rate limited for ${Math.round(backoffTime / 1000)}s, skipping MDBList until then - ${context}`);
+          throw error;
         }
 
         logger.warn(`Rate limit hit. Retrying in ${Math.round(backoffTime)}ms (attempt ${attempt}/${retries}) - ${context}`);
