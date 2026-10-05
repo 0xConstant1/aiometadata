@@ -891,7 +891,7 @@ export type UpcomingRow = Omit<NextUpRow, 'lastWatchedAt'>;
  */
 export async function upcomingFollowed(config: any, days: number): Promise<UpcomingRow[]> {
   const { readsTrackers } = require('./profiles');
-  if (!readsTrackers(config)) return [];
+  if (!readsTrackers(config) || sourceFor(config) !== 'mdblist') return [];
   const apiKey = credentialFor(config, 'mdblist');
   if (!apiKey) return [];
 
