@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating, resolveInstallFilters } from '../../utils/ageRating';
 import { normaliseJellyfinId } from './idsCodec';
+import { isPinHash } from './pins';
 import { ACCOUNT_SERVICES, ACCOUNT_SERVICE_LIST, AccountService, accountOwner, credentialOf, trackerConfig, withAccountOwner } from '../accounts';
 
 /** The main user is the configuration itself, under the id it always had. */
@@ -22,6 +23,8 @@ export interface Profile {
   watchlistServices?: string[];
   /** Overrides the configuration's stream addon for this user. */
   streamUrl?: string;
+  /** Hash of the PIN asked before anyone becomes this user. */
+  pin?: string;
 }
 
 export function defaultUserName(config: any, userUUID: string): string {
@@ -98,6 +101,7 @@ export function listProfiles(config: any, userUUID: string): Profile[] {
       skipSource: typeof user.skipSource === 'string' ? user.skipSource : undefined,
       watchlistServices: Array.isArray(user.watchlistServices) ? user.watchlistServices.map(String) : undefined,
       streamUrl: typeof user.streamUrl === 'string' && user.streamUrl.trim() ? user.streamUrl.trim() : undefined,
+      pin: isPinHash(user.pin) ? user.pin : undefined,
     });
   }
 

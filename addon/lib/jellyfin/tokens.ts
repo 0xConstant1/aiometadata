@@ -130,15 +130,19 @@ export async function revokeToken(token: string | undefined): Promise<void> {
   if (redis) await redis.del(`${LEGACY_PREFIX}${token}`).catch(() => undefined);
 }
 
-export async function revokeUserTokens(userUUID: string): Promise<void> {
+/** Every sign-in of the configuration, or of one of its users when `profileId` is given. */
+export async function revokeUserTokens(userUUID: string, profileId?: string): Promise<void> {
+  const matches = (session: TokenSession | null): boolean =>
+    session?.userUUID === userUUID && (profileId === undefined || session.profileId === profileId);
   for (const [token, held] of memo.entries()) {
-    if (held.session.userUUID === userUUID) memo.delete(token);
+    if (matches(held.session)) memo.delete(token);
   }
-  await database.deleteJellyfinTokensForUser(userUUID);
+  if (profileId === undefined) await database.deleteJellyfinTokensForUser(userUUID);
+  else await database.deleteJellyfinTokensForProfile(userUUID, profileId);
   if (!redis) return;
   const keys: string[] = [];
   for await (const batch of redis.scanStream({ match: `${LEGACY_PREFIX}*`, count: 500 })) keys.push(...batch);
   for (const key of keys) {
-    if (decodeLegacy(await redis.get(key))?.userUUID === userUUID) await redis.del(key);
+    if (matches(decodeLegacy(await redis.get(key)))) await redis.del(key);
   }
 }

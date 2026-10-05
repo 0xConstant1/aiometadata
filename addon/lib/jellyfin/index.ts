@@ -13,6 +13,7 @@ import {
   clientHasOwnWatchlist,
 } from './context';
 import { mintToken, readToken, revokeToken } from './tokens';
+import { pinOpens, splitSecret } from './pins';
 import {
   collectionFolder,
   EMPTY_USER_DATA,
@@ -411,16 +412,29 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   router.post('/Users/AuthenticateByName', loginRateLimit, async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
-    const password = req.body?.Pw ?? req.body?.pw ?? req.body?.Password ?? '';
+    const password = String(req.body?.Pw ?? req.body?.pw ?? req.body?.Password ?? '');
 
-    const config = await configForPassword(userUUID, String(password));
+    let config: any = null;
+    let pin = '';
+    for (const candidate of splitSecret(password)) {
+      config = await configForPassword(userUUID, candidate.password);
+      if (config) {
+        pin = candidate.pin;
+        break;
+      }
+    }
     if (!config) {
       logger.debug(`Rejected Jellyfin login for ${userUUID}`);
       res.status(401).json({ Message: 'Invalid username or password' });
       return;
     }
 
-    await signIn(req, res, userUUID, config, profileByName(config, userUUID, req.body?.Username ?? req.body?.username));
+    const profile = profileByName(config, userUUID, req.body?.Username ?? req.body?.username);
+    if (!(await pinOpens(userUUID, profile, pin))) {
+      res.status(401).json({ Message: 'PIN required' });
+      return;
+    }
+    await signIn(req, res, userUUID, config, profile);
   });
 
   router.post('/Users/AuthenticateWithQuickConnect', loginRateLimit, async (req: any, res: any) => {
@@ -463,10 +477,22 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   // Every user of a configuration signs in with its one password. The main user sees
   // everything, so it switches freely; any other user, who may be held to a rating or
-  // to some catalogs, gives the password again to become someone else.
-  const switchNeeds = (req: any, target: Profile): 'password' | null => {
+  // to some catalogs, gives the password again to become someone else. A user with a
+  // PIN asks for it on every switch, from the main user too.
+  type Secret = 'pin' | 'password' | 'password-pin';
+  const switchNeeds = (req: any, target: Profile): Secret | null => {
     const callerId = req.jellyfin?.profileId ?? null;
-    return callerId === null || callerId === target.id ? null : 'password';
+    if (callerId === target.id) return null;
+    if (callerId === null) return target.pin ? 'pin' : null;
+    return target.pin ? 'password-pin' : 'password';
+  };
+
+  const secretOpens = async (userUUID: string, target: Profile, needs: Secret, secret: string): Promise<boolean> => {
+    if (needs === 'pin') return pinOpens(userUUID, target, secret);
+    if (needs === 'password') return Boolean(await configForPassword(userUUID, secret));
+    const slash = secret.lastIndexOf('/');
+    if (slash <= 0) return false;
+    return Boolean(await configForPassword(userUUID, secret.slice(0, slash))) && pinOpens(userUUID, target, secret.slice(slash + 1));
   };
 
   router.get('/AIOStreams/Users', async (req: any, res: any) => {
@@ -493,7 +519,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(404).json({ Message: 'User not found' });
       return;
     }
-    if (switchNeeds(req, profile) && !(await configForPassword(userUUID, String(req.body?.Pw ?? '')))) {
+    const needs = switchNeeds(req, profile);
+    if (needs && !(await secretOpens(userUUID, profile, needs, String(req.body?.Pw ?? '')))) {
       res.status(401).json({ Message: 'Invalid password' });
       return;
     }
@@ -504,6 +531,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const config = await loadConfig(req);
     const asked = req.query.userId ?? req.query.UserId;
     const profile = (asked && profileByUserId(config, req.params.userUUID, asked)) || sessionProfile(req, config);
+    if (switchNeeds(req, profile)) {
+      res.status(403).json({ Message: 'Switch to this user to approve a device for them' });
+      return;
+    }
     const request = await authorizeQuickConnect(req.params.userUUID, String(req.query.code ?? req.query.Code ?? ''), profile.id);
     if (!request) {
       res.status(404).json({ Message: 'Unknown quick connect code' });

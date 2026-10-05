@@ -776,9 +776,10 @@ class Database {
     }
 
     const newAppPassword = typeof normalizedConfig?.jellyfinAppPassword === 'string' ? normalizedConfig.jellyfinAppPassword : '';
-    const previousAppPassword = newAppPassword
-      ? (await this.getUserConfig(userUUID).catch(() => null))?.jellyfinAppPassword
-      : undefined;
+    const hasUsers = Array.isArray(normalizedConfig?.jellyfinUsers) && normalizedConfig.jellyfinUsers.length > 0;
+    const previousConfig = newAppPassword || hasUsers ? await this.getUserConfig(userUUID).catch(() => null) : null;
+    const previousAppPassword = newAppPassword ? previousConfig?.jellyfinAppPassword : undefined;
+    const pinChanged = hasUsers ? await require('./jellyfin/pins').securePins(normalizedConfig, previousConfig) : [];
 
     let configJson: string;
     if (normalizedConfig && typeof normalizedConfig === 'object' && !Array.isArray(normalizedConfig)) {
@@ -826,6 +827,10 @@ class Database {
     // A replaced client password signs every client out.
     if (previousAppPassword && previousAppPassword !== newAppPassword) {
       await require('./jellyfin/tokens').revokeUserTokens(userUUID).catch((error: any) => logger.warn(`Signing out clients for ${userUUID} failed: ${error.message}`));
+    }
+    // A new or changed PIN signs that user out, so a device already signed in as them asks for it.
+    for (const profileId of pinChanged) {
+      await require('./jellyfin/tokens').revokeUserTokens(userUUID, profileId).catch((error: any) => logger.warn(`Signing out ${userUUID} user ${profileId} failed: ${error.message}`));
     }
 
     try {
@@ -1838,6 +1843,13 @@ class Database {
       ? 'DELETE FROM jellyfin_tokens WHERE user_uuid = ?'
       : 'DELETE FROM jellyfin_tokens WHERE user_uuid = $1';
     await this.runQuery(query, [userUUID]);
+  }
+
+  async deleteJellyfinTokensForProfile(userUUID: string, profileId: string): Promise<void> {
+    const query = this.type === 'sqlite'
+      ? 'DELETE FROM jellyfin_tokens WHERE user_uuid = ? AND profile_id = ?'
+      : 'DELETE FROM jellyfin_tokens WHERE user_uuid = $1 AND profile_id = $2';
+    await this.runQuery(query, [userUUID, profileId]);
   }
 
   async deleteIdleJellyfinTokens(usedBefore: number): Promise<number> {

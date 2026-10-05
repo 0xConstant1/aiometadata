@@ -96,6 +96,49 @@ function HandoffNamesInput({ names, onChange }: { names?: string[]; onChange: (n
   );
 }
 
+const PIN_PATTERN = /^\d{4,12}$/;
+const SAVED_PIN = /^\$2[aby]\$/;
+
+function pinInvalid(pin?: string): boolean {
+  return Boolean(pin && !SAVED_PIN.test(pin) && !PIN_PATTERN.test(pin));
+}
+
+function PinField({ name, pin, onChange }: { name: string; pin?: string; onChange: (pin: string | undefined) => void }) {
+  const [editing, setEditing] = useState(false);
+  const saved = Boolean(pin && SAVED_PIN.test(pin));
+  const invalid = pinInvalid(pin);
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium">PIN</Label>
+      {saved && !editing ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">PIN set</span>
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditing(true)}>Change</Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setEditing(true); onChange(undefined); }}>Remove</Button>
+        </div>
+      ) : (
+        <Input
+          type="password"
+          inputMode="numeric"
+          autoComplete="new-password"
+          maxLength={12}
+          placeholder={saved ? 'New PIN' : 'No PIN'}
+          className="h-8 text-xs"
+          aria-label={`PIN of ${name}`}
+          autoFocus={editing}
+          value={saved ? '' : pin ?? ''}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, '') || undefined)}
+        />
+      )}
+      <p className={cn('text-[11px]', invalid ? 'text-destructive' : 'text-muted-foreground')}>
+        {invalid
+          ? 'A PIN is 4 to 12 digits.'
+          : 'Asked whenever someone switches to this user, from your own user too. To sign in as them on a client, enter the password, a slash and the PIN, like password/1234. Setting or changing it signs this user out on every device.'}
+      </p>
+    </div>
+  );
+}
+
 interface UserRowProps {
   name: string;
   avatar?: string;
@@ -255,6 +298,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             </p>
           </div>
         )}
+        {!main && <PinField name={name} pin={user?.pin} onChange={(pin) => onChange({ pin })} />}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Skip intro and credits</Label>
           <Select value={skipValue} onValueChange={(v) => onChange({ skipSource: v === 'inherit' ? undefined : (v as JellyfinUser['skipSource']) })}>
@@ -420,6 +464,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const addCatalogs = (entries: CatalogConfig[]) =>
     setConfig(prev => ({ ...prev, catalogs: [...prev.catalogs, ...entries.filter((e) => !prev.catalogs.some((c) => c.id === e.id && c.type === e.type))] }));
   const nameClash = handoffNameClash(mainName, config.jellyfinUserHandoffNames, users);
+  const badPin = users.some((user) => pinInvalid(user.pin));
   const addUser = () => {
     const clean = newUserName.trim();
     if (!clean) return;
@@ -790,7 +835,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
               ? 'Unsaved changes. Clients see users, passwords and settings only once saved.'
               : 'Everything here is saved.'}
           </p>
-          <Button size="sm" disabled={!canSave || isSaving || !isDirty || Boolean(nameClash)} onClick={requestSave} className="w-full sm:w-auto">
+          <Button size="sm" disabled={!canSave || isSaving || !isDirty || Boolean(nameClash) || badPin} onClick={requestSave} className="w-full sm:w-auto">
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Save configuration
           </Button>

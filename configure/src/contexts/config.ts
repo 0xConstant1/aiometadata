@@ -50,6 +50,8 @@ export interface JellyfinUser {
   accounts?: JellyfinUserAccounts;
   /** Extra names AIOStreams handoff events may address this user by. */
   handoffNames?: string[];
+  /** 4 to 12 digits as typed, or the hash the server saved it as. */
+  pin?: string;
 }
 
 export interface CatalogConfig {
