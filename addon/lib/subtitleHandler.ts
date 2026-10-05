@@ -604,26 +604,47 @@ async function markEpisodes(
   if (only && only !== 'publicmetadb') return;
   if (!shouldTrackServiceMediaType(config, 'publicmetadb', 'series')) return;
 
-  // PublicMetaDB deletes a whole show or season in one call; a watch is one call per episode.
+  const { mapWithConcurrency } = require('../utils/concurrency');
+
+  // PublicMetaDB clears a whole show in one call; anything narrower is one call per episode.
   if (method === 'removeFromHistory' && scope && config.apiKeys?.publicmetadb) {
+    const apiKey = config.apiKeys.publicmetadb;
     const { removeWatched, tmdbIdFrom } = require('../utils/publicmetadbUtils');
-    const groups = new Map<string, ParsedMediaId>();
-    for (const id of parsed) groups.set(`${id.provider}:${id.id}:${scope === 'season' ? id.season : ''}`, id);
-    for (const id of groups.values()) {
-      try {
-        const resolution = await resolveSeriesIds(id, config);
-        const tmdbId = resolution ? await tmdbIdFrom(resolution.ids, 'series') : null;
-        if (!tmdbId) continue;
-        const result = await removeWatched(config.apiKeys.publicmetadb, tmdbId, 'tv', scope === 'season' ? id.season : undefined);
-        logger.info(`[Watch Tracking] Cleared ${result?.deleted ?? 0} play(s): tmdb:${tmdbId}${scope === 'season' ? ` S${id.season}` : ''}`);
-      } catch (error: any) {
-        logger.error(`[PublicMetaDB] Clearing the ${scope} failed: ${error.message}`);
+    const shows = new Set<number>();
+    if (scope === 'series') {
+      for (const id of new Map(parsed.map((p) => [`${p.provider}:${p.id}`, p])).values()) {
+        const tmdbId = await tmdbIdFrom({ [id.provider]: id.id }, 'series').catch(() => null);
+        if (tmdbId) shows.add(tmdbId);
       }
     }
+    const episodes = new Map<string, { tmdbId: number; season: number; episode: number }>();
+    await mapWithConcurrency(parsed, 4, async (id: ParsedMediaId) => {
+      const resolution = await resolveSeriesIds(id, config).catch(() => null);
+      const tmdbId = resolution ? await tmdbIdFrom(resolution.ids, 'series').catch(() => null) : null;
+      if (!resolution || !tmdbId || shows.has(tmdbId)) return;
+      episodes.set(`${tmdbId}:${resolution.season}:${resolution.episode}`, { tmdbId, season: resolution.season, episode: resolution.episode });
+    });
+    for (const tmdbId of shows) {
+      try {
+        const result = await removeWatched(apiKey, tmdbId, 'tv');
+        logger.info(`[Watch Tracking] Cleared ${result?.deleted ?? 0} play(s): tmdb:${tmdbId}`);
+      } catch (error: any) {
+        logger.error(`[PublicMetaDB] Clearing tmdb:${tmdbId} failed: ${error.message}`);
+      }
+    }
+    let cleared = 0;
+    await mapWithConcurrency([...episodes.values()], 4, async (target: { tmdbId: number; season: number; episode: number }) => {
+      try {
+        const result = await removeWatched(apiKey, target.tmdbId, 'tv', target.season, target.episode);
+        cleared += Number(result?.deleted) || 0;
+      } catch (error: any) {
+        logger.error(`[PublicMetaDB] Clearing tmdb:${target.tmdbId} S${target.season}E${target.episode} failed: ${error.message}`);
+      }
+    });
+    if (episodes.size) logger.info(`[Watch Tracking] Cleared ${cleared} play(s) across ${episodes.size} episode(s)`);
     return;
   }
 
-  const { mapWithConcurrency } = require('../utils/concurrency');
   await mapWithConcurrency(parsed, 4, (id: ParsedMediaId) =>
     checkinPublicMetaDB(id, config, { action: method === 'addToHistory' ? 'watched' : 'unwatch' }).catch(() => undefined)
   );
