@@ -760,7 +760,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const items = built.filter(Boolean);
       await applyWatchedState(items, snapshot, userUUID, profile);
       const seen = new Set<string>();
-      const shelf = items.filter((item: any) => !seen.has(item.Id) && seen.add(item.Id)).filter(keepsUnderProfileCap(config));
+      const shelf = items
+        .filter((item: any) => item.UserData?.Played === true && !seen.has(item.Id) && seen.add(item.Id))
+        .filter(keepsUnderProfileCap(config));
       logger.debug(`History for ${userUUID} from ${clientInfo(req).client}: ${shelf.length} of ${played.length}, types ${[...wanted].join(',')}, from ${startIndex}, in ${Date.now() - started}ms`);
       res.json(itemList(shelf, played.length, startIndex));
       return;
