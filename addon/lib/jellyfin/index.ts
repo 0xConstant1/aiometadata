@@ -1417,6 +1417,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return { itemId, descriptor };
   };
 
+  const requestedSource = async (value: unknown): Promise<string | undefined> => {
+    if (typeof value !== 'string' || !value) return undefined;
+    return (await decodeJellyfinId(value))?.k === 'marker' ? undefined : value;
+  };
+
   const playbackHandler = async (req: any, res: any) => {
     const { itemId, descriptor } = await unwrapMarker(String(req.params.itemId));
 
@@ -1425,7 +1430,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
-    const requested = req.query.MediaSourceId ?? req.body?.MediaSourceId;
+    const requested = await requestedSource(req.query.MediaSourceId ?? req.body?.MediaSourceId);
     // A named version keeps the list it came from.
     const named = typeof requested === 'string' && !!requested && normaliseJellyfinId(requested) !== normaliseJellyfinId(itemId);
     const all = await resolveMediaSources(req, descriptor, null, req.body?.Refresh === true && !named);
@@ -1513,7 +1518,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
 
-    const requested = req.query.MediaSourceId ?? req.query.mediaSourceId;
+    const requested = await requestedSource(req.query.MediaSourceId ?? req.query.mediaSourceId);
     const wantedId = typeof requested === 'string' && requested ? normaliseJellyfinId(requested) : null;
 
     // A source the client already holds is sent to the URL it was issued with.
