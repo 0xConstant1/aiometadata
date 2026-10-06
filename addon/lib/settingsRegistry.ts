@@ -638,6 +638,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_OWN_UNWATCHED_LIMIT',
+    envVar: 'JELLYFIN_OWN_UNWATCHED_LIMIT',
+    label: 'Jellyfin Own Unwatched Read',
+    description: 'The most recent episodes unmarked as watched read from this server\'s own records, so a show counts an episode a tracker still holds as watched (AniList and MyAnimeList keep only a count) as unwatched.',
+    category: 'Features',
+    type: 'number',
+    default: 5000,
+    min: 100,
+  },
+  {
     key: 'JELLYFIN_OWN_PLAYED_LIMIT',
     envVar: 'JELLYFIN_OWN_PLAYED_LIMIT',
     label: 'Jellyfin Own Plays Read',

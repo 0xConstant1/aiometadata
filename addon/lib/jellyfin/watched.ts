@@ -1376,6 +1376,27 @@ async function ownPlayedEpisodes(userUUID: string, profile: string): Promise<Set
   return played;
 }
 
+const ownUnwatchedMemo = new LRUCache<string, Map<string, number>>({
+  max: envInt('JELLYFIN_RESUME_CACHE_MAX', 500, 1),
+  ttl: envInt('JELLYFIN_RESUME_TTL', 60, 1) * 1000,
+});
+
+async function ownUnwatchedEpisodes(userUUID: string, profile: string): Promise<Map<string, number>> {
+  const key = `${userUUID}:${profile}:${generationOf(userUUID)}`;
+  const held = ownUnwatchedMemo.get(key);
+  if (held) return held;
+  const unwatched = new Map<string, number>();
+  try {
+    const database: any = require('../database');
+    const rows = await database.listUnwatchedVideoIds(userUUID, envInt('JELLYFIN_OWN_UNWATCHED_LIMIT', 5000, 100), profile);
+    for (const row of rows) if (/:\d+:\d+$/.test(String(row.video_id))) unwatched.set(String(row.video_id), Number(row.updated_at) || 0);
+  } catch {
+    return unwatched;
+  }
+  ownUnwatchedMemo.set(key, unwatched);
+  return unwatched;
+}
+
 export async function applyWatchedState(
   items: any[],
   snapshot: WatchedSnapshot,
@@ -1426,6 +1447,7 @@ export async function applyWatchedState(
   // series counts, then each held show's aired episodes, other spellings only for a miss.
   const seriesDescriptors = [...descriptors.values()].filter((d) => d.k === 'series');
   const seriesCounts = await seriesCountsAmong(snapshot, seriesDescriptors.map((d) => String(d.i)));
+  const ownUnwatched = userUUID && seriesCounts.size ? await ownUnwatchedEpisodes(userUUID, profile) : new Map<string, number>();
   const airedBySeries = new Map<string, string[] | null>();
   if (userUUID) {
     await Promise.all(seriesDescriptors.map(async (d) => {
@@ -1443,8 +1465,15 @@ export async function applyWatchedState(
     if (!watched.has(videoId) && !ownPlayed.has(videoId)) aliasesOf.set(videoId, await videoIdAliases(videoId));
   }
   for (const [id, at] of await watchedAmong(snapshot, [...aliasesOf.values()].flat())) watched.set(id, at);
-  const playedUnderAnySpelling = (videoId: string): boolean =>
-    watched.has(videoId) || ownPlayed.has(videoId) || (aliasesOf.get(videoId) ?? []).some((alias) => watched.has(alias) || ownPlayed.has(alias));
+  const unwatchedHere = (id: string): boolean => {
+    const at = ownUnwatched.get(id);
+    return at !== undefined && at >= (watched.get(id) ?? 0);
+  };
+  const playedUnderAnySpelling = (videoId: string): boolean => {
+    const spellings = [videoId, ...(aliasesOf.get(videoId) ?? [])];
+    if (spellings.some(unwatchedHere)) return false;
+    return spellings.some((id) => watched.has(id) || ownPlayed.has(id));
+  };
 
   await Promise.all(
     items.map(async (item: any) => {
