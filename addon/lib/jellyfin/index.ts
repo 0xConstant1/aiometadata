@@ -31,7 +31,7 @@ import { decodeJellyfinId } from './ids';
 import { imageTag, isWideTag } from './imageTags';
 import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamUserAgent, toNotice, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamsUnderway, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { isAnimeTitle, showIdentity } from './canonicalIds';
@@ -1235,7 +1235,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const asksForSources = (req: any): boolean =>
     /\bMediaSources\b/i.test(String(req.query?.Fields ?? req.query?.fields ?? ''));
 
-  // Instance rule first; on means the full resolve, bounded by the stream request.
+  // Instance rule first; on resolves streams when a title opens.
   const resolveOnOpen = async (req: any): Promise<boolean> => {
     const mode = String(require('../settingsService').getSetting('JELLYFIN_RESOLVE_ON_OPEN') || 'user');
     if (mode === 'always') return true;
@@ -1243,12 +1243,30 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return (await loadConfig(req))?.jellyfinResolveOnOpen === true;
   };
 
+  const streamsKnown = async (req: any, descriptor: any): Promise<boolean> => {
+    if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) return false;
+    const stremioId = stremioIdFor(descriptor);
+    if (!stremioId) return false;
+    const type = descriptor.k === 'movie' ? 'movie' : 'series';
+    return streamsUnderway(streamCacheKey(req.params.userUUID, profileKey(await loadConfig(req)), type, stremioId));
+  };
+
+  // On, a title opens at once and its streams resolve alongside for the next ask.
   const attachSourcesInTime = async (req: any, item: any, descriptor: any, itemId: string): Promise<void> => {
     if (req.params?.listed) return;
-    if (!req.params?.forceSources && !asksForSources(req) && !(await resolveOnOpen(req))) return;
-    await attachSources(req, item, descriptor, itemId).catch((error: any) =>
-      logger.debug(`Sources for ${itemId} unavailable: ${error?.message || error}`)
-    );
+    const asked = req.params?.forceSources || asksForSources(req);
+    const on = asked ? false : await resolveOnOpen(req);
+    if (asked || (on && await streamsKnown(req, descriptor))) {
+      await attachSources(req, item, descriptor, itemId).catch((error: any) =>
+        logger.debug(`Sources for ${itemId} unavailable: ${error?.message || error}`)
+      );
+      return;
+    }
+    if (on) {
+      void resolveMediaSources(req, descriptor, item.RunTimeTicks ?? null).catch((error: any) =>
+        logger.debug(`Background sources for ${itemId} unavailable: ${error?.message || error}`)
+      );
+    }
   };
 
   // Subtitle addons answer IMDb ids, so an anime id is spelled that way first,

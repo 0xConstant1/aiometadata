@@ -790,7 +790,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                   <Label className="text-xs font-medium">Wait for the streams when a title opens</Label>
                   <p className="text-[11px] text-muted-foreground">
                     {resolveForced === null
-                      ? 'Off, a title opens at once and its versions load when the picker opens or play is pressed, which suits most clients. On for a client that shows versions on the title page but never asks for them: the title then opens once the stream addon has answered.'
+                      ? 'Off, a title opens at once and its versions load when the picker opens or play is pressed, the lightest on your stream addon. On, a title still opens at once while its streams load alongside, and the app gets the versions as soon as it asks again or opens the picker, usually with no wait. An app that asks for the versions with the title gets them either way.'
                       : 'Set by this server.'}
                   </p>
                 </div>

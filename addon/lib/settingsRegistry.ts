@@ -700,7 +700,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'JELLYFIN_RESOLVE_ON_OPEN',
     envVar: 'JELLYFIN_RESOLVE_ON_OPEN',
     label: 'Jellyfin Versions On Open',
-    description: 'Whether opening a title waits for the stream addon so the title carries its versions. "user" leaves it to each configuration\'s own switch in the Jellyfin dialog, off unless turned on; "always" and "never" decide for everyone. A client that asks for MediaSources on the item, as Infuse does, is answered in full whatever this says.',
+    description: 'Whether opening a title resolves its streams. "user" leaves it to each configuration\'s own switch in the Jellyfin dialog, off unless turned on; "always" and "never" decide for everyone. On, a title is answered at once while its streams resolve alongside, and asking for it again, or for its versions, returns them as soon as they are in. A client that asks for MediaSources on the item is answered in full whatever this says.',
     category: 'Features',
     type: 'select',
     default: 'user',
