@@ -153,7 +153,7 @@ export async function buildOverviewSignals(
       id: 'error-rate',
       severity: 'critical',
       title: `Error rate elevated: ${errorRate}%`,
-      detail: `${stats.todayErrors} errors of ${tracked} tracked today`,
+      detail: `${stats.errors24h} errors of ${tracked} tracked in the last 24 hours`,
       link: { tab: 'logs', label: 'View in Logs' },
     });
   } else if (tracked >= 50 && errorRate >= 2) {
@@ -161,7 +161,7 @@ export async function buildOverviewSignals(
       id: 'error-rate',
       severity: 'warning',
       title: `Error rate ${errorRate}%`,
-      detail: `${stats.todayErrors} errors of ${tracked} tracked today`,
+      detail: `${stats.errors24h} errors of ${tracked} tracked in the last 24 hours`,
       link: { tab: 'logs', label: 'View in Logs' },
     });
   }
@@ -268,7 +268,7 @@ export async function buildOverviewSignals(
       requestsPerMin: requestsPerMin || 0,
       activeUsers: activeUsers || 0,
       successRate: stats?.successRate || 0,
-      successWindow: 'today',
+      successWindow: '24h',
       sparkline: (hourly || []).map((h: any) => h.requests || 0),
     },
     needsAttention,

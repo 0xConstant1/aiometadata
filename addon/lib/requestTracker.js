@@ -2,6 +2,7 @@ const redis = require("./redisClient");
 const metrics = require("./metricsBatch");
 const consola = require("consola");
 const { isMetricsDisabled } = require('./metricsConfig');
+const { envInt } = require('../utils/envNumber');
 
 const logger = consola.withTag("Request-Tracker");
 
@@ -17,19 +18,40 @@ function dateKeysForRange(days, tz) {
   return Array.from(dates);
 }
 
-function todayKey(tz) {
-  if (tz) {
-    try { return new Date().toLocaleDateString('en-CA', { timeZone: tz }); } catch {}
+const HOUR_MS = 3600000;
+
+// Counters are written per UTC hour, so a day in any timezone is read as the hours it spans.
+function hourKeysBetween(fromMs, toMs) {
+  const keys = [];
+  for (let t = Math.floor(fromMs / HOUR_MS) * HOUR_MS; t < toMs; t += HOUR_MS) {
+    keys.push(new Date(t).toISOString().substring(0, 13));
   }
-  return new Date().toISOString().split("T")[0];
+  return keys;
 }
 
-function yesterdayKey(tz) {
-  const d = new Date(Date.now() - 86400000);
+function dayStartMs(tz, now) {
+  const d = new Date(now);
+  let h = d.getUTCHours();
+  let m = d.getUTCMinutes();
+  let s = d.getUTCSeconds();
   if (tz) {
-    try { return d.toLocaleDateString('en-CA', { timeZone: tz }); } catch {}
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false,
+      }).formatToParts(d);
+      const get = (t) => parseInt(parts.find(p => p.type === t)?.value || '0', 10);
+      h = get('hour') % 24;
+      m = get('minute');
+      s = get('second');
+    } catch {}
   }
-  return d.toISOString().split("T")[0];
+  return now - ((h * 3600 + m * 60 + s) * 1000 + d.getUTCMilliseconds());
+}
+
+async function sumKeys(keys) {
+  if (!keys.length) return { total: 0, values: [] };
+  const values = await redis.mget(...keys);
+  return { total: values.reduce((sum, v) => sum + (parseInt(v) || 0), 0), values };
 }
 
 class RequestTracker {
@@ -178,8 +200,10 @@ class RequestTracker {
         if (statusCode >= 400) {
           metrics.incr(`errors:total`);
           metrics.incr(`errors:${today}`);
+          metrics.incr(`errors:${hour}`, 86400 * 2);
         } else {
           metrics.incr(`success:${today}`, 86400 * 30);
+          metrics.incr(`success:${hour}`, 86400 * 2);
         }
       }
 
@@ -889,10 +913,11 @@ class RequestTracker {
                 : 0;
 
             // Determine status based on error rate and response time
+            const judged = totalCalls >= envInt("PROVIDER_HEALTH_MIN_CALLS", 20, 1) ? errorRate : 0;
             let status = "healthy";
-            if (errorRate > 10 || avgResponseTime > 3000) {
+            if (judged > 10 || avgResponseTime > 3000) {
               status = "error";
-            } else if (errorRate > 5 || avgResponseTime > 1500) {
+            } else if (judged > 5 || avgResponseTime > 1500) {
               status = "warning";
             }
 
@@ -1023,68 +1048,65 @@ class RequestTracker {
   // Get request statistics
   async getStats(tz = null) {
     try {
-      const today = todayKey(tz);
-      const yesterday = yesterdayKey(tz);
+      const now = Date.now();
+      const midnight = dayStartMs(tz, now);
+      const recentHours = hourKeysBetween(now - 23 * HOUR_MS, now);
 
-      // Add timeout to Redis operations
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Redis timeout")), 5000),
       );
 
-      const [
-        totalRequests,
-        todayRequests,
-        yesterdayRequests,
-        totalErrors,
-        todayErrors,
-        todaySuccess,
-      ] = await Promise.race([
+      const [totalRequests, totalErrors, today, yesterday, recentRequests, recentSuccess, recentErrors] = await Promise.race([
         Promise.all([
           redis.get("requests:total"),
-          redis.get(`requests:${today}`),
-          redis.get(`requests:${yesterday}`),
           redis.get("errors:total"),
-          redis.get(`errors:${today}`),
-          redis.get(`success:${today}`),
+          sumKeys(hourKeysBetween(midnight, now).map((h) => `requests:${h}`)),
+          sumKeys(hourKeysBetween(midnight - 86400000, Math.floor(midnight / HOUR_MS) * HOUR_MS).map((h) => `requests:${h}`)),
+          sumKeys(recentHours.map((h) => `requests:${h}`)),
+          sumKeys(recentHours.map((h) => `success:${h}`)),
+          sumKeys(recentHours.map((h) => `errors:${h}`)),
         ]),
         timeout,
       ]);
 
-      const todayReq = parseInt(todayRequests) || 0;
-      const todayErr = parseInt(todayErrors) || 0;
-      const todaySucc = parseInt(todaySuccess) || 0;
+      const todayReq = today.total;
+      const recentErr = recentErrors.total;
+      const recentSucc = recentSuccess.total;
 
-      // Calculate rates based on tracked responses (success + errors)
-      // This avoids showing misleading percentages when some requests aren't tracked
-      const trackedResponses = todaySucc + todayErr;
+      const trackedResponses = recentSucc + recentErr;
       const successRate =
         trackedResponses > 0
-          ? parseFloat(((todaySucc / trackedResponses) * 100).toFixed(1))
+          ? parseFloat(((recentSucc / trackedResponses) * 100).toFixed(1))
           : 0;
       const errorRate =
         trackedResponses > 0
-          ? parseFloat(((todayErr / trackedResponses) * 100).toFixed(1))
+          ? parseFloat(((recentErr / trackedResponses) * 100).toFixed(1))
           : 0;
 
-      // Log warning if there's a significant tracking gap
-      if (todayReq > 0 && trackedResponses < todayReq * 0.9) {
+      // Only hours that tracked any response count, so hours from before tracking began are left out
+      const coveredRequests = recentRequests.values.reduce(
+        (sum, v, i) => (recentSuccess.values[i] !== null || recentErrors.values[i] !== null ? sum + (parseInt(v) || 0) : sum),
+        0,
+      );
+
+      if (coveredRequests > 0 && trackedResponses < coveredRequests * 0.9) {
         logger.warn(
-          `[Request Tracker] Tracking gap detected: ${todayReq} requests but only ${trackedResponses} tracked responses (${Math.round((trackedResponses / todayReq) * 100)}% coverage)`,
+          `[Request Tracker] Tracking gap detected: ${coveredRequests} requests but only ${trackedResponses} tracked responses (${Math.round((trackedResponses / coveredRequests) * 100)}% coverage)`,
         );
       }
 
       const trackingCoverage =
-        todayReq > 0
-          ? parseFloat(((trackedResponses / todayReq) * 100).toFixed(1))
+        coveredRequests > 0
+          ? parseFloat(((trackedResponses / coveredRequests) * 100).toFixed(1))
           : 100;
 
       return {
         totalRequests: parseInt(totalRequests) || 0,
         todayRequests: todayReq,
-        yesterdayRequests: parseInt(yesterdayRequests) || 0,
+        yesterdayRequests: yesterday.total,
         totalErrors: parseInt(totalErrors) || 0,
-        todayErrors: todayErr,
-        todaySuccess: todaySucc,
+        errors24h: recentErr,
+        success24h: recentSucc,
         trackedResponses: trackedResponses,
         successRate: Math.min(successRate, 100), // Cap at 100%
         errorRate: Math.min(errorRate, 100), // Cap at 100%
@@ -1097,8 +1119,8 @@ class RequestTracker {
         todayRequests: 0,
         yesterdayRequests: 0,
         totalErrors: 0,
-        todayErrors: 0,
-        todaySuccess: 0,
+        errors24h: 0,
+        success24h: 0,
         trackedResponses: 0,
         successRate: 0,
         errorRate: 0,
