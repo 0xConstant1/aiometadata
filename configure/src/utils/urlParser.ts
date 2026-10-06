@@ -4,7 +4,7 @@
  */
 
 export interface ParsedUrl {
-  service: 'mdblist' | 'trakt' | 'letterboxd' | 'tvdb' | 'tmdb' | 'manifest' | 'unknown';
+  service: 'mdblist' | 'trakt' | 'letterboxd' | 'tvdb' | 'tmdb' | 'publicmetadb' | 'manifest' | 'unknown';
   type: 'single-list' | 'user-profile' | 'watchlist' | 'manifest';
   username?: string;
   listSlug?: string;
@@ -39,6 +39,10 @@ const URL_PATTERNS = {
   tvdb: {
     // https://thetvdb.com/lists/{slug}
     singleList: /^https?:\/\/(?:www\.)?thetvdb\.com\/lists\/([^\/]+)\/?$/,
+  },
+  publicmetadb: {
+    // https://publicmetadb.com/lists/u/{username}/{list-slug}
+    singleList: /^https?:\/\/(?:www\.)?publicmetadb\.com\/lists\/u\/([^\/]+)\/([^\/]+)\/?$/,
   },
   tmdb: {
     // https://www.themoviedb.org/collection/{id}-{slug}
@@ -155,6 +159,17 @@ export function parseQuickAddUrl(url: string): ParsedUrl {
       service: 'tvdb',
       type: 'single-list',
       listSlug: decodeURIComponent(tvdbSingleMatch[1]),
+      url: stripQueryParams(trimmedUrl),
+    };
+  }
+
+  const publicmetadbMatch = stripQueryParams(trimmedUrl).match(URL_PATTERNS.publicmetadb.singleList);
+  if (publicmetadbMatch) {
+    return {
+      service: 'publicmetadb',
+      type: 'single-list',
+      username: decodeURIComponent(publicmetadbMatch[1]),
+      listSlug: decodeURIComponent(publicmetadbMatch[2]),
       url: stripQueryParams(trimmedUrl),
     };
   }

@@ -3465,6 +3465,16 @@ async function getPublicMetaDBCatalog(
       return metas;
     }
 
+    if (catalogId.startsWith('publicmetadb.public.')) {
+      const listId = catalogId.slice('publicmetadb.public.'.length);
+      const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
+      const data = await fetchListItems(apiKey, listId, page, pageSize);
+      let metas = await parseListItems(data.items || [], type, language, config);
+      metas = stampListedAt(metas, data.items || [], (item: any) => ({ tmdb: item?.tmdb_id }), (item: any) => item?.created);
+      logger.success(`[PublicMetaDB] Public list ${listId}: ${metas.length} items (page ${page})`);
+      return metas;
+    }
+
     if (catalogId.startsWith('publicmetadb.pick.')) {
       const pickId = catalogId.replace('publicmetadb.pick.', '');
       if (page > 5) return [];

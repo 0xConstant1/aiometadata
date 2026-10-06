@@ -4204,6 +4204,21 @@ addon.get("/api/publicmetadb/lists/:listId/items", async (req, res) => {
   }
 });
 
+addon.get("/api/publicmetadb/lists/u/:user/:slug/items", async (req, res) => {
+  try {
+    const { apikey, page, perPage } = req.query;
+    const { user, slug } = req.params;
+    if (!apikey) return res.status(400).json({ error: "apikey is required" });
+    const { fetchPublicListByLink } = require('./utils/publicmetadbUtils');
+    const data = await fetchPublicListByLink(apikey, user, slug, parseInt(page) || 1, parseInt(perPage) || 100);
+    res.json(data);
+  } catch (error) {
+    const status = Number(/returned (\d{3})/.exec(error.message || '')?.[1]) || 500;
+    if (status >= 500) consola.error("[PublicMetaDB Proxy] Public list error:", error.message);
+    res.status(status).json({ error: status === 404 ? 'No public PublicMetaDB list at that link' : error.message });
+  }
+});
+
 addon.get("/api/publicmetadb/picks", async (req, res) => {
   try {
     const { apikey } = req.query;

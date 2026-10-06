@@ -313,6 +313,10 @@ async function fetchListItems(apiKey: string, listId: string, page: number = 1, 
   return makeRequest(`/api/external/lists/${listId}/items?page=${page}&perPage=${perPage}`, apiKey);
 }
 
+async function fetchPublicListByLink(apiKey: string, user: string, slug: string, page: number = 1, perPage: number = 20): Promise<any> {
+  return makeRequest(`/api/external/lists/u/${encodeURIComponent(user)}/${encodeURIComponent(slug)}/items?page=${page}&perPage=${perPage}`, apiKey);
+}
+
 async function fetchPicks(apiKey: string): Promise<any> {
   return makeRequest('/api/external/catalogs', apiKey);
 }
@@ -690,6 +694,7 @@ export {
   deleteEpisodeRating,
   fetchLists,
   fetchListItems,
+  fetchPublicListByLink,
   publicMetaDBListType,
   publicMetaDBWatchlistCatalog,
   setListItem,

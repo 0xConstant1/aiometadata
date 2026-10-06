@@ -647,6 +647,51 @@ export function createPublicMetaDBListCatalog(
   };
 }
 
+export function createPublicMetaDBPublicListCatalog(
+  list: { id: string; name: string },
+  link: { username: string; slug: string; url: string },
+  mediaType: 'movie' | 'series' | 'all',
+  itemCount?: number
+): CatalogConfig {
+  return {
+    id: `publicmetadb.public.${list.id}`,
+    type: mediaType,
+    name: list.name,
+    enabled: true,
+    showInHome: true,
+    source: 'publicmetadb' as const,
+    metadata: {
+      isPublic: true,
+      author: link.username,
+      slug: link.slug,
+      url: link.url,
+      ...(typeof itemCount === 'number' ? { itemCount } : {}),
+    },
+  };
+}
+
+export async function fetchPublicMetaDBPublicListCatalog(
+  apiKey: string,
+  link: { username: string; slug: string; url: string }
+): Promise<CatalogConfig> {
+  const params = new URLSearchParams({ apikey: apiKey, perPage: '500' });
+  const response = await fetch(`/api/publicmetadb/lists/u/${encodeURIComponent(link.username)}/${encodeURIComponent(link.slug)}/items?${params.toString()}`);
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.list?.id) {
+    throw new Error(data?.error || 'Failed to fetch the list from PublicMetaDB');
+  }
+  const items: any[] = Array.isArray(data.items) ? data.items : [];
+  const hasMovies = items.some((i) => i?.media_type === 'movie');
+  const hasShows = items.some((i) => i?.media_type === 'tv');
+  const mediaType = hasMovies && !hasShows ? 'movie' : hasShows && !hasMovies ? 'series' : 'all';
+  const total = typeof data.total === 'number' ? data.total : items.length;
+  return createPublicMetaDBPublicListCatalog(data.list, link, mediaType, total);
+}
+
+export function isPublicMetaDBListAdded(catalogs: CatalogConfig[], listId: string): boolean {
+  return catalogs.some((c) => c.id === `publicmetadb.public.${listId}` || c.id === `publicmetadb.list.${listId}`);
+}
+
 export function createPublicMetaDBPickCatalog(pick: { id: string; name: string; filters?: { media_types?: string[] } }): CatalogConfig {
   let type: 'movie' | 'series' | 'all' = 'all';
   const mediaTypes = pick.filters?.media_types;

@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Loader2, Plus, Trash2, KeyRound, PlayCircle, Library, Sparkles } from 'lucide-react';
+import { Loader2, Plus, Trash2, KeyRound, PlayCircle, Library, Sparkles, Link2 } from 'lucide-react';
 import { toast } from "sonner";
-import { createPublicMetaDBUpNextCatalog, createPublicMetaDBListCatalog, createPublicMetaDBPickCatalog } from '@/utils/catalogUtils';
+import { createPublicMetaDBUpNextCatalog, createPublicMetaDBListCatalog, createPublicMetaDBPickCatalog, fetchPublicMetaDBPublicListCatalog, isPublicMetaDBListAdded } from '@/utils/catalogUtils';
+import { parseQuickAddUrl } from '@/utils/urlParser';
 
 interface PublicMetaDBIntegrationProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
   const [picks, setPicks] = useState<any[]>([]);
   const [selectedPicks, setSelectedPicks] = useState<Set<string>>(new Set());
   const [isLoadingPicks, setIsLoadingPicks] = useState(false);
+  const [listUrl, setListUrl] = useState("");
+  const [isAddingUrl, setIsAddingUrl] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -216,6 +219,31 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
     }
   }, [selectedLists, lists, setConfig, config.catalogs, config.apiKeys.publicmetadb]);
 
+  const handleAddListByUrl = async () => {
+    const key = config.apiKeys.publicmetadb;
+    if (!key) return;
+    const parsed = parseQuickAddUrl(listUrl);
+    if (parsed.service !== 'publicmetadb' || !parsed.username || !parsed.listSlug) {
+      toast.error("Invalid PublicMetaDB URL", { description: "Use a link like https://publicmetadb.com/lists/u/username/list-name" });
+      return;
+    }
+    setIsAddingUrl(true);
+    try {
+      const catalog = await fetchPublicMetaDBPublicListCatalog(key, { username: parsed.username, slug: parsed.listSlug, url: parsed.url });
+      if (isPublicMetaDBListAdded(config.catalogs, catalog.id.slice('publicmetadb.public.'.length))) {
+        toast.info(`List "${catalog.name}" is already in your catalogs.`);
+        return;
+      }
+      setConfig(prev => ({ ...prev, catalogs: [...prev.catalogs, catalog] }));
+      toast.success("List Added", { description: `The list "${catalog.name}" has been added to your catalogs.` });
+      setListUrl("");
+    } catch (err) {
+      toast.error("Error Adding List", { description: err instanceof Error ? err.message : "An unknown error occurred." });
+    } finally {
+      setIsAddingUrl(false);
+    }
+  };
+
   const addedListIds = new Set(
     config.catalogs
       .filter(c => c.id.startsWith('publicmetadb.list.'))
@@ -320,7 +348,7 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
         <DialogHeader className="shrink-0">
           <div className="flex items-center gap-3">
             <img src="/pmdb_icon.svg" alt="PublicMetaDB" className="h-6 w-6 object-contain" />
@@ -527,6 +555,38 @@ export function PublicMetaDBIntegration({ isOpen, onClose }: PublicMetaDBIntegra
                     )}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Single List by URL */}
+          {isValid && (
+            <Card className="bg-gradient-to-br from-zinc-500/10 via-card/80 to-card/80 border-zinc-400/20">
+              <CardHeader className="flex-row items-start gap-3 sm:gap-4 space-y-0 p-4 sm:p-6">
+                <div className="shrink-0 h-10 w-10 rounded-lg bg-zinc-500/15 text-zinc-200 flex items-center justify-center ring-1 ring-zinc-400/20">
+                  <Link2 className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <CardTitle>Add Single List by URL</CardTitle>
+                  <CardDescription>
+                    Add any public PublicMetaDB list from its link
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:space-x-2 sm:gap-0">
+                  <Input
+                    id="pmdb-list-url"
+                    value={listUrl}
+                    onChange={(e) => setListUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && listUrl.trim() && !isAddingUrl) handleAddListByUrl(); }}
+                    placeholder="https://publicmetadb.com/lists/u/username/list-name"
+                    className="min-w-0"
+                  />
+                  <Button onClick={handleAddListByUrl} variant="outline" className="w-full sm:w-auto" disabled={!listUrl.trim() || isAddingUrl}>
+                    {isAddingUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}

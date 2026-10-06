@@ -17,6 +17,8 @@ import {
   letterboxdContentType,
   createTvdbListCatalogs,
   createTmdbCollectionCatalog,
+  fetchPublicMetaDBPublicListCatalog,
+  isPublicMetaDBListAdded,
   createCustomManifestCatalog,
   getMdbListType,
   isDynamicMixedList,
@@ -98,7 +100,7 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
     setParsedUrl(parsed);
     
     if (parsed.service === 'unknown') {
-      setError('URL not recognized. Supported: MDBList lists/users, Trakt lists/users, Letterboxd lists/watchlists, TheTVDB lists, TMDB collections, or manifest.json URLs');
+      setError('URL not recognized. Supported: MDBList lists/users, Trakt lists/users, Letterboxd lists/watchlists, TheTVDB lists, TMDB collections, PublicMetaDB lists, or manifest.json URLs');
     }
   }, []);
 
@@ -110,6 +112,7 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
       case 'letterboxd': return 'outline';
       case 'tvdb': return 'outline';
       case 'tmdb': return 'secondary';
+      case 'publicmetadb': return 'outline';
       case 'manifest': return 'secondary';
       default: return 'destructive';
     }
@@ -123,6 +126,7 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
       case 'letterboxd': return 'Letterboxd';
       case 'tvdb': return 'TheTVDB';
       case 'tmdb': return 'TMDB Collection';
+      case 'publicmetadb': return 'PublicMetaDB';
       case 'manifest': return 'Custom Manifest';
       default: return 'Unknown';
     }
@@ -136,6 +140,7 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
       case 'letterboxd': return '/letterboxd_icon.png';
       case 'tvdb': return '/tvdb_icon.png';
       case 'tmdb': return '/tmdb_icon.png';
+      case 'publicmetadb': return '/pmdb_icon.svg';
       case 'manifest': return '/manifest_icon.png';
       default: return null;
     }
@@ -679,6 +684,48 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
   };
 
   // ============================================================================
+  // PublicMetaDB Public List Handler
+  // ============================================================================
+  const handlePublicMetaDBList = async () => {
+    if (!parsedUrl || parsedUrl.service !== 'publicmetadb' || !parsedUrl.username || !parsedUrl.listSlug) return;
+    const key = config.apiKeys?.publicmetadb;
+    if (!key) {
+      const message = 'PublicMetaDB needs an API key to read any list, public ones included. Add yours in the PublicMetaDB integration first.';
+      setError(message);
+      toast.error("PublicMetaDB key required", { description: message });
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const catalog = await fetchPublicMetaDBPublicListCatalog(key, { username: parsedUrl.username, slug: parsedUrl.listSlug, url: parsedUrl.url });
+      const listId = catalog.id.slice('publicmetadb.public.'.length);
+
+      if (isPublicMetaDBListAdded(config.catalogs, listId)) {
+        toast.info("This PublicMetaDB list is already in your catalogs");
+        onClose();
+        return;
+      }
+
+      setConfig(prev => ({ ...prev, catalogs: [...prev.catalogs, catalog] }));
+
+      toast.success("List added successfully", {
+        description: `${catalog.name} with ${catalog.metadata?.itemCount ?? 0} items has been added to your catalogs`
+      });
+
+      onClose();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'An unknown error occurred';
+      setError(message);
+      toast.error("Error", { description: message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============================================================================
   // TMDB Collection Handler
   // ============================================================================
   const handleTmdbCollection = async () => {
@@ -846,6 +893,9 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
       case 'tmdb':
         await handleTmdbCollection();
         break;
+      case 'publicmetadb':
+        await handlePublicMetaDBList();
+        break;
       case 'manifest':
         await handleManifest();
         break;
@@ -948,6 +998,7 @@ export function QuickAddDialog({ isOpen, onClose }: QuickAddDialogProps) {
                   <p><strong>Letterboxd:</strong> letterboxd.com/username/list/list-name or letterboxd.com/username/watchlist</p>
                   <p><strong>TheTVDB:</strong> thetvdb.com/lists/list-slug</p>
                   <p><strong>TMDB:</strong> themoviedb.org/collection/86311</p>
+                  <p><strong>PublicMetaDB:</strong> publicmetadb.com/lists/u/username/list-name (needs your PublicMetaDB key)</p>
                   <p><strong>Custom Manifest:</strong> Any URL ending with /manifest.json</p>
                 </CardContent>
               </Card>
