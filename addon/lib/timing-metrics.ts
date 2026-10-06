@@ -22,7 +22,7 @@ interface TrendEntry {
 }
 
 const SEARCH_PROVIDER_METRICS = [
-  'tmdb', 'tvdb', 'tvmaze', 'mal', 'kitsu', 'trakt', 'mdblist', 'simkl', 'imdb', 'ai',
+  'tmdb', 'tvdb', 'tvmaze', 'mal', 'kitsu', 'trakt', 'mdblist', 'simkl', 'imdb', 'lumiere', 'ai',
 ].map(p => `search_${p}`);
 
 const EMPTY_STATS: TimingStats = {

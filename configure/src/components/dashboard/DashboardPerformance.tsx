@@ -19,7 +19,7 @@ import {
 import { AnimatedNumber } from "../AnimatedNumber";
 
 const SEARCH_PROVIDER_METRICS = [
-  'tmdb', 'tvdb', 'tvmaze', 'mal', 'kitsu', 'trakt', 'mdblist', 'simkl', 'imdb', 'ai',
+  'tmdb', 'tvdb', 'tvmaze', 'mal', 'kitsu', 'trakt', 'mdblist', 'simkl', 'imdb', 'lumiere', 'ai',
 ].map(p => `search_${p}`);
 
 function formatDuration(ms: number): string {
