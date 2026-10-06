@@ -140,6 +140,7 @@ const parseAirsTime = (airsTime) => {
 };
 
 const timezoneOffsetFormatters = new Map();
+const TIMEZONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 const getTimezoneOffsetFormatter = (timezone) => {
   let formatter = timezoneOffsetFormatters.get(timezone);
@@ -172,6 +173,19 @@ const getTimezoneOffsetMinutes = (utcDate, timezone) => {
   }
 };
 
+const resolveLocalReleaseTimestamp = (localDate, timezone) => {
+  const localMs = localDate.getTime();
+  if (!Number.isFinite(localMs)) return new Date(localMs);
+  const before = getTimezoneOffsetMinutes(new Date(localMs - TIMEZONE_DAY_MS), timezone);
+  const after = getTimezoneOffsetMinutes(new Date(localMs + TIMEZONE_DAY_MS), timezone);
+  if (before === after) return new Date(localMs - before * 60000);
+  const matches = [...new Set([before, after])]
+    .map(offset => localMs - offset * 60000)
+    .filter(instant => instant + getTimezoneOffsetMinutes(new Date(instant), timezone) * 60000 === localMs);
+  // Repeated local times use the first occurrence; a skipped time advances by the gap.
+  return new Date(matches.length ? Math.min(...matches) : localMs - before * 60000);
+};
+
 const getTimeValue = (dateValue) => {
   if (!dateValue) return null;
   const time = dateValue instanceof Date ? dateValue.getTime() : new Date(dateValue).getTime();
@@ -194,9 +208,8 @@ const syncVideoAvailabilityFromReleased = (videos, nowMs = Date.now()) => {
 };
 
 /**
- * Resolve a release-date string to a stable UTC Date anchored at the show's actual
- * airing moment. If origin TZ/country + airsTime are available, uses them; otherwise
- * anchors at noon UTC (stable — independent of the requesting user's timezone).
+ * Resolve a release date using the origin timezone and air time (20:00 if absent).
+ * Without a known origin timezone, anchor at noon UTC, independent of the viewer.
  *
  * opts: { originCountry?, originTimezone?, airsTime?, defaultHour? }
  */
@@ -218,8 +231,7 @@ const resolveReleaseTimestamp = (dateString, opts = {}) => {
     const minute = airTime ? airTime.minute : 0;
 
     const candidate = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
-    const offsetMinutes = getTimezoneOffsetMinutes(candidate, timezone);
-    return new Date(candidate.getTime() - offsetMinutes * 60000);
+    return resolveLocalReleaseTimestamp(candidate, timezone);
   } catch (error) {
     logger.warn(`Error resolving release timestamp for ${dateString}: ${error.message}`);
     return null;
