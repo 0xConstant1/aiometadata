@@ -638,6 +638,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_UPCOMING_HOLD_HOURS',
+    envVar: 'JELLYFIN_UPCOMING_HOLD_HOURS',
+    label: 'Jellyfin Upcoming Hold (hours)',
+    description: 'How long an episode that has aired stays in Upcoming while Next Up does not list it yet, as when a tracker names a new episode a while after it airs. It leaves Upcoming as soon as Next Up has it. 0 drops it at air time.',
+    category: 'Features',
+    type: 'number',
+    default: 12,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_OWN_UNWATCHED_LIMIT',
     envVar: 'JELLYFIN_OWN_UNWATCHED_LIMIT',
     label: 'Jellyfin Own Unwatched Read',
