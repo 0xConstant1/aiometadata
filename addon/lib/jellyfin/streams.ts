@@ -249,7 +249,7 @@ export function toPlayable(stream: any): PlayableStream | null {
 
 // Lifetimes are read on every write, not when the cache is built, so a change made
 // in the dashboard applies to the next entry without a restart.
-const streamTtlMs = () => envInt('JELLYFIN_STREAM_CACHE_TTL', 60, 1) * 1000;
+const streamTtlMs = () => envInt('JELLYFIN_STREAM_CACHE_TTL', 180, 1) * 1000;
 const subtitleTtlMs = () => envInt('JELLYFIN_SUBTITLE_TTL', 60 * 60, 60) * 1000;
 
 // A source is renamed to its item's id when it is the default one, so what
@@ -266,7 +266,7 @@ export function fileFor(source: any): { subtitles: SubtitleTrack[]; hints: FileH
 // A client resolves the same item twice: opening it, then pressing play.
 const resolved = new LRUCache<string, any[]>({
   max: envInt('JELLYFIN_STREAM_CACHE_MAX', 2000, 1),
-  ttl: envInt('JELLYFIN_STREAM_CACHE_TTL', 60, 1) * 1000,
+  ttl: envInt('JELLYFIN_STREAM_CACHE_TTL', 180, 1) * 1000,
 });
 
 const inFlight = new Map<string, Promise<any[]>>();
@@ -274,7 +274,7 @@ const inFlight = new Map<string, Promise<any[]>>();
 // Why the last resolve came back empty, worded for the version picker.
 const failures = new LRUCache<string, string>({
   max: envInt('JELLYFIN_STREAM_CACHE_MAX', 2000, 1),
-  ttl: envInt('JELLYFIN_STREAM_CACHE_TTL', 60, 1) * 1000,
+  ttl: envInt('JELLYFIN_STREAM_CACHE_TTL', 180, 1) * 1000,
 });
 
 export function rememberStreams(key: string, streams: any[]): void {

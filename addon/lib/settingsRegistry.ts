@@ -1606,7 +1606,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     description: 'How long a title\'s stream list is reused before the stream addon is asked again.',
     category: 'Cache',
     type: 'number',
-    default: 60,
+    default: 180,
     min: 1,
   },
   {

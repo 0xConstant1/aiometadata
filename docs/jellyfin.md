@@ -253,7 +253,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | `JELLYFIN_STREAM_USER_AGENT` | | User agent sent to the stream addon. AIOStreams attaches parsed release data only for one it recognises. |
 | `JELLYFIN_RESOLVE_ON_OPEN` | `user` | Whether a title opens with its versions resolved: `user` (each configuration's switch, off by default), `always`, or `never`. |
 | `JELLYFIN_STREAM_TIMEOUT_MS` (env) | `15000` | How long a stream request may take. |
-| `JELLYFIN_STREAM_CACHE_TTL` (env) | `60` | How long a title's stream list is reused, in seconds. |
+| `JELLYFIN_STREAM_CACHE_TTL` (env) | `180` | How long a title's stream list is reused, in seconds. |
 | `JELLYFIN_MAX_MEDIA_SOURCES` (env) | `50` | The most versions offered for a title. |
 | `JELLYFIN_MAX_TRAILERS` (env) | `8` | The most trailers offered for a title. |
 | `TRAILER_ADDON_TIMEOUT_MS`, `TRAILER_ADDON_TTL`, `TRAILER_ADDON_EMPTY_TTL` | | How long a trailer addon may take, how long its answer is kept, how long a miss is left alone. |
