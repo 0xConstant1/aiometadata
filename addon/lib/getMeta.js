@@ -140,6 +140,11 @@ const parseAirsTime = (airsTime) => {
 };
 
 const timezoneOffsetFormatters = new Map();
+const releaseTimezoneOffsets = new Map();
+const MAX_TIMEZONE_FORMATTERS = 128;
+const MAX_RELEASE_TIMEZONE_DAYS = 512;
+const TIMEZONE_HOUR_MS = 60 * 60 * 1000;
+const TIMEZONE_DAY_MS = 24 * TIMEZONE_HOUR_MS;
 
 const getTimezoneOffsetFormatter = (timezone) => {
   let formatter = timezoneOffsetFormatters.get(timezone);
@@ -150,6 +155,9 @@ const getTimezoneOffsetFormatter = (timezone) => {
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false
     });
+    if (timezoneOffsetFormatters.size >= MAX_TIMEZONE_FORMATTERS) {
+      timezoneOffsetFormatters.delete(timezoneOffsetFormatters.keys().next().value);
+    }
     timezoneOffsetFormatters.set(timezone, formatter);
   }
   return formatter;
@@ -170,6 +178,45 @@ const getTimezoneOffsetMinutes = (utcDate, timezone) => {
   } catch {
     return 0;
   }
+};
+
+const resolveLocalReleaseTimestamp = (localDate, timezone) => {
+  const localMs = localDate.getTime();
+  if (!Number.isFinite(localMs)) return new Date(localMs);
+  const dayMs = Math.floor(localMs / TIMEZONE_DAY_MS) * TIMEZONE_DAY_MS;
+  const key = `${timezone}:${dayMs}`;
+  let cachedOffsets = releaseTimezoneOffsets.get(key);
+  if (!cachedOffsets) {
+    cachedOffsets = new Set();
+    for (let hours = -48; hours <= 48; hours += 6) {
+      cachedOffsets.add(getTimezoneOffsetMinutes(new Date(dayMs + hours * TIMEZONE_HOUR_MS), timezone));
+    }
+    if (releaseTimezoneOffsets.size >= MAX_RELEASE_TIMEZONE_DAYS) {
+      releaseTimezoneOffsets.delete(releaseTimezoneOffsets.keys().next().value);
+    }
+    releaseTimezoneOffsets.set(key, cachedOffsets);
+  }
+
+  const offsets = new Set(cachedOffsets);
+  const candidates = [];
+  for (const offset of offsets) {
+    const instant = localMs - offset * 60000;
+    const actualOffset = getTimezoneOffsetMinutes(new Date(instant), timezone);
+    offsets.add(actualOffset);
+    candidates.push({ instant, offset, actualOffset, local: instant + actualOffset * 60000 });
+  }
+
+  // Repeated local times use the first occurrence.
+  const exact = candidates.filter(candidate => candidate.local === localMs);
+  if (exact.length) return new Date(Math.min(...exact.map(candidate => candidate.instant)));
+
+  // A skipped time advances by the gap; verify both sides of the offset change.
+  const forward = candidates.filter(candidate => candidate.local > localMs && candidates.some(other =>
+    other.offset === candidate.actualOffset && other.actualOffset === candidate.offset && other.local < localMs
+  )).sort((a, b) => a.local - b.local || a.instant - b.instant);
+  if (forward.length) return new Date(forward[0].instant);
+
+  throw new RangeError(`Cannot resolve local release time in ${timezone}`);
 };
 
 const getTimeValue = (dateValue) => {
@@ -194,9 +241,8 @@ const syncVideoAvailabilityFromReleased = (videos, nowMs = Date.now()) => {
 };
 
 /**
- * Resolve a release-date string to a stable UTC Date anchored at the show's actual
- * airing moment. If origin TZ/country + airsTime are available, uses them; otherwise
- * anchors at noon UTC (stable — independent of the requesting user's timezone).
+ * Resolve a release date using the origin timezone and air time (20:00 if absent).
+ * Without a known origin timezone, anchor at noon UTC, independent of the viewer.
  *
  * opts: { originCountry?, originTimezone?, airsTime?, defaultHour? }
  */
@@ -218,8 +264,7 @@ const resolveReleaseTimestamp = (dateString, opts = {}) => {
     const minute = airTime ? airTime.minute : 0;
 
     const candidate = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
-    const offsetMinutes = getTimezoneOffsetMinutes(candidate, timezone);
-    return new Date(candidate.getTime() - offsetMinutes * 60000);
+    return resolveLocalReleaseTimestamp(candidate, timezone);
   } catch (error) {
     logger.warn(`Error resolving release timestamp for ${dateString}: ${error.message}`);
     return null;
