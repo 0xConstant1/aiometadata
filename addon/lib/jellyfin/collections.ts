@@ -71,12 +71,15 @@ export function collectionView(serverId: string, collection: CollectionDraft, fo
   const backdrop = imageOf(collection.backdropImageUrl);
   if (backdrop) rememberImages(serverId, id, { primary: backdrop, backdrop });
   const view = collectionFolder(id, serverId, collection.title, 'boxsets', folderCount);
+  if (collection.hideTitle) view.Tags = [HIDE_TITLE_TAG];
   if (backdrop) {
     view.ImageTags = { Primary: imageTag(backdrop) };
     view.BackdropImageTags = [imageTag(backdrop)];
   }
   return view;
 }
+
+export const HIDE_TITLE_TAG = 'hide-title';
 
 function visibleDeep(catalogs: CatalogRef[], folder: FolderDraft): number {
   return visibleSources(catalogs, folder).length + subFolders(folder).reduce((sum, child) => sum + visibleDeep(catalogs, child), 0);
@@ -116,7 +119,7 @@ function boxSetItem(serverId: string, collection: CollectionDraft, folder: Folde
     ChildCount: sourceCount,
     RecursiveItemCount: null,
     DisplayPreferencesId: id,
-    Tags: [],
+    Tags: folder.hideTitle ? [HIDE_TITLE_TAG] : [],
     PrimaryImageAspectRatio: folder.shape === 'LANDSCAPE' ? 1.7777777777777777 : folder.shape === 'SQUARE' ? 1 : 0.6666666666666666,
     ImageTags: { ...(cover ? { Primary: imageTag(cover) } : {}), ...(logo ? { Logo: imageTag(logo) } : {}) },
     BackdropImageTags: backdrop ? [imageTag(backdrop)] : [],
