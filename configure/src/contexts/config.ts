@@ -30,6 +30,10 @@ export interface JellyfinUserAccounts {
   labels?: Partial<Record<CardService, string>>;
 }
 
+export type SkipProvider = 'publicmetadb' | 'aniskip' | 'introdb';
+/** Providers in the order they are asked; a list leaves out the ones switched off. */
+export type SkipSource = 'auto' | 'off' | SkipProvider | SkipProvider[];
+
 /** A user on the Jellyfin sign-in screen, made of the profile tags it picks. */
 export interface JellyfinUser {
   id: string;
@@ -42,7 +46,7 @@ export interface JellyfinUser {
   trackers?: boolean;
   /** Absent follows the main user. */
   trackerSource?: 'auto' | 'off' | 'mdblist' | 'trakt' | 'simkl' | 'publicmetadb' | 'anilist' | 'mal';
-  skipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
+  skipSource?: SkipSource;
   watchlistServices?: string[];
   /** Overrides the configuration's stream addon for this user. */
   streamUrl?: string;
@@ -444,7 +448,7 @@ export interface AppConfig {
   jellyfinUserAvatar?: string;
   jellyfinUserTags?: string[];
   jellyfinUserHandoffNames?: string[];
-  jellyfinSkipSource?: 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
+  jellyfinSkipSource?: SkipSource;
   jellyfinWatchlistServices?: string[];
   jellyfinUsers?: JellyfinUser[];
   customPosterUrlPattern?: string;

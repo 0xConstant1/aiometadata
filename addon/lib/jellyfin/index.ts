@@ -2772,7 +2772,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json(itemList(items, items.length, 0));
   });
 
-  // Skip markers, from PublicMetaDB when the user has a key, AniSkip for anime, IntroDB otherwise.
+  // Skip markers, from the sources the user turned on, in their order.
   const episodeRuntimeMs = (meta: any, descriptor: any): number | null => {
     const video = descriptor.k === 'episode'
       ? (meta.videos || []).find((v: any) => v?.season === descriptor.s && v?.episode === descriptor.e)

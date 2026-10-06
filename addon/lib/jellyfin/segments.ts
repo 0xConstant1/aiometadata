@@ -165,17 +165,19 @@ export async function malEpisodeFor(videoId: string | null): Promise<{ malId: nu
 }
 
 // Timestamps are per title, not per file, so a release cut differently is off by that much.
-export type SkipSource = 'auto' | 'publicmetadb' | 'aniskip' | 'introdb' | 'off';
 type Provider = 'publicmetadb' | 'aniskip' | 'introdb';
+export type SkipSource = 'auto' | 'off' | Provider | Provider[];
+
+const PROVIDERS: Provider[] = ['publicmetadb', 'aniskip', 'introdb'];
 
 export function skipSources(config: any): Provider[] {
   const choice: SkipSource = config?.jellyfinSkipSource ?? 'auto';
+  const picked: Provider[] = Array.isArray(choice) ? choice
+    : choice === 'off' ? []
+    : PROVIDERS.includes(choice as Provider) ? [choice as Provider]
+    : PROVIDERS;
   const pmdb = Boolean(config?.apiKeys?.publicmetadb);
-  if (choice === 'off') return [];
-  if (choice === 'publicmetadb') return pmdb ? ['publicmetadb'] : [];
-  if (choice === 'aniskip') return ['aniskip'];
-  if (choice === 'introdb') return ['introdb'];
-  return pmdb ? ['publicmetadb', 'aniskip', 'introdb'] : ['aniskip', 'introdb'];
+  return [...new Set(picked)].filter((p) => PROVIDERS.includes(p) && (p !== 'publicmetadb' || pmdb));
 }
 
 const PROVIDER_NAMES: Record<Provider, string> = { publicmetadb: 'PublicMetaDB', aniskip: 'AniSkip', introdb: 'IntroDB' };

@@ -17,11 +17,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Copy, Loader2, Plus, Save, User, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Loader2, Plus, Save, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { TagChip } from "@/components/TagChip";
-import { MAX_TAG_NAME_LENGTH, type CatalogConfig, type JellyfinUser, type TagDef } from "@/contexts/config";
+import { MAX_TAG_NAME_LENGTH, type CatalogConfig, type JellyfinUser, type SkipProvider, type SkipSource, type TagDef } from "@/contexts/config";
 import { UserAccounts } from "@/components/jellyfin/UserAccounts";
 import { CARD_SERVICES, connectedServices, handoffNameClash, isHolder, trackerOptionsFor, watchlistOptionsFor } from "@/lib/cardAccounts";
 import { disconnectCardAccount } from "@/lib/integrationCredentials";
@@ -149,6 +149,8 @@ interface UserRowProps {
   trackerOptions: Array<{ value: string; label: string; animeOnly?: boolean }>;
   watchlistOptions: WatchlistOption[];
   hasPmdb: boolean;
+  /** The main user's choice, which a user left on "Same as you" follows. */
+  mainSkipSource: SkipSource;
   showHandoff?: boolean;
   onChange: (patch: Partial<JellyfinUser>) => void;
   onRemove?: () => void;
@@ -156,7 +158,7 @@ interface UserRowProps {
   children?: ReactNode;
 }
 
-function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, showHandoff, onChange, onRemove, onForget, children }: UserRowProps) {
+function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptions, watchlistOptions, hasPmdb, mainSkipSource, showHandoff, onChange, onRemove, onForget, children }: UserRowProps) {
   const chosen = user?.tags ?? [];
   const toggleTag = (tag: string) =>
     onChange({ tags: chosen.includes(tag) ? chosen.filter((t) => t !== tag) : [...chosen, tag] });
@@ -174,9 +176,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
   const rawTrackerSource = user?.trackerSource;
   const trackerKnown = rawTrackerSource === 'auto' || rawTrackerSource === 'off' || trackerOptions.some((opt) => opt.value === rawTrackerSource);
   const trackerValue = holder && rawTrackerSource && !trackerKnown ? 'auto' : rawTrackerSource ?? (main || holder ? 'auto' : 'inherit');
-  const skipValue = user?.skipSource ?? (main ? 'auto' : 'inherit');
   const trackerCaption = trackerValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : resumeSourceCaption(trackerValue, trackerOptions);
-  const skipCaption = skipValue === 'inherit' ? 'Same as you: follows the choice on your own card.' : skipSourceCaption(skipValue, hasPmdb);
 
   return (
     <div className="space-y-2 rounded-md border p-3">
@@ -301,18 +301,13 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
         {!main && <PinField name={name} pin={user?.pin} onChange={(pin) => onChange({ pin })} />}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Skip intro and credits</Label>
-          <Select value={skipValue} onValueChange={(v) => onChange({ skipSource: v === 'inherit' ? undefined : (v as JellyfinUser['skipSource']) })}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {!main && <SelectItem value="inherit">Same as you</SelectItem>}
-              <SelectItem value="auto">Automatic</SelectItem>
-              {hasPmdb ? <SelectItem value="publicmetadb">PublicMetaDB</SelectItem> : null}
-              <SelectItem value="aniskip">AniSkip</SelectItem>
-              <SelectItem value="introdb">IntroDB</SelectItem>
-              <SelectItem value="off">Off</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-[11px] text-muted-foreground">{skipCaption}</p>
+          <SkipSourcePicker
+            value={user?.skipSource ?? (main ? 'auto' : undefined)}
+            inherited={mainSkipSource}
+            main={main}
+            hasPmdb={hasPmdb}
+            onChange={(skipSource) => onChange({ skipSource })}
+          />
         </div>
       </div>
       {showHandoff ? <HandoffNamesInput names={user?.handoffNames} onChange={(handoffNames) => onChange({ handoffNames })} /> : null}
@@ -376,14 +371,84 @@ function resumeSourceCaption(value: string, options: Array<{ value: string; labe
   return `${name} only: Continue Watching, the watched ticks, Next Up and Upcoming all come from ${name}, on top of what you play here. Pick this when two trackers disagree and you want one to win.`;
 }
 
-function skipSourceCaption(value: string, hasPmdb: boolean): string {
-  if (value === 'off') return 'Off: no markers are offered, so clients show no skip button.';
-  if (value === 'publicmetadb') return 'PublicMetaDB only: markers come from your PublicMetaDB key and nothing else.';
-  if (value === 'aniskip') return 'AniSkip only: openings, endings and recaps for anime, keyed by MyAnimeList id; nothing for other titles. Needs no key.';
-  if (value === 'introdb') return 'IntroDB only: markers come from IntroDB, which needs no key. Each lookup sends the title, season and episode to it.';
-  return hasPmdb
-    ? 'Automatic: PublicMetaDB is asked first, AniSkip for anime, and IntroDB fills whatever is still missing. Each lookup sends the title, season and episode to the services asked.'
-    : 'Automatic: AniSkip answers for anime and IntroDB for the rest, since no PublicMetaDB key is set. Each lookup sends the title, season and episode to them.';
+const SKIP_PROVIDERS: Array<{ value: SkipProvider; label: string; note: string }> = [
+  { value: 'publicmetadb', label: 'PublicMetaDB', note: 'Your key' },
+  { value: 'aniskip', label: 'AniSkip', note: 'Anime only' },
+  { value: 'introdb', label: 'IntroDB', note: 'No key needed' },
+];
+
+type SkipRow = { value: SkipProvider; on: boolean };
+
+function skipRows(value: SkipSource, hasPmdb: boolean): SkipRow[] {
+  const all = SKIP_PROVIDERS.map((p) => p.value);
+  const picked = Array.isArray(value) ? value : value === 'off' ? [] : all.includes(value as SkipProvider) ? [value as SkipProvider] : all;
+  const on = [...new Set(picked)].filter((p) => all.includes(p) && (p !== 'publicmetadb' || hasPmdb));
+  return [...on.map((v) => ({ value: v, on: true })), ...all.filter((p) => !on.includes(p)).map((v) => ({ value: v, on: false }))];
+}
+
+function skipSourceOf(rows: SkipRow[], hasPmdb: boolean): SkipSource {
+  const on = rows.filter((r) => r.on).map((r) => r.value);
+  if (!on.length) return 'off';
+  const auto = SKIP_PROVIDERS.map((p) => p.value).filter((p) => p !== 'publicmetadb' || hasPmdb);
+  return on.join() === auto.join() ? 'auto' : on;
+}
+
+function skipSourceCaption(rows: SkipRow[]): string {
+  const on = rows.filter((r) => r.on).map((r) => SKIP_PROVIDERS.find((p) => p.value === r.value)!.label);
+  if (!on.length) return 'Off: no markers are offered, so clients show no skip button.';
+  const order = on.length === 1 ? `${on[0]} only` : on.join(', then ');
+  return `${order}. Intro, recap and credits are each taken from the first source above that has them. Each lookup sends the title, season and episode to the services asked.`;
+}
+
+/** Undefined follows the main user; the main user's undefined is Automatic. */
+function SkipSourcePicker({ value, inherited, main, hasPmdb, onChange }: { value?: SkipSource; inherited: SkipSource; main?: boolean; hasPmdb: boolean; onChange: (next: SkipSource | undefined) => void }) {
+  const following = value === undefined;
+  const rows = skipRows(value ?? inherited, hasPmdb);
+  const set = (next: SkipRow[]) => onChange(skipSourceOf(next, hasPmdb));
+  const onCount = rows.filter((r) => r.on).length;
+  const move = (i: number, by: number) => {
+    const next = [...rows];
+    [next[i], next[i + by]] = [next[i + by], next[i]];
+    set(next);
+  };
+  const reset = main
+    ? <TagChip name="Automatic" onClick={() => onChange('auto')} pressed={value === 'auto'} dimmed={value !== 'auto'} />
+    : <TagChip name="Same as you" onClick={() => onChange(undefined)} pressed={following} dimmed={!following} />;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">{reset}</div>
+      <div className={cn('divide-y rounded-md border', following && 'opacity-60')}>
+        {rows.map((row, i) => {
+          const provider = SKIP_PROVIDERS.find((p) => p.value === row.value)!;
+          const locked = row.value === 'publicmetadb' && !hasPmdb;
+          return (
+            <div key={row.value} className="flex items-center gap-2 px-2 py-1">
+              <span className="w-4 text-center text-[11px] tabular-nums text-muted-foreground">{row.on ? i + 1 : ''}</span>
+              <span className={cn('flex-1 text-xs', !row.on && 'text-muted-foreground')}>
+                {provider.label}
+                <span className="ml-1.5 text-[11px] text-muted-foreground">{locked ? 'Needs a PublicMetaDB key' : provider.note}</span>
+              </span>
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" disabled={!row.on || i === 0} onClick={() => move(i, -1)} aria-label={`Ask ${provider.label} earlier`}>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" disabled={!row.on || i >= onCount - 1} onClick={() => move(i, 1)} aria-label={`Ask ${provider.label} later`}>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+              <Switch
+                checked={row.on}
+                disabled={locked}
+                onCheckedChange={(on) => set(rows.map((r) => (r.value === row.value ? { ...r, on } : r)))}
+                aria-label={`Use ${provider.label} for skip markers`}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {following ? 'Same as you: follows the order on your own card. Changing anything here gives this user their own.' : skipSourceCaption(rows)}
+      </p>
+    </div>
+  );
 }
 
 function newUserId(): string {
@@ -774,6 +839,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
               trackerOptions={resumeSourceOptions}
               watchlistOptions={watchlistOptions}
               hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
+              mainSkipSource={config.jellyfinSkipSource ?? 'auto'}
               showHandoff={config.playbackReporting === true}
               onForget={() => setForgetFor({ profile: null, name: mainName })}
               onChange={(patch) => setConfig(prev => ({
@@ -782,7 +848,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                 ...('avatar' in patch ? { jellyfinUserAvatar: patch.avatar } : {}),
                 ...('tags' in patch ? { jellyfinUserTags: patch.tags?.length ? patch.tags : undefined } : {}),
                 ...('trackerSource' in patch ? { jellyfinResumeSource: patch.trackerSource as typeof prev.jellyfinResumeSource } : {}),
-                ...('skipSource' in patch ? { jellyfinSkipSource: patch.skipSource === 'auto' ? undefined : (patch.skipSource as typeof prev.jellyfinSkipSource) } : {}),
+                ...('skipSource' in patch ? { jellyfinSkipSource: patch.skipSource === 'auto' ? undefined : patch.skipSource } : {}),
                 ...('watchlistServices' in patch ? { jellyfinWatchlistServices: patch.watchlistServices } : {}),
                 ...('handoffNames' in patch ? { jellyfinUserHandoffNames: patch.handoffNames } : {}),
               }))}
@@ -800,6 +866,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                   trackerOptions={holder ? trackerOptionsFor(user) : resumeSourceOptions}
                   watchlistOptions={holder ? watchlistOptionsFor(user) : watchlistOptions}
                   hasPmdb={Boolean(config.apiKeys?.publicmetadb)}
+                  mainSkipSource={config.jellyfinSkipSource ?? 'auto'}
                   showHandoff={config.playbackReporting === true}
                   onChange={(patch) => updateUser(user.id, patch)}
                   onRemove={() => { void removeUser(user); }}

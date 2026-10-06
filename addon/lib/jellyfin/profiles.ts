@@ -19,7 +19,7 @@ export interface Profile {
   sharesHistory: boolean;
   /** Undefined follows the main user. */
   trackerSource?: string;
-  skipSource?: string;
+  skipSource?: string | string[];
   watchlistServices?: string[];
   /** Overrides the configuration's stream addon for this user. */
   streamUrl?: string;
@@ -98,7 +98,7 @@ export function listProfiles(config: any, userUUID: string): Profile[] {
       handoffNames: namesOf(user.handoffNames),
       sharesHistory: user.trackers === true,
       trackerSource: typeof user.trackerSource === 'string' ? user.trackerSource : undefined,
-      skipSource: typeof user.skipSource === 'string' ? user.skipSource : undefined,
+      skipSource: typeof user.skipSource === 'string' ? user.skipSource : Array.isArray(user.skipSource) ? user.skipSource.map(String) : undefined,
       watchlistServices: Array.isArray(user.watchlistServices) ? user.watchlistServices.map(String) : undefined,
       streamUrl: typeof user.streamUrl === 'string' && user.streamUrl.trim() ? user.streamUrl.trim() : undefined,
       pin: isPinHash(user.pin) ? user.pin : undefined,
