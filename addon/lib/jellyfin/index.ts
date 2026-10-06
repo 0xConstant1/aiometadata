@@ -2,6 +2,7 @@ import express from 'express';
 import consola from 'consola';
 import { envInt } from '../../utils/envNumber';
 import { mapWithConcurrency } from '../../utils/concurrency';
+import { hasAgeRatingCap } from '../../utils/ageRating';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import {
   attachJellyfinContext,
@@ -39,7 +40,7 @@ import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, scopeConfigToProfile, type Profile } from './profiles';
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
-import { personByName, personCredits, similarTitles } from './people';
+import { personByName, personCredits, previewMeta, similarTitles } from './people';
 import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
 import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
@@ -2764,9 +2765,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const serverId = serverIdFor(userUUID);
-    const metas = await similarTitles(config, String(meta._tmdbId), descriptor.k);
-    const items = metas
-      .map((m: any) => metaToBaseItem(m, m.type, serverId, null))
+    const rows = await similarTitles(config, String(meta._tmdbId), descriptor.k);
+    const capped = hasAgeRatingCap(config);
+    const built = await mapWithConcurrency(capped ? rows : rows.slice(0, limit), shelfConcurrency(), async (row: any) => {
+      const full = await previewMeta(config, userUUID, row.type, row.id).catch(() => null);
+      return metaToBaseItem(full ?? row, row.type, serverId, null);
+    });
+    const items = built
       .filter(keepsUnderProfileCap(config))
       .slice(0, limit);
     res.json(itemList(items, items.length, 0));

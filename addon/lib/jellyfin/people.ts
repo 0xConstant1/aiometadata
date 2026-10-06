@@ -65,6 +65,27 @@ export function metaFromTmdbRow(row: any, type: 'movie' | 'series'): any | null 
   };
 }
 
+export async function previewMeta(config: any, userUUID: string, type: 'movie' | 'series', id: string): Promise<any | null> {
+  const { cacheWrapMetaSmart } = require('../getCache');
+  const { getMeta } = require('../getMeta');
+  const { applyMetaArt } = require('../metaArt');
+  const scoped = { ...config, userUUID };
+  const language = config?.language || 'en-US';
+  const result = await cacheWrapMetaSmart(
+    userUUID,
+    id,
+    () => getMeta(type, language, id, scoped, userUUID, false),
+    undefined,
+    { enableErrorCaching: true, maxRetries: 2, config: scoped },
+    type,
+    false
+  );
+  if (!result?.meta) return null;
+  const meta = { ...result.meta };
+  applyMetaArt(meta, scoped, type, '');
+  return meta;
+}
+
 /** What TMDB recommends next to a title. */
 export async function similarTitles(config: any, tmdbId: string, type: 'movie' | 'series'): Promise<any[]> {
   const language = config?.language || 'en-US';
