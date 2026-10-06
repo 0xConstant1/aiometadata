@@ -100,7 +100,7 @@ export function undropOnWatch(userUUID: string, config: any, seriesIds: string[]
 // Likes false drops the show; true or a cleared rating undrops it. Reports whether it
 // changed anything.
 export async function rateSeries(userUUID: string, config: any, descriptor: any, likes: boolean | null): Promise<boolean> {
-  if (descriptor?.k !== 'series') return false;
+  if (descriptor?.k !== 'series' && descriptor?.k !== 'season' && descriptor?.k !== 'episode') return false;
   const { fetchMeta } = require('./items');
   const { idsFor } = require('./watchlist');
   const { profileKey, writesTrackers } = require('./profiles');
