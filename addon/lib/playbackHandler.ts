@@ -174,20 +174,20 @@ export async function handleBulkPlaybackReport(
       }
     }
   }
-  if (event === 'played') {
-    // A count-based list only needs the furthest episode.
-    const last = [...videos].sort((a, b) => episodeOrder(a) - episodeOrder(b)).pop() as string;
-    const { parseMediaId } = require('./subtitleHandler');
-    const parsedLast = parseMediaId(last);
-    if (parsedLast) {
-      const report: PlaybackReport = {
-        id: null, event: 'played', at: null, metaId: body?.metaId ?? null, videoId: last,
-        positionMs: null, durationMs: null, played: true,
-        season: parsedLast.season ?? null, episode: parsedLast.episode ?? null, ids: body?.ids ?? {},
-      };
-      for (const service of ['anilist', 'mal'] as const) {
-        if (shouldTrackServiceMediaType(config, service, 'series')) jobs.push({ service, op: 'anime', item, coalesce: `anime:${item}`, payload: { type, id: last, report } });
-      }
+  // A count-based list only needs the furthest episode watched, or the span unwatched.
+  const ordered = [...videos].sort((a, b) => episodeOrder(a) - episodeOrder(b));
+  const edge = (event === 'played' ? ordered[ordered.length - 1] : ordered[0]) as string;
+  const through = event === 'unplayed' ? ordered[ordered.length - 1] : undefined;
+  const { parseMediaId } = require('./subtitleHandler');
+  const parsedEdge = parseMediaId(edge);
+  if (parsedEdge) {
+    const report: PlaybackReport = {
+      id: null, event, at: null, metaId: body?.metaId ?? null, videoId: edge,
+      positionMs: null, durationMs: null, played: event === 'played',
+      season: parsedEdge.season ?? null, episode: parsedEdge.episode ?? null, ids: body?.ids ?? {},
+    };
+    for (const service of ['anilist', 'mal'] as const) {
+      if (shouldTrackServiceMediaType(config, service, 'series')) jobs.push({ service, op: 'anime', item, coalesce: `anime:${item}`, payload: { type, id: edge, report, through } });
     }
   }
   if (writesTrackersFor(config)) await enqueueTrackerWrites(userUUID, config, jobs);
@@ -367,7 +367,7 @@ function planReport(type: string, id: string, report: PlaybackReport, progress: 
     if (intent === 'unwatched') jobs.push({ service, op: 'unwatch', item, payload, coalesce: `history:${id}` });
     if (credited || clears) jobs.push({ service, op: 'clearResume', item, payload, coalesce: `resume:${id}` });
   }
-  if (intent === 'watched') {
+  if (intent === 'watched' || intent === 'unwatched') {
     for (const service of ['anilist', 'mal'] as const) {
       if (shouldTrackServiceMediaType(config, service, mediaType)) jobs.push({ service, op: 'anime', item, payload, coalesce: `anime:${id}` });
     }
@@ -375,7 +375,7 @@ function planReport(type: string, id: string, report: PlaybackReport, progress: 
   return jobs;
 }
 
-type ReportPayload = { type: string; id: string; report: PlaybackReport; progress: number | null };
+type ReportPayload = { type: string; id: string; report: PlaybackReport; progress: number | null; through?: string };
 
 export async function deliverScrobble(service: WatchTrackingService, p: ReportPayload, config: any): Promise<void> {
   if (service === 'simkl') await scrobbleSimkl(p.type, p.id, p.report, p.progress, config);
@@ -408,7 +408,7 @@ export async function deliverClearResume(service: WatchTrackingService, p: Repor
 }
 
 export async function deliverAnime(service: WatchTrackingService, p: ReportPayload, config: any, userUUID: string): Promise<void> {
-  await advanceAnimeLists(p.type, p.id, p.report, config, userUUID, service);
+  await advanceAnimeLists(p.type, p.id, p.report, config, userUUID, service, p.through);
 }
 
 /**
@@ -501,15 +501,19 @@ async function advanceAnimeLists(
   report: PlaybackReport,
   config: any,
   userUUID: string,
-  only?: WatchTrackingService
+  only?: WatchTrackingService,
+  through?: string
 ): Promise<void> {
-  if (intentOf(report) !== 'watched') return;
+  const intent = intentOf(report);
+  if (intent !== 'watched' && intent !== 'unwatched') return;
+  const unwatched = intent === 'unwatched';
 
   const { parseMediaId } = require('./subtitleHandler');
   const { shouldTrackServiceMediaType, normalizeWatchTrackingMediaType } = require('./watchTracking');
 
   const parsedId = parseMediaId(id);
   if (!parsedId) return;
+  const parsedThrough = unwatched && through ? parseMediaId(through) : null;
 
   const mediaType = normalizeWatchTrackingMediaType(type, parsedId.type);
   if (!mediaType) return;
@@ -519,7 +523,7 @@ async function advanceAnimeLists(
   if ((!only || only === 'anilist') && shouldTrackServiceMediaType(config, 'anilist', mediaType)) {
     const anilistTracker = require('./anilistTracker');
     work.push(
-      anilistTracker.trackAnimeProgress(parsedId, config, userUUID).catch((error: any) => {
+      anilistTracker.trackAnimeProgress(parsedId, config, userUUID, unwatched, parsedThrough).catch((error: any) => {
         logger.error(`AniList tracking failed for ${id}: ${error.message}`);
       })
     );
@@ -528,7 +532,7 @@ async function advanceAnimeLists(
   if ((!only || only === 'mal') && shouldTrackServiceMediaType(config, 'mal', mediaType)) {
     const malTracker = require('./malTracker');
     work.push(
-      malTracker.trackAnimeProgress(parsedId, config, userUUID).catch((error: any) => {
+      malTracker.trackAnimeProgress(parsedId, config, userUUID, unwatched, parsedThrough).catch((error: any) => {
         logger.error(`MAL tracking failed for ${id}: ${error.message}`);
       })
     );

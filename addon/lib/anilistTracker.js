@@ -716,7 +716,7 @@ function shouldTrackAniList(config) {
  * @param {string} userUUID - User's UUID for token retrieval
  * @returns {Promise<{success: boolean, reason?: string, updated?: boolean}>}
  */
-async function trackAnimeProgress(parsedId, config, userUUID) {
+async function trackAnimeProgress(parsedId, config, userUUID, unwatched = false, throughParsedId = null) {
   const startTime = Date.now();
   
   try {
@@ -769,6 +769,16 @@ async function trackAnimeProgress(parsedId, config, userUUID) {
     const totalEpisodes = mediaStatus.episodes;
 
     logger.debug(`[AniList Tracker] Current progress: ${currentProgress}, New episode: ${episodeNumber}, Total: ${totalEpisodes || 'unknown'}`);
+
+    if (unwatched) {
+      const through = throughParsedId ? await resolveAniListId(throughParsedId) : { anilistId, episode: episodeNumber };
+      const throughEpisode = through?.anilistId === anilistId ? through.episode : Number.POSITIVE_INFINITY;
+      if (!mediaStatus.mediaListEntry || episodeNumber > currentProgress || throughEpisode < currentProgress) {
+        return { success: true, reason: 'no_progress_change', updated: false };
+      }
+      const lowered = await updateProgress(anilistId, episodeNumber - 1, totalEpisodes, accessToken);
+      return lowered ? { success: true, reason: 'updated', updated: true } : { success: false, reason: 'update_failed', updated: false };
+    }
 
     // Only update if the new episode is greater than current progress
     if (episodeNumber <= currentProgress) {

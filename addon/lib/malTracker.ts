@@ -630,7 +630,7 @@ async function setScore(malId: number, score: number, accessToken: string): Prom
   return true;
 }
 
-async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID: string): Promise<{ success: boolean; reason?: string; updated?: boolean }> {
+async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID: string, unwatched = false, throughParsedId: ParsedMediaId | null = null): Promise<{ success: boolean; reason?: string; updated?: boolean }> {
   const startTime = Date.now();
 
   try {
@@ -675,6 +675,16 @@ async function trackAnimeProgress(parsedId: ParsedMediaId, config: any, userUUID
     const totalEpisodes = animeStatus.episodes;
 
     logger.debug(`[MAL Tracker] Current progress: ${currentProgress}, New episode: ${episodeNumber}, Total: ${totalEpisodes || 'unknown'}`);
+
+    if (unwatched) {
+      const through = throughParsedId ? await resolveMalId(throughParsedId) : { malId, episode: episodeNumber };
+      const throughEpisode = through?.malId === malId ? through.episode : Number.POSITIVE_INFINITY;
+      if (!animeStatus.listStatus || episodeNumber > currentProgress || throughEpisode < currentProgress) {
+        return { success: true, reason: 'no_progress_change', updated: false };
+      }
+      const lowered = await updateProgress(malId, episodeNumber - 1, totalEpisodes, accessToken);
+      return lowered ? { success: true, reason: 'updated', updated: true } : { success: false, reason: 'update_failed', updated: false };
+    }
 
     if (episodeNumber <= currentProgress) {
       logger.debug(`[MAL Tracker] Skipping update - episode ${episodeNumber} not greater than current progress ${currentProgress}`);

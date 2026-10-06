@@ -365,7 +365,7 @@ function resumeSourceCaption(value: string, options: Array<{ value: string; labe
   }
   const option = options.find((o) => o.value === value);
   if (option?.animeOnly) {
-    return `${option.label} only: the watched ticks, Next Up and Upcoming come from your ${option.label} anime list, on top of what you play here. It covers anime alone, so other shows only appear from your plays here, and it keeps no positions, so Continue Watching is what you pause here.`;
+    return `${option.label} only: the watched ticks, Next Up and Upcoming come from your ${option.label} anime list, on top of what you play here. It covers anime alone, so other shows only appear from your plays here, and it keeps no positions, so Continue Watching is what you pause here. It also keeps a count of episodes watched rather than each one, so unwatching the latest episode lowers the count, while unwatching an earlier one leaves the count as it is and shows that episode unwatched here only.`;
   }
   const name = option?.label ?? 'that tracker';
   return `${name} only: Continue Watching, the watched ticks, Next Up and Upcoming all come from ${name}, on top of what you play here. Pick this when two trackers disagree and you want one to win.`;
