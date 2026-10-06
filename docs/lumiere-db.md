@@ -28,8 +28,12 @@ services:
     user: "${PUID}:${PGID}"
     expose:
       - 8000
-    env_file:
-      - .env
+    environment:
+      PORT: "8000"
+      ETL_POLL_INTERVAL: "1h"
+      ETL_REBUILD_WINDOW: ""
+      TZ: "UTC"
+      CACHE_MAX_BYTES: "256MB"
     volumes:
       - ${DOCKER_DATA_DIR}/lumiere-db:/data
     profiles:
@@ -37,7 +41,7 @@ services:
       - all
 ```
 
-- `stop_grace_period: 75s` gives a rebuild time to finish writing on `docker compose down`.
+- `stop_grace_period: 75s` allows graceful shutdown and cleanup on `docker compose down`.
 - The container runs as `PUID:PGID`, so create the data folder and give it to that user first:
 
   ```bash
@@ -53,23 +57,29 @@ services:
 
 ## Point AIOMetadata at it
 
-Add this to the `aiometadata` service's `.env` and restart the addon:
+Add this to the `aiometadata` service's `.env`:
 
 ```env
 LUMIERE_API_BASE=http://lumiere-db:8000
+```
+
+Then recreate the container to apply the changed environment:
+
+```bash
+docker compose up -d --force-recreate aiometadata
 ```
 
 When `LUMIERE_API_BASE` is empty, every LumiereDB option is hidden. A configuration that picked LumiereDB falls back to the default provider, and its LumiereDB catalogs are switched off.
 
 ## First start
 
-On first start LumiereDB downloads about 2 GB from IMDb and builds its index, which takes a while. Until then, LumiereDB searches and catalogs come back empty. Check progress with:
+On first start LumiereDB downloads about 2 GB from IMDb and builds its index, which takes a while. Until then, LumiereDB searches and catalogs come back empty. Check readiness from the AIOMetadata container with:
 
 ```bash
-docker compose exec lumiere-db wget -qO- http://localhost:8000/readyz
+docker compose exec aiometadata node -e "fetch('http://lumiere-db:8000/readyz').then(async r => console.log(r.status, await r.text())).catch(e => { console.error(e.message); process.exit(1) })"
 ```
 
-It returns `{"status":"not_ready",...}` until the first build is published, then `200`. After that LumiereDB checks IMDb hourly and rebuilds in the background when the data changes. The old index keeps serving until the new one swaps in.
+It prints `503` with `{"status":"not_ready",...}` until the first build is published, then `200` with `{"status":"ready"}`. After that LumiereDB checks IMDb hourly and rebuilds in the background when the data changes. The old index keeps serving until the new one swaps in.
 
 ## Turn it on in AIOMetadata
 
@@ -94,12 +104,26 @@ The genre list for Popular and Trending is cached for 30 days. The catalogs foll
 
 ## LumiereDB settings worth knowing
 
-These go in the `.env` LumiereDB reads.
+Set these in the LumiereDB service's `environment` block in Compose.
 
 | Variable | Default | Why you'd set it |
 |---|---|---|
 | `ETL_REBUILD_WINDOW` | *(any time)* | Hold routine rebuilds to a window such as `02:00-06:00`, so they run during quiet hours. |
 | `TZ` | `UTC` | Time zone the rebuild window is read in. |
+| `ETL_POLL_INTERVAL` | `1h` | How often to check IMDb for updated datasets. Accepts durations such as `6h` or `24h`. |
+| `CACHE_MAX_BYTES` | `256MB` | RAM allocated to LumiereDB's result cache. Lower it on hosts with limited memory. |
+
+`ETL_REBUILD_WINDOW` limits when routine index rebuilds can start after IMDb's data changes. Rebuilding uses CPU and memory, so a quiet-hours window can help on a shared host. For example:
+
+```yaml
+environment:
+  ETL_REBUILD_WINDOW: "02:00-06:00"
+  TZ: "Europe/Bucharest"
+```
+
+With these settings, LumiereDB keeps checking for updates throughout the day but holds routine rebuilds until 02:00–06:00 Bucharest time. Searches and catalogs keep using the existing index until the new one is ready. The window does not force a nightly rebuild; there must be an update to process.
+
+An empty window allows rebuilds at any time. Windows can cross midnight, such as `22:00-04:00`, and a rebuild that starts inside the window can finish after it closes. Initial builds, schema upgrades and manually forced rebuilds bypass the window.
 
 To rebuild immediately, without waiting for the next check:
 
