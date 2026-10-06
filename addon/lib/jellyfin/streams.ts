@@ -305,8 +305,8 @@ export function recallStreams(key: string): any[] | undefined {
   return resolved.get(key);
 }
 
-export function streamsUnderway(key: string): boolean {
-  return resolved.has(key) || inFlight.has(key);
+export function streamsState(key: string): 'cached' | 'fetching' | null {
+  return resolved.has(key) ? 'cached' : inFlight.has(key) ? 'fetching' : null;
 }
 
 export function coalesce(key: string, work: () => Promise<any[]>): Promise<any[]> {

@@ -31,7 +31,7 @@ import { decodeJellyfinId } from './ids';
 import { imageTag, isWideTag } from './imageTags';
 import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamsUnderway, streamUserAgent, toNotice, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamsState, streamUserAgent, toNotice, toPlayable } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { isAnimeTitle, showIdentity } from './canonicalIds';
@@ -811,7 +811,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const captured: any[] = [];
         // query and params are prototype getters, so a spread would lose them.
         const forged = Object.create(req, {
-          params: { value: { ...req.params, itemId: id, listed: true }, enumerable: true },
+          params: { value: { ...req.params, itemId: id, listed: true, lookup: ids.length === 1 }, enumerable: true },
           query: { value: req.query, enumerable: true },
         });
         await singleItemHandler(
@@ -1243,20 +1243,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return (await loadConfig(req))?.jellyfinResolveOnOpen === true;
   };
 
-  const streamsKnown = async (req: any, descriptor: any): Promise<boolean> => {
-    if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) return false;
+  const streamsKnown = async (req: any, descriptor: any): Promise<'cached' | 'fetching' | null> => {
+    if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) return null;
     const stremioId = stremioIdFor(descriptor);
-    if (!stremioId) return false;
+    if (!stremioId) return null;
     const type = descriptor.k === 'movie' ? 'movie' : 'series';
-    return streamsUnderway(streamCacheKey(req.params.userUUID, profileKey(await loadConfig(req)), type, stremioId));
+    return streamsState(streamCacheKey(req.params.userUUID, profileKey(await loadConfig(req)), type, stremioId));
   };
 
-  // On, a title opens at once and its streams resolve alongside for the next ask.
   const attachSourcesInTime = async (req: any, item: any, descriptor: any, itemId: string): Promise<void> => {
-    if (req.params?.listed) return;
+    if (req.params?.listed && !req.params?.lookup) return;
     const asked = req.params?.forceSources || asksForSources(req);
-    const on = asked ? false : await resolveOnOpen(req);
-    if (asked || (on && await streamsKnown(req, descriptor))) {
+    const known = asked ? null : await streamsKnown(req, descriptor);
+    const on = asked || known === 'cached' || req.params?.listed ? false : await resolveOnOpen(req);
+    if (asked || known === 'cached' || (on && known === 'fetching')) {
       await attachSources(req, item, descriptor, itemId).catch((error: any) =>
         logger.debug(`Sources for ${itemId} unavailable: ${error?.message || error}`)
       );
