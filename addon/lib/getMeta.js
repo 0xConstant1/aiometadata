@@ -140,11 +140,7 @@ const parseAirsTime = (airsTime) => {
 };
 
 const timezoneOffsetFormatters = new Map();
-const releaseTimezoneOffsets = new Map();
-const MAX_TIMEZONE_FORMATTERS = 128;
-const MAX_RELEASE_TIMEZONE_DAYS = 512;
-const TIMEZONE_HOUR_MS = 60 * 60 * 1000;
-const TIMEZONE_DAY_MS = 24 * TIMEZONE_HOUR_MS;
+const TIMEZONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 const getTimezoneOffsetFormatter = (timezone) => {
   let formatter = timezoneOffsetFormatters.get(timezone);
@@ -155,9 +151,6 @@ const getTimezoneOffsetFormatter = (timezone) => {
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false
     });
-    if (timezoneOffsetFormatters.size >= MAX_TIMEZONE_FORMATTERS) {
-      timezoneOffsetFormatters.delete(timezoneOffsetFormatters.keys().next().value);
-    }
     timezoneOffsetFormatters.set(timezone, formatter);
   }
   return formatter;
@@ -183,40 +176,14 @@ const getTimezoneOffsetMinutes = (utcDate, timezone) => {
 const resolveLocalReleaseTimestamp = (localDate, timezone) => {
   const localMs = localDate.getTime();
   if (!Number.isFinite(localMs)) return new Date(localMs);
-  const dayMs = Math.floor(localMs / TIMEZONE_DAY_MS) * TIMEZONE_DAY_MS;
-  const key = `${timezone}:${dayMs}`;
-  let cachedOffsets = releaseTimezoneOffsets.get(key);
-  if (!cachedOffsets) {
-    cachedOffsets = new Set();
-    for (let hours = -48; hours <= 48; hours += 6) {
-      cachedOffsets.add(getTimezoneOffsetMinutes(new Date(dayMs + hours * TIMEZONE_HOUR_MS), timezone));
-    }
-    if (releaseTimezoneOffsets.size >= MAX_RELEASE_TIMEZONE_DAYS) {
-      releaseTimezoneOffsets.delete(releaseTimezoneOffsets.keys().next().value);
-    }
-    releaseTimezoneOffsets.set(key, cachedOffsets);
-  }
-
-  const offsets = new Set(cachedOffsets);
-  const candidates = [];
-  for (const offset of offsets) {
-    const instant = localMs - offset * 60000;
-    const actualOffset = getTimezoneOffsetMinutes(new Date(instant), timezone);
-    offsets.add(actualOffset);
-    candidates.push({ instant, offset, actualOffset, local: instant + actualOffset * 60000 });
-  }
-
-  // Repeated local times use the first occurrence.
-  const exact = candidates.filter(candidate => candidate.local === localMs);
-  if (exact.length) return new Date(Math.min(...exact.map(candidate => candidate.instant)));
-
-  // A skipped time advances by the gap; verify both sides of the offset change.
-  const forward = candidates.filter(candidate => candidate.local > localMs && candidates.some(other =>
-    other.offset === candidate.actualOffset && other.actualOffset === candidate.offset && other.local < localMs
-  )).sort((a, b) => a.local - b.local || a.instant - b.instant);
-  if (forward.length) return new Date(forward[0].instant);
-
-  throw new RangeError(`Cannot resolve local release time in ${timezone}`);
+  const before = getTimezoneOffsetMinutes(new Date(localMs - TIMEZONE_DAY_MS), timezone);
+  const after = getTimezoneOffsetMinutes(new Date(localMs + TIMEZONE_DAY_MS), timezone);
+  if (before === after) return new Date(localMs - before * 60000);
+  const matches = [...new Set([before, after])]
+    .map(offset => localMs - offset * 60000)
+    .filter(instant => instant + getTimezoneOffsetMinutes(new Date(instant), timezone) * 60000 === localMs);
+  // Repeated local times use the first occurrence; a skipped time advances by the gap.
+  return new Date(matches.length ? Math.min(...matches) : localMs - before * 60000);
 };
 
 const getTimeValue = (dateValue) => {
