@@ -1534,6 +1534,10 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     };
   }
 
+  if (catalogFromConfig?.metadata?.useUpstreamArt === true) {
+    catalogConfig.upstreamArt = true;
+  }
+
   const catalogConfigString = JSON.stringify(catalogConfig);
   const configHash = hashConfig(catalogConfigString);
   const catalogConfigShown = JSON.stringify(catalogConfig, (field, value) => (field === 'apiKeys' && value && typeof value === 'object' ? Object.keys(value) : value));

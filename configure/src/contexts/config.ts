@@ -104,6 +104,7 @@ export interface CatalogConfig {
     listName?: string;
     isCustomList?: boolean;
     posterShape?: 'poster' | 'landscape';
+    useUpstreamArt?: boolean;
     // Trakt Up Next metadata
     useShowPosterForUpNext?: boolean;
     includeAnimeInUpNext?: boolean;

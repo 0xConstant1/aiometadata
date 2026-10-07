@@ -1949,7 +1949,7 @@ async function getExternalAddonCatalog(type: string, catalogId: string, genre: s
 
       for (let i = 0; i < items.length; i += batchSize) {
         const chunk = items.slice(i, i + batchSize);
-        let metas = await parseStremThruItems(chunk, type, genre, language, config, includeVideos);
+        let metas = await parseStremThruItems(chunk, type, genre, language, config, includeVideos, { upstreamArt: userCatalog.metadata?.useUpstreamArt === true });
         metas = await applyCatalogFilters(metas, { type, config, catalogConfig: userCatalog, cleanId: catalogId });
         for (const meta of metas) {
           const id = meta?.id;

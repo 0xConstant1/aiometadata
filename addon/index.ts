@@ -5529,11 +5529,14 @@ const catalogRoute = async function (req, res) {
     // Skip poster override for up next catalogs unless useShowPosterForUpNext is enabled
     // (when disabled, up next uses episode thumbnails as posters which shouldn't be overridden)
     const host = process.env.HOST_NAME.startsWith('http') ? process.env.HOST_NAME : `https://${process.env.HOST_NAME}`;
+    const upstreamArt = !config._currentSearchCatalogId && catalogConfig?.metadata?.useUpstreamArt === true;
     const posterPatternsEnabled = config._currentSearchCatalogId
       ? (config.search?.engineRatingPosters?.[config._currentSearchCatalogId] === true)
-      : (catalogConfig?.enableRatingPosters !== false);
+      : (catalogConfig?.enableRatingPosters !== false && !upstreamArt);
     const posterPattern = posterPatternsEnabled ? require('./utils/parseProps').resolvePosterPattern(config) : null;
-    if ((posterPattern || config.customBackgroundUrlPattern || config.customLandscapeUrlPattern || config.customLogoUrlPattern) && responseData?.metas && Array.isArray(responseData.metas)) {
+    const backgroundPattern = upstreamArt ? null : config.customBackgroundUrlPattern;
+    const logoPattern = upstreamArt ? null : config.customLogoUrlPattern;
+    if ((posterPattern || backgroundPattern || config.customLandscapeUrlPattern || logoPattern) && responseData?.metas && Array.isArray(responseData.metas)) {
       const isUpNextCatalog = cleanId.includes('up_next') || cleanId.includes('upnext');
       const upNextUsesShowPoster = isUpNextCatalog && catalogConfig?.metadata?.useShowPosterForUpNext === true;
       const { resolveCustomArtUrl, getPosterRatingApiKey, resolveLandscapePattern, posterShapeOf } = require('./utils/parseProps');
@@ -5563,8 +5566,8 @@ const catalogRoute = async function (req, res) {
             }
           }
         }
-        if (config.customBackgroundUrlPattern) {
-          const resolved = resolveCustomArtUrl(config.customBackgroundUrlPattern, ids, type, config, { shape: 'landscape' });
+        if (backgroundPattern) {
+          const resolved = resolveCustomArtUrl(backgroundPattern, ids, type, config, { shape: 'landscape' });
           if (resolved) {
             if (config.usePosterProxy) {
               const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
@@ -5593,8 +5596,8 @@ const catalogRoute = async function (req, res) {
             }
           }
         }
-        if (config.customLogoUrlPattern) {
-          const resolved = resolveCustomArtUrl(config.customLogoUrlPattern, ids, type, config);
+        if (logoPattern) {
+          const resolved = resolveCustomArtUrl(logoPattern, ids, type, config);
           if (resolved) {
             if (config.usePosterProxy) {
               const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
@@ -5621,7 +5624,7 @@ const catalogRoute = async function (req, res) {
     const isSearchCatalog = cleanId === 'search' || cleanId === 'people_search' || cleanId === 'gemini.search';
     if (catalogConfig?.metadata?.posterShape === 'landscape' && !isSearchCatalog && req.params.forJellyfin !== '1' && Array.isArray(responseData?.metas)) {
       for (const meta of responseData.metas) {
-        const landscape = meta.landscapePoster || meta.background;
+        const landscape = upstreamArt ? (meta.background || meta.landscapePoster) : (meta.landscapePoster || meta.background);
         if (meta.posterShape === 'landscape' || !landscape) continue;
         meta.poster = landscape;
         meta.posterShape = 'landscape';

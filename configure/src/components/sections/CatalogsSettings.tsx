@@ -1828,6 +1828,7 @@ const CustomManifestSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: C
   const { setConfig, catalogTTL, config } = useConfig();
   const [cacheTTL, setCacheTTL] = useState<number | null>(catalog.cacheTTL ?? null);
   const [enableRatingPosters, setEnableRatingPosters] = useState<boolean>(catalog.enableRatingPosters !== false);
+  const [useUpstreamArt, setUseUpstreamArt] = useState<boolean>(catalog.metadata?.useUpstreamArt === true);
   const [hideWatchedTrakt, setHideWatchedTrakt] = useState<string>(catalog.metadata?.hideWatchedTrakt === true ? 'on' : catalog.metadata?.hideWatchedTrakt === false ? 'off' : 'global');
   const [hideWatchedAnilist, setHideWatchedAnilist] = useState<string>(catalog.metadata?.hideWatchedAnilist === true ? 'on' : catalog.metadata?.hideWatchedAnilist === false ? 'off' : 'global');
   const [hideWatchedMdblist, setHideWatchedMdblist] = useState<string>(catalog.metadata?.hideWatchedMdblist === true ? 'on' : catalog.metadata?.hideWatchedMdblist === false ? 'off' : 'global');
@@ -1847,7 +1848,7 @@ const CustomManifestSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: C
       ...prev,
       catalogs: prev.catalogs.map(c =>
         c.id === catalog.id && c.type === catalog.type
-          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), enableRatingPosters, metadata: { ...c.metadata, posterShape: posterShape === 'landscape' ? 'landscape' : undefined, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
+          ? { ...c, cacheTTL: resolveCatalogTTL(cacheTTL, minCacheTTLFor(catalog.id)), enableRatingPosters, metadata: { ...c.metadata, useUpstreamArt: useUpstreamArt || undefined, posterShape: posterShape === 'landscape' ? 'landscape' : undefined, hideWatchedTrakt: hideTraktValue, hideWatchedAnilist: hideAnilistValue, hideWatchedMdblist: hideMdblistValue, hideWatchedSimkl: hideSimklValue, hideUnreleasedDigital: hideUnreleasedDigitalValue, hideUnreleasedShows: hideUnreleasedShowsValue } }
           : c
       )
     }));
@@ -1868,7 +1869,22 @@ const CustomManifestSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: C
             min={minCacheTTLFor(catalog.id)}
             help="How long to cache this catalog before refreshing. Range: 5 minutes to 7 days."
           />
-          {(config.apiKeys?.rpdb || config.apiKeys?.topPoster || config.customPosterUrlPattern) && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="custom-upstream-art-toggle">Use the Addon's Own Art</Label>
+                <p className="text-xs text-muted-foreground">
+                  Show the poster, background and logo this addon provides. Rating posters and custom art patterns are skipped for this catalog.
+                </p>
+              </div>
+              <Switch
+                id="custom-upstream-art-toggle"
+                checked={useUpstreamArt}
+                onCheckedChange={setUseUpstreamArt}
+              />
+            </div>
+          </div>
+          {!useUpstreamArt && (config.apiKeys?.rpdb || config.apiKeys?.topPoster || config.customPosterUrlPattern) && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
