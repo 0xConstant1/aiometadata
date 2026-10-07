@@ -25,10 +25,10 @@ export const FEATURED_COLLECTIONS: FeaturedCollection[] = [
     author: 'Cedya',
     authorUrl: 'https://github.com/cedya77',
     url: '/featured/anime-essentials.json',
-    summary: 'Airing now and trending on AniList, your watchlist with upcoming, trending and popular picks, twenty-seven studios, every MAL genre and theme, and five decades.',
-    note: 'The Watchlist tile reads your own MDBList watchlist and AniList Watching list. The studio, genre and decade cards are Jeor\'s, from jeor.github.io/Anime.',
+    summary: 'Airing now and trending on AniList, your watchlist with upcoming, trending and popular picks, twenty-seven studios as cards and as logos, every MAL genre and theme, and five decades.',
+    note: 'The Watchlist tile reads your own MDBList watchlist and AniList Watching list. The studio, genre and decade cards are Jeor\'s, from jeor.github.io/Anime. The studio logos come from Wikimedia Commons.',
     catalogs: 21,
-    detail: '4 collections and 2 classic rows, 114 tiles with artwork.',
+    detail: '5 collections and 2 classic rows, 141 tiles with artwork.',
     classicRows: 2,
   },
   {
