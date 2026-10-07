@@ -713,8 +713,8 @@ async function performTmdbSearch(type: string, query: string, language: string, 
 
 /**
  * IMDb's own autocomplete. It tolerates typos that TMDB and TVDB reject outright,
- * so it is used only to turn a loose query into IMDb ids; every id is then handed
- * to the TMDB search path, which already resolves an IMDb id into a full meta.
+ * so it is used only to turn a loose query into IMDb ids; every id is then resolved
+ * into a full meta by the user's metadata provider.
  */
 async function performImdbSuggestionSearch(type: string, query: string, language: string, config: any): Promise<any[]> {
   const startTime = Date.now();
@@ -756,10 +756,17 @@ async function performImdbSuggestionSearch(type: string, query: string, language
   return metas;
 }
 
+function hydrateImdbId(type: string, imdbId: string, language: string, config: any): Promise<any[]> {
+  const metaProvider = type === 'movie' ? (config.providers?.movie || 'tmdb') : (config.providers?.series || 'tvdb');
+  return metaProvider === 'tvdb'
+    ? performTvdbSearch(type, imdbId, language, config)
+    : performTmdbSearch(type, imdbId, language, config, false);
+}
+
 // Results keep the provider's order, since its ranking is the reason to use it.
 async function hydrateImdbIds(type: string, results: Array<{ imdbId: string; title: string }>, language: string, config: any): Promise<any[]> {
   const hydrated = await mapWithLimit(results, (result) =>
-    performTmdbSearch(type, result.imdbId, language, config, false)
+    hydrateImdbId(type, result.imdbId, language, config)
       .catch((error: any) => {
         logger.debug(`Could not hydrate ${result.imdbId} (${result.title}): ${error.message}`);
         return [];
@@ -781,7 +788,7 @@ async function hydrateImdbIds(type: string, results: Array<{ imdbId: string; tit
 
 /**
  * A self-hosted LumiereDB answers with IMDb ids ranked on how the title matched,
- * so it gets the same TMDB hydration as IMDb suggestions without the bot challenge.
+ * so it gets the same hydration as IMDb suggestions without the bot challenge.
  */
 async function performLumiereSearch(type: string, query: string, language: string, config: any): Promise<any[]> {
   const startTime = Date.now();
