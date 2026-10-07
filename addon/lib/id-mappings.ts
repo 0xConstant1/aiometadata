@@ -1,5 +1,5 @@
 import consola from 'consola';
-import { IdMap, IndexStats, MappingIndex, buildIndex, parseMappingCsv } from './id-mapping-index';
+import { IdMap, IndexStats, MappingIndex, ParsedMappings, buildIndex, lookup, parseMappingCsv } from './id-mapping-index';
 import { MappingSource, SOURCES, downloadCsv, readCachedCsv } from './mapping-sources';
 const redis = require('./redisClient');
 const logger = consola.withTag('ID Mappings');
@@ -17,18 +17,18 @@ const MEDIA: Record<MediaType, { primary: MappingSource; backfill: MappingSource
 let indexes: Record<MediaType, MappingIndex> | null = null;
 let updateInterval: ReturnType<typeof setInterval> | null = null;
 
-function parseSource(csv: string, source: MappingSource): IdMap[] {
-  const { rows, invalid } = parseMappingCsv(csv);
-  if (rows.length === 0) throw new Error(`${source.name} has no valid rows`);
-  logger.info(`Parsed ${source.name}: ${rows.length} valid rows, ${invalid} invalid skipped`);
-  return rows;
+function parseSource(csv: string, source: MappingSource): ParsedMappings {
+  const parsed = parseMappingCsv(csv);
+  if (parsed.count === 0) throw new Error(`${source.name} has no valid rows`);
+  logger.info(`Parsed ${source.name}: ${parsed.count} valid rows, ${parsed.invalid} invalid skipped`);
+  return parsed;
 }
 
-function loadRows(source: MappingSource, skipIfUnchanged = false): Promise<IdMap[] | null> {
+function loadRows(source: MappingSource, skipIfUnchanged = false): Promise<ParsedMappings | null> {
   return downloadCsv(source, (csv) => parseSource(csv, source), skipIfUnchanged);
 }
 
-function build(type: MediaType, primaryRows: IdMap[], backfillRows: IdMap[]): MappingIndex {
+function build(type: MediaType, primaryRows: ParsedMappings, backfillRows: ParsedMappings): MappingIndex {
   const { withTvmaze } = MEDIA[type];
   const index = buildIndex(primaryRows, backfillRows, withTvmaze);
   const { primaryRows: dinsRows, backfilledRows, filled, conflicts } = index.stats;
@@ -126,21 +126,16 @@ function indexFor(type: string): MappingIndex {
   return type === 'series' ? indexes.series : indexes.movie;
 }
 
-function byNumericId(map: Map<number, IdMap> | null, id: string): IdMap | undefined {
-  const num = parseInt(id);
-  return isNaN(num) || !map ? undefined : map.get(num);
-}
-
 export function getByImdbId(imdbId: string, type: 'series' | 'movie' = 'series'): IdMap | undefined {
-  return indexFor(type).imdb.get(imdbId);
+  return lookup(indexFor(type), 'imdbId', imdbId);
 }
 
 export function getByTmdbId(tmdbId: string, type: 'series' | 'movie' = 'series'): IdMap | undefined {
-  return byNumericId(indexFor(type).tmdb, tmdbId);
+  return lookup(indexFor(type), 'tmdbId', tmdbId);
 }
 
 export function getByTvdbId(tvdbId: string, type: 'series' | 'movie' = 'series'): IdMap | undefined {
-  return byNumericId(indexFor(type).tvdb, tvdbId);
+  return lookup(indexFor(type), 'tvdbId', tvdbId);
 }
 
 export const getSeriesByImdb = (imdbId: string) => getByImdbId(imdbId, 'series');
@@ -151,15 +146,15 @@ export const getMovieByTmdb = (tmdbId: string) => getByTmdbId(tmdbId, 'movie');
 export const getMovieByTvdb = (tvdbId: string) => getByTvdbId(tvdbId, 'movie');
 
 export function getSeriesByTvmaze(tvmazeId: string): IdMap | undefined {
-  return byNumericId(indexFor('series').tvmaze, tvmazeId);
+  return lookup(indexFor('series'), 'tvmazeId', tvmazeId);
 }
 
 export function getMappingStats() {
   ensureInitialized();
   const { series, movie } = indexes;
   return {
-    series: { imdb: series.imdb.size, tvdb: series.tvdb.size, tmdb: series.tmdb.size, tvmaze: series.tvmaze.size },
-    movies: { imdb: movie.imdb.size, tvdb: movie.tvdb.size, tmdb: movie.tmdb.size },
+    series: { imdb: series.byId.imdbId.ids.length, tvdb: series.byId.tvdbId.ids.length, tmdb: series.byId.tmdbId.ids.length, tvmaze: series.byId.tvmazeId.ids.length },
+    movies: { imdb: movie.byId.imdbId.ids.length, tvdb: movie.byId.tvdbId.ids.length, tmdb: movie.byId.tmdbId.ids.length },
   };
 }
 
