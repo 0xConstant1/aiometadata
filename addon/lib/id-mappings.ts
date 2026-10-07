@@ -39,23 +39,38 @@ async function loadAll(): Promise<Record<MediaType, MappingIndex>> {
   return { series: build('series', dinsSeries, wikiSeries), movie: build('movie', dinsMovies, wikiMovies) };
 }
 
+// Downloads cache the file and ETag before the build; reset them so a failed load is re-fetched next time.
+async function clearSourceEtags(): Promise<void> {
+  if (!redis || redis.status !== 'ready') return;
+  try {
+    await redis.del(...Object.values(SOURCES).map((source) => source.etagKey));
+  } catch (error: any) {
+    logger.warn(`Failed to clear ETags: ${error.message}`);
+  }
+}
+
 async function markUpdated(): Promise<void> {
   if (redis && redis.status === 'ready') await redis.set(MAINTENANCE_KEY, Date.now().toString());
 }
 
 export async function refreshChangedMappings(): Promise<void> {
   ensureInitialized();
-  const next = { ...indexes };
-  let rebuilt = false;
-  for (const type of ['series', 'movie'] as MediaType[]) {
-    const { primary, backfill } = MEDIA[type];
-    const [primaryCsv, backfillCsv] = await Promise.all([downloadCsv(primary, true), downloadCsv(backfill, true)]);
-    if (primaryCsv === null && backfillCsv === null) continue;
-    next[type] = build(type, primaryCsv ?? readCachedCsv(primary), backfillCsv ?? readCachedCsv(backfill));
-    rebuilt = true;
+  try {
+    const next = { ...indexes };
+    let rebuilt = false;
+    for (const type of ['series', 'movie'] as MediaType[]) {
+      const { primary, backfill } = MEDIA[type];
+      const [primaryCsv, backfillCsv] = await Promise.all([downloadCsv(primary, true), downloadCsv(backfill, true)]);
+      if (primaryCsv === null && backfillCsv === null) continue;
+      next[type] = build(type, primaryCsv ?? readCachedCsv(primary), backfillCsv ?? readCachedCsv(backfill));
+      rebuilt = true;
+    }
+    if (rebuilt) indexes = next;
+    else logger.info('Scheduled refresh found no changes. Keeping existing mappings.');
+  } catch (error) {
+    await clearSourceEtags();
+    throw error;
   }
-  if (rebuilt) indexes = next;
-  else logger.info('Scheduled refresh found no changes. Keeping existing mappings.');
   await markUpdated();
 }
 
@@ -82,6 +97,7 @@ export async function initializeMappings(): Promise<void> {
   } catch (error: any) {
     const message = error?.message || String(error);
     logger.error(`Initialization failed: ${message}`);
+    await clearSourceEtags();
     throw new Error(`ID mappings failed to initialize: ${message}`);
   }
   scheduleRefresh();
@@ -154,13 +170,7 @@ export function getIdMappingsStats() {
 
 export async function forceUpdateIdMappings(): Promise<{ success: boolean; message: string; seriesCount: number; moviesCount: number }> {
   logger.info('Force update requested...');
-  if (redis && redis.status === 'ready') {
-    try {
-      await redis.del(...Object.values(SOURCES).map((source) => source.etagKey));
-    } catch (error: any) {
-      logger.warn(`Failed to clear ETags: ${error.message}`);
-    }
-  }
+  await clearSourceEtags();
 
   try {
     indexes = await loadAll();
@@ -176,6 +186,7 @@ export async function forceUpdateIdMappings(): Promise<{ success: boolean; messa
     };
   } catch (error: any) {
     logger.error(`Force update failed: ${error.message}`);
+    await clearSourceEtags();
     const { seriesCount, moviesCount } = getIdMappingsStats();
     return { success: false, message: `Force update failed: ${error.message}`, seriesCount, moviesCount };
   }
