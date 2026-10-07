@@ -327,7 +327,7 @@ to every visitor, so which one you reach for depends on who uses the instance.
 
 ### `WIKI_MAPPER_UPDATE_INTERVAL_HOURS`
 - **Default**: `24`
-- **Description**: How often to fetch Wikidata ID mappings (series/movies) from GitHub (in hours). Uses ETag to avoid re-downloading when unchanged.
+- **Description**: How often to fetch ID mappings (series/movies) from GitHub (in hours): dins-mappings as the primary source, with Wikidata backfilling only what dins lacks. Uses ETag to avoid re-downloading when unchanged.
 - **Example**: `WIKI_MAPPER_UPDATE_INTERVAL_HOURS=12`
 
 ### `IMDB_RATINGS_UPDATE_INTERVAL_HOURS`

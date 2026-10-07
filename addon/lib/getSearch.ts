@@ -24,7 +24,7 @@ import { fetchImdbSuggestions, type ImdbSuggestion } from '../utils/imdbSuggesti
 import { fetchLumiereSearch, fetchLumierePeopleSearch, type LumiereResult } from '../utils/lumiereSearch.js';
 import { lumiereApiBase } from '../utils/lumiereLists.js';
 import { mapWithLimit } from '../utils/concurrency.js';
-const wikiMappings: any = require('./wiki-mapper');
+const idMappings: any = require('./id-mappings');
 
 
 const logger = consola.withTag('Search');
@@ -308,7 +308,7 @@ async function performKitsuSearch(type: string, query: string, language: string,
 
           let tmdbId = isMovie ? idMapper.getTraktAnimeMovieByMalId(malId)?.externals.tmdb : mapping?.themoviedb_id;
           let imdbId = isMovie ? idMapper.getTraktAnimeMovieByMalId(malId)?.externals.imdb : mapping?.imdb_id;
-          let tvdbId = isMovie ? (wikiMappings.getByImdbId(imdbId, itemType))?.tvdbId || null : mapping?.tvdb_id;
+          let tvdbId = isMovie ? (idMappings.getByImdbId(imdbId, itemType))?.tvdbId || null : mapping?.tvdb_id;
 
           let id = imdbId || `kitsu:${kitsuId}`;
           const preferredProvider = config.providers?.anime || 'mal';

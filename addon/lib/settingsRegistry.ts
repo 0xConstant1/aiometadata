@@ -2731,8 +2731,8 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     key: 'WIKI_MAPPER_UPDATE_INTERVAL_HOURS',
     envVar: 'WIKI_MAPPER_UPDATE_INTERVAL_HOURS',
-    label: 'Wiki Mapper Update (hrs)',
-    description: 'Hours between wiki mapper data updates',
+    label: 'ID Mappings Update (hrs)',
+    description: 'Hours between ID mapping updates (dins-mappings + Wikidata backfill)',
     category: 'Data Updates',
     type: 'number',
     default: 168,

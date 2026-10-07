@@ -77,7 +77,7 @@ const isCompleteMediaId = (token) => MEDIA_ID_PATTERNS.some((re) => re.test(toke
 const { getCacheCleanupScheduler } = require('./cacheCleanupScheduler');
 const { getAnimeListXmlStats } = require('./anime-list-mapper');
 const { getIdMapperStats, getKitsuImdbStats, getAnimeApiStats, getMemoryStats: getIdMapperMemoryStats } = require('./id-mapper');
-const { getWikiMapperStats } = require('./wiki-mapper');
+const { getIdMappingsStats } = require('./id-mappings');
 const { getImdbRatingsStatsForDashboard, getRatingsStats } = require('./imdbRatings');
 const { getWarmupStats: getEssentialWarmupStats } = require('./cacheWarmer');
 const { getWarmupStats: getMALWarmupStats } = require('./malCatalogWarmer');
@@ -1718,9 +1718,9 @@ class DashboardAPI {
         });
       }
 
-      // 5. Wikidata Mappings update task (scheduled every WIKI_MAPPER_UPDATE_INTERVAL_HOURS)
+      // 5. ID Mappings update task (scheduled every WIKI_MAPPER_UPDATE_INTERVAL_HOURS)
       try {
-        const wikiMapperStats = getWikiMapperStats();
+        const wikiMapperStats = getIdMappingsStats();
         
         if (this.cache) {
           const wikiMapperLastUpdate = await this.cache.get(
@@ -1750,10 +1750,10 @@ class DashboardAPI {
 
           tasks.push({
             id: 5,
-            name: "Update Wikidata Mappings",
+            name: "Update ID Mappings",
             status: wikiMapperStatus,
             lastRun: wikiMapperTime,
-            description: `Updates ID mappings from Wikidata (${wikiMapperStats.totalCount.toLocaleString()} entries, every ${wikiMapperStats.updateIntervalHours}h)`,
+            description: `Updates ID mappings from dins-mappings + Wikidata backfill (${wikiMapperStats.totalCount.toLocaleString()} entries, ${wikiMapperStats.backfilledCount.toLocaleString()} backfilled, every ${wikiMapperStats.updateIntervalHours}h)`,
             nextRun: nextRunDisplay,
             action: "restart",
             category: "mapping"
@@ -1761,15 +1761,15 @@ class DashboardAPI {
         }
       } catch (error) {
         logger.warn(
-          "Failed to get Wikidata Mapper status:",
+          "Failed to get ID Mappings status:",
           error.message,
         );
         tasks.push({
           id: 5,
-          name: "Update Wikidata Mappings",
+          name: "Update ID Mappings",
           status: "error",
           lastRun: "Unknown",
-          description: "Updates ID mappings from Wikidata",
+          description: "Updates ID mappings from dins-mappings + Wikidata backfill",
           nextRun: "Now",
           action: "restart",
           category: "mapping"

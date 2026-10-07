@@ -23,7 +23,7 @@ const kitsu = require('./kitsu');
 var nameToImdb = require("name-to-imdb");
 const consola = require('consola');
 const { cp } = require("fs");
-const wikiMappings = require('./wiki-mapper.js');
+const idMappings = require('./id-mappings.js');
 const { withEpisodeOrder } = require('../utils/episodeOrder');
 
 
@@ -384,7 +384,7 @@ async function getMeta(type, language, stremioId, config = {}, userUUID, include
              detectedAnimeMapping = fribbMapping;
         }
         else {
-            const wikiMap = wikiMappings.getByTvdbId(tvdbId, 'movie');
+            const wikiMap = idMappings.getByTvdbId(tvdbId, 'movie');
             if (wikiMap && wikiMap.imdbId) {
                 const traktMapping = idMapper.getTraktAnimeMovieByImdbId(wikiMap.imdbId);
                 if (traktMapping) {
@@ -1006,7 +1006,7 @@ async function getAnimeMeta(preferredProvider, stremioId, language, config, user
     if (allIds?.malId) {
       allIds.imdbId = idMapper.getTraktAnimeMovieByMalId(allIds.malId)?.externals.imdb;
       allIds.tmdbId = idMapper.getTraktAnimeMovieByMalId(allIds.malId)?.externals.tmdb || allIds.tmdbId;
-      allIds.tvdbId = (wikiMappings.getByImdbId(allIds.imdbId, 'movie'))?.tvdbId || null;
+      allIds.tvdbId = (idMappings.getByImdbId(allIds.imdbId, 'movie'))?.tvdbId || null;
     }
   }
 

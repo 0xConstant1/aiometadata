@@ -2,7 +2,7 @@ import { parseStremioId } from './ids';
 
 const idMapper: any = require('../id-mapper');
 const animeList: any = require('../anime-list-mapper');
-const wiki: any = require('../wiki-mapper');
+const idMappings: any = require('../id-mappings');
 
 const database: any = require('../database');
 
@@ -49,7 +49,7 @@ export async function videoIdAliases(videoId: string): Promise<string[]> {
         ? parseInt(parsed.base.split(':')[1], 10)
         : mapping?.thetvdb_id
           || (mapping?.anidb_id ? animeList.resolveTvdbEpisodeFromAnidbEpisode(mapping.anidb_id, 1, 1)?.tvdbId : null)
-          || wiki.getByImdbId?.(imdbId, 'series')?.tvdbId
+          || idMappings.getByImdbId?.(imdbId, 'series')?.tvdbId
           || null;
 
       if (tvdbId) {

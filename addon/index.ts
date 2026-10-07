@@ -85,7 +85,7 @@ const { clientDistDir, clientIndexPath, publicDir } = require('./lib/runtimePath
 const ADDON_VERSION = buildInfo.version;
 const { withGlobalEpoch } = require('./lib/cacheEpoch');
 const idMapper = require('./lib/id-mapper');
-const wikiMappings = require('./lib/wiki-mapper.js');
+const idMappings = require('./lib/id-mappings.js');
 
 // Normalize redirect URIs to always include a scheme
 // Best-effort same-process duplicate handling. Trakt enforces authorization-code
@@ -6041,7 +6041,7 @@ addon.post("/stremio/:userUUID/rating", async function (req, res) {
       if (allIds?.malId) {
         allIds.imdbId = idMapper.getTraktAnimeMovieByMalId(allIds.malId)?.externals.imdb;
         allIds.tmdbId = idMapper.getTraktAnimeMovieByMalId(allIds.malId)?.externals.tmdb || allIds.tmdbId;
-        allIds.tvdbId = (wikiMappings.getByImdbId(allIds.imdbId, 'movie'))?.tvdbId || null;
+        allIds.tvdbId = (idMappings.getByImdbId(allIds.imdbId, 'movie'))?.tvdbId || null;
       }
     }
 
@@ -8449,17 +8449,17 @@ addon.post("/api/dashboard/maintenance/execute", requireDashboardAdmin, async (r
           result = { success: false, message: `Failed to update Kitsu-IMDB Mapping: ${error.message}` };
         }
       }
-    } else if (taskId === 5) { // Update Wikidata Mappings
+    } else if (taskId === 5) { // Update ID Mappings
       if (action === 'restart' || action === 'enable') {
         try {
-          const { forceUpdateWikiMappings } = require('./lib/wiki-mapper');
-          result = await forceUpdateWikiMappings();
+          const { forceUpdateIdMappings } = require('./lib/id-mappings');
+          result = await forceUpdateIdMappings();
           if (result.success) {
-            result.message = `Wikidata Mappings updated successfully (${result.seriesCount.toLocaleString()} series, ${result.moviesCount.toLocaleString()} movies)`;
+            result.message = `ID Mappings updated successfully (${result.seriesCount.toLocaleString()} series, ${result.moviesCount.toLocaleString()} movies)`;
           }
         } catch (error) {
-          consola.error('[Maintenance Task] Error updating Wikidata Mappings:', error);
-          result = { success: false, message: `Failed to update Wikidata Mappings: ${error.message}` };
+          consola.error('[Maintenance Task] Error updating ID Mappings:', error);
+          result = { success: false, message: `Failed to update ID Mappings: ${error.message}` };
         }
       }
     } else if (taskId === 11) { // Update IMDb Ratings
