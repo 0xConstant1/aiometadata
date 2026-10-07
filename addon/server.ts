@@ -4,7 +4,7 @@ import './utils/httpClient.js';
 import { addon, startServerWithCacheWarming } from './index.js';
 import { initializeMapper } from './lib/id-mapper.js';
 import { initializeAnimeListMapper } from './lib/anime-list-mapper.js';
-import { initializeMappings } from './lib/wiki-mapper.js';
+import { initializeMappings } from './lib/id-mappings.js';
 import { initializeRatings } from './lib/imdbRatings.js';
 import { initializeTmdbNetworkIndex } from './lib/tmdb-network-index.js';
 import { initializeTmdbKeywordIndex } from './lib/tmdb-keyword-index.js';
@@ -134,8 +134,8 @@ const initializationTasks: InitTask[] = [
     timeoutMs: 120_000,
     run: () => initializeMappings(),
     summary: () => {
-      const { getWikiMapperStats } = require('./lib/wiki-mapper.js');
-      return `${getWikiMapperStats().totalCount.toLocaleString()} mappings`;
+      const { getIdMappingsStats } = require('./lib/id-mappings.js');
+      return `${getIdMappingsStats().totalCount.toLocaleString()} mappings`;
     }
   },
   {

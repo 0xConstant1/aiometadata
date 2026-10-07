@@ -111,8 +111,8 @@ export async function videoIdFor(
   }
   if ((!tvdb || !imdb) && ids.tmdb) {
     try {
-      const wiki: any = require('../wiki-mapper');
-      const mapped = wiki.getByTmdbId?.(String(ids.tmdb), 'series');
+      const idMappings: any = require('../id-mappings');
+      const mapped = idMappings.getByTmdbId?.(String(ids.tmdb), 'series');
       if (!imdb && mapped?.imdbId) imdb = mapped.imdbId;
       if (!tvdb && mapped?.tvdbId) tvdb = mapped.tvdbId;
     } catch {

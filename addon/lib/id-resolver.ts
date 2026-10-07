@@ -7,7 +7,7 @@ const redisIdCache: any = require('./redis-id-cache');
 const timingMetrics: any = require('./timing-metrics');
 const consola: any = require('consola');
 const { httpGet }: any = require('../utils/httpClient');
-const { mappings }: any = require('./wiki-mapper.js');
+const { mappings }: any = require('./id-mappings.js');
 
 const logger: any = consola.withTag('ID-Resolver');
 
