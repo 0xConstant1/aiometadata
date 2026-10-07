@@ -27,32 +27,39 @@ export function readCachedCsv(source: MappingSource): string {
   return fs.readFileSync(source.cachePath, 'utf8');
 }
 
-export async function downloadCsv(source: MappingSource, skipIfUnchanged = false, maxRetries = 3): Promise<string | null> {
+export async function downloadCsv<T>(source: MappingSource, parse: (csv: string) => T, skipIfUnchanged = false, maxRetries = 3): Promise<T | null> {
   const { name, url, cachePath, etagKey } = source;
   // On a scheduled refresh the cache file is what is already loaded, so falling back to it means "no change".
-  const fromCache = (reason: string): string | null => {
+  const fromCache = (reason: string): T | null => {
     logger.warn(`${reason}; using cached ${name}`);
-    return skipIfUnchanged ? null : readCachedCsv(source);
+    return skipIfUnchanged ? null : parse(readCachedCsv(source));
   };
 
+  let unchanged = false;
   if (redis && redis.status === 'ready') {
     try {
       const savedEtag = await redis.get(etagKey);
       if (savedEtag && fs.existsSync(cachePath)) {
         const { statusCode, headers, body } = await request(url, { method: 'HEAD' });
         await body.dump();
-        if (statusCode === 200 && headers.etag === savedEtag) {
-          if (skipIfUnchanged) {
-            logger.info(`No changes detected for ${name}`);
-            return null;
-          }
-          return readCachedCsv(source);
-        }
-        if (statusCode === 429) return fromCache('Rate limited (429) on ETag check');
+        if (statusCode === 200 && headers.etag === savedEtag) unchanged = true;
+        else if (statusCode === 429) return fromCache('Rate limited (429) on ETag check');
       }
     } catch (error: any) {
       if (fs.existsSync(cachePath)) return fromCache(`ETag check failed (${error.code || error.message})`);
       logger.warn(`ETag check failed for ${name}: ${error.message}`);
+    }
+  }
+
+  if (unchanged) {
+    if (skipIfUnchanged) {
+      logger.info(`No changes detected for ${name}`);
+      return null;
+    }
+    try {
+      return parse(readCachedCsv(source));
+    } catch (error: any) {
+      logger.warn(`Cached ${name} is unusable (${error.message}); downloading again`);
     }
   }
 
@@ -78,10 +85,18 @@ export async function downloadCsv(source: MappingSource, skipIfUnchanged = false
         throw new Error(`HTTP ${statusCode}`);
       }
       const csv = await body.text();
+      // Parse before persisting so a broken upstream file never replaces the last good cache.
+      let parsed: T;
+      try {
+        parsed = parse(csv);
+      } catch (parseError: any) {
+        logger.warn(`Downloaded ${name} failed to parse: ${parseError.message}`);
+        throw parseError;
+      }
       fs.mkdirSync(path.dirname(cachePath), { recursive: true });
       fs.writeFileSync(cachePath, csv);
       if (redis && redis.status === 'ready' && headers.etag) await redis.set(etagKey, headers.etag);
-      return csv;
+      return parsed;
     } catch (error: any) {
       lastError = error;
       break;

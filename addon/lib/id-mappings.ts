@@ -24,22 +24,26 @@ function parseSource(csv: string, source: MappingSource): IdMap[] {
   return rows;
 }
 
-function build(type: MediaType, primaryCsv: string, backfillCsv: string): MappingIndex {
-  const { primary, backfill, withTvmaze } = MEDIA[type];
-  const index = buildIndex(parseSource(primaryCsv, primary), parseSource(backfillCsv, backfill), withTvmaze);
-  const { primaryRows, backfilledRows, filled, conflicts } = index.stats;
-  logger.info(`Built ${type} index: ${primaryRows} dins rows, ${backfilledRows} backfilled from Wikidata, filled ${JSON.stringify(filled)}, ${conflicts} conflicting Wikidata rows skipped`);
+function loadRows(source: MappingSource, skipIfUnchanged = false): Promise<IdMap[] | null> {
+  return downloadCsv(source, (csv) => parseSource(csv, source), skipIfUnchanged);
+}
+
+function build(type: MediaType, primaryRows: IdMap[], backfillRows: IdMap[]): MappingIndex {
+  const { withTvmaze } = MEDIA[type];
+  const index = buildIndex(primaryRows, backfillRows, withTvmaze);
+  const { primaryRows: dinsRows, backfilledRows, filled, conflicts } = index.stats;
+  logger.info(`Built ${type} index: ${dinsRows} dins rows, ${backfilledRows} backfilled from Wikidata, filled ${JSON.stringify(filled)}, ${conflicts} conflicting Wikidata rows skipped`);
   return index;
 }
 
 async function loadAll(): Promise<Record<MediaType, MappingIndex>> {
   const [dinsSeries, wikiSeries, dinsMovies, wikiMovies] = await Promise.all(
-    [SOURCES.dinsSeries, SOURCES.wikiSeries, SOURCES.dinsMovies, SOURCES.wikiMovies].map((source) => downloadCsv(source)),
+    [SOURCES.dinsSeries, SOURCES.wikiSeries, SOURCES.dinsMovies, SOURCES.wikiMovies].map((source) => loadRows(source)),
   );
   return { series: build('series', dinsSeries, wikiSeries), movie: build('movie', dinsMovies, wikiMovies) };
 }
 
-// Downloads cache the file and ETag before the build; reset them so a failed load is re-fetched next time.
+// Downloads save the ETag before the index is built; reset them so a failed load is re-fetched next time.
 async function clearSourceEtags(): Promise<void> {
   if (!redis || redis.status !== 'ready') return;
   try {
@@ -50,7 +54,12 @@ async function clearSourceEtags(): Promise<void> {
 }
 
 async function markUpdated(): Promise<void> {
-  if (redis && redis.status === 'ready') await redis.set(MAINTENANCE_KEY, Date.now().toString());
+  if (!redis || redis.status !== 'ready') return;
+  try {
+    await redis.set(MAINTENANCE_KEY, Date.now().toString());
+  } catch (error: any) {
+    logger.warn(`Failed to record mapping update time: ${error.message}`);
+  }
 }
 
 export async function refreshChangedMappings(): Promise<void> {
@@ -60,9 +69,13 @@ export async function refreshChangedMappings(): Promise<void> {
     let rebuilt = false;
     for (const type of ['series', 'movie'] as MediaType[]) {
       const { primary, backfill } = MEDIA[type];
-      const [primaryCsv, backfillCsv] = await Promise.all([downloadCsv(primary, true), downloadCsv(backfill, true)]);
-      if (primaryCsv === null && backfillCsv === null) continue;
-      next[type] = build(type, primaryCsv ?? readCachedCsv(primary), backfillCsv ?? readCachedCsv(backfill));
+      const [primaryRows, backfillRows] = await Promise.all([loadRows(primary, true), loadRows(backfill, true)]);
+      if (primaryRows === null && backfillRows === null) continue;
+      next[type] = build(
+        type,
+        primaryRows ?? parseSource(readCachedCsv(primary), primary),
+        backfillRows ?? parseSource(readCachedCsv(backfill), backfill),
+      );
       rebuilt = true;
     }
     if (rebuilt) indexes = next;

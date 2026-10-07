@@ -29,11 +29,12 @@ export function parseMappingCsv(csv: string): { rows: IdMap[]; invalid: number }
     bom: true,
     trim: true,
     skip_empty_lines: true,
-    columns: (header: string[]) => header.map((name) => {
-      const field = HEADER_ALIASES[name.trim()];
-      if (field === 'tvmazeId') hasTvmaze = true;
-      return field || false;
-    }),
+    columns: (header: string[]) => {
+      const fields = header.map((name) => HEADER_ALIASES[name.trim()]);
+      if (!fields.includes('imdbId')) throw new Error('Mapping CSV has no imdb column');
+      hasTvmaze = fields.includes('tvmazeId');
+      return fields.map((field) => field || false);
+    },
   });
 
   const rows: IdMap[] = [];
