@@ -638,6 +638,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_MDBLIST_UPNEXT_REFRESH_HOURS',
+    envVar: 'JELLYFIN_MDBLIST_UPNEXT_REFRESH_HOURS',
+    label: 'Jellyfin MDBList Up Next Refresh (hours)',
+    description: 'How old MDBList\'s Up Next may get when nothing was watched. It is also read again as soon as a followed show\'s next episode airs, since MDBList adds it then without any activity to notice.',
+    category: 'Features',
+    type: 'number',
+    default: 24,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_UPCOMING_HOLD_HOURS',
     envVar: 'JELLYFIN_UPCOMING_HOLD_HOURS',
     label: 'Jellyfin Upcoming Hold (hours)',

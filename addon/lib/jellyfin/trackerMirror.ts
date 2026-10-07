@@ -192,6 +192,22 @@ function mdblistActivities(apiKey: string): Promise<any> {
   return require('../../utils/mdbList').fetchMdblistLastActivities(apiKey);
 }
 
+async function mdblistUpNextMark(apiKey: string): Promise<{ upnext_at: number; upnext_next: number | null }> {
+  const { fetchMDBListUpcoming } = require('../../utils/mdbList');
+  const now = Date.now();
+  const airs = (await fetchMDBListUpcoming(apiKey, 90))
+    .map((item: any) => Date.parse(item?.next_episode?.air_date ?? ''))
+    .filter((at: number) => Number.isFinite(at) && at > now);
+  return { upnext_at: now, upnext_next: airs.length ? Math.min(...airs) : null };
+}
+
+function mdblistUpNextDue(watermark: any): boolean {
+  const now = Date.now();
+  const next = Number(watermark?.upnext_next) || 0;
+  const stale = now - (Number(watermark?.upnext_at) || 0) >= envInt('JELLYFIN_MDBLIST_UPNEXT_REFRESH_HOURS', 24, 1) * 60 * 60 * 1000;
+  return stale || (next > 0 && now >= next);
+}
+
 async function mdblistFull(key: string, apiKey: string, activities: any): Promise<SyncOutcome> {
   const { fetchMdblistWatched, fetchMdblistUpNext, fetchMdblistDropped } = require('./watched');
   const movies = await fetchMdblistWatched(apiKey, 'movie');
@@ -207,7 +223,7 @@ async function mdblistFull(key: string, apiKey: string, activities: any): Promis
     { key: 'dropped', data: dropped },
   ] as MirrorRow[];
   await replaceMirror(key, rows, () => true);
-  return { changed: true, watermark: activities, full: true };
+  return { changed: true, watermark: { ...activities, ...(await mdblistUpNextMark(apiKey)) }, full: true };
 }
 
 async function syncMdblist(key: string, apiKey: string, watermark: any): Promise<SyncOutcome> {
@@ -218,7 +234,13 @@ async function syncMdblist(key: string, apiKey: string, watermark: any): Promise
   const moved = (field: string) => (activities?.[field] ?? '') !== (watermark?.[field] ?? '');
   const watched = MDBLIST_WATCH_FIELDS.some(moved);
   const dropped = moved('dropped_at');
-  if (!watched && !dropped) return { changed: false, watermark, full: false };
+  if (!watched && !dropped) {
+    if (!mdblistUpNextDue(watermark)) return { changed: false, watermark, full: false };
+    const { fetchMdblistUpNext } = require('./watched');
+    const upNext = await fetchMdblistUpNext(apiKey);
+    if (upNext.length) await database.upsertTrackerMirror(key, [{ key: 'upnext', data: upNext }]);
+    return { changed: upNext.length > 0, watermark: { ...watermark, ...(await mdblistUpNextMark(apiKey)) }, full: false };
+  }
 
   const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
   if (watched) {
@@ -263,7 +285,10 @@ async function syncMdblist(key: string, apiKey: string, watermark: any): Promise
     const { fetchMdblistDropped } = require('./watched');
     await database.upsertTrackerMirror(key, [{ key: 'dropped', data: await fetchMdblistDropped(apiKey) }]);
   }
-  return { changed: true, watermark: activities, full: false };
+  const upNextMark = watched
+    ? await mdblistUpNextMark(apiKey)
+    : { upnext_at: watermark?.upnext_at ?? 0, upnext_next: watermark?.upnext_next ?? null };
+  return { changed: true, watermark: { ...activities, ...upNextMark }, full: false };
 }
 
 // --- PublicMetaDB -------------------------------------------------------------------
