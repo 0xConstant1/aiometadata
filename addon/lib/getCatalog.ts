@@ -322,15 +322,11 @@ async function getMalCatalog(
     const allAnimeGenres = await cacheWrapJikanApi('anime-genres', async () => {
       return await jikan.getAnimeGenres();
     }, null);
-    const genreNameToFetch = genre && genre !== 'None' ? genre : allAnimeGenres[0]?.name;
-    if (genreNameToFetch) {
-      const selectedGenre = allAnimeGenres.find((g: any) => g.name === genreNameToFetch);
-      if (selectedGenre) {
-        const genreId = selectedGenre.mal_id;
-        animeResults = await cacheWrapJikanApi(`mal-${catalogId}-${page}-${genreId}-${config.sfw}`, async () => {
-          return await jikan.getTopAnimeByDateRange(startDate, endDate, page, genreId, config);
-        }, null);
-      }
+    const genreId = genre && genre !== 'None' ? allAnimeGenres.find((g: any) => g.name === genre)?.mal_id : null;
+    if (genreId !== undefined) {
+      animeResults = await cacheWrapJikanApi(`mal-${catalogId}-${page}-${genreId ?? 'all'}-${config.sfw}`, async () => {
+        return await jikan.getTopAnimeByDateRange(startDate, endDate, page, genreId ?? undefined, config);
+      }, null);
     }
   } else if (catalogId === 'mal.genres') {
     const mediaType = null;

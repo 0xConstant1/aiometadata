@@ -470,16 +470,12 @@ class ComprehensiveCatalogWarmer {
           this.log('debug', 'Fetching anime genre list from Jikan...');
           return await jikan.getAnimeGenres();
         }, null);
-        const genreNameToFetch = genreName && genreName !== 'None' ? genreName : allAnimeGenres[0]?.name;
-        if (genreNameToFetch) {
-          const selectedGenre = allAnimeGenres.find(g => g.name === genreNameToFetch);
-          if (selectedGenre) {
-            const genreId = selectedGenre.mal_id;
-            const animeResults = await cacheWrapJikanApi(`mal-decade-${catalogId}-${page}-${genreId}-${config.sfw}`, async () => {
-              return await jikan.getTopAnimeByDateRange(startDate, endDate, page, genreId, config);
-            }, null);
-            metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
-          }
+        const genreId = genreName && genreName !== 'None' ? allAnimeGenres.find(g => g.name === genreName)?.mal_id : null;
+        if (genreId !== undefined) {
+          const animeResults = await cacheWrapJikanApi(`mal-decade-${catalogId}-${page}-${genreId ?? 'all'}-${config.sfw}`, async () => {
+            return await jikan.getTopAnimeByDateRange(startDate, endDate, page, genreId ?? undefined, config);
+          }, null);
+          metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         }
         break;
       }
