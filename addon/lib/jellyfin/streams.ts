@@ -32,8 +32,27 @@ export interface PlayableStream {
 }
 
 // The stream addon adds what it parsed from a release only for a user agent it knows.
-export function streamUserAgent(): string {
-  return process.env.JELLYFIN_STREAM_USER_AGENT?.trim() || `AIOStreams/aiometadata-${buildInfo.version}`;
+export function streamUserAgent(forwarded?: string): string {
+  return process.env.JELLYFIN_STREAM_USER_AGENT?.trim() || forwarded?.trim() || `AIOStreams/aiometadata-${buildInfo.version}`;
+}
+
+export interface StreamClient {
+  tag: string;
+  userAgent?: string;
+  client: string;
+  version: string;
+  device: string;
+}
+
+const lastClients = new LRUCache<string, StreamClient>({ max: 5000, ttl: 6 * 60 * 60 * 1000 });
+
+export function streamClient(owner: string, info: { client: string; version: string; device: string }, userAgent?: string): StreamClient | undefined {
+  if (info.client && info.client !== 'Unknown') {
+    const client = { tag: `${info.client}/${info.version}@${info.device}`, userAgent: userAgent || undefined, client: info.client, version: info.version, device: info.device };
+    lastClients.set(owner, client);
+    return client;
+  }
+  return lastClients.get(owner);
 }
 
 function requestTimeoutMs(): number {
@@ -321,17 +340,20 @@ export function coalesce(key: string, work: () => Promise<any[]>): Promise<any[]
 export async function fetchStreams(
   base: string,
   type: string,
-  id: string
+  id: string,
+  client?: StreamClient
 ): Promise<{ streams: any[]; failure?: string }> {
   const url = `${base}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), requestTimeoutMs());
 
   try {
-    const response = await fetch(url, {
-      headers: { accept: 'application/json', 'user-agent': streamUserAgent() },
-      signal: controller.signal,
-    });
+    const headers: Record<string, string> = { accept: 'application/json', 'user-agent': streamUserAgent(client?.userAgent) };
+    if (client) {
+      headers['x-jellyfin-client'] = `${client.client}/${client.version}`;
+      headers['x-jellyfin-device'] = client.device;
+    }
+    const response = await fetch(url, { headers, signal: controller.signal });
     if (!response.ok) {
       logger.debug(`Streams ${type}/${id} returned ${response.status}`);
       return { streams: [], failure: describeStatus(response.status) };

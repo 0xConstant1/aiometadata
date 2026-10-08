@@ -31,7 +31,7 @@ import { decodeJellyfinId } from './ids';
 import { imageTag, isWideTag } from './imageTags';
 import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
-import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamsState, streamUserAgent, toNotice, toPlayable } from './streams';
+import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamClient, streamsState, streamUserAgent, toNotice, toPlayable, type StreamClient } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { isAnimeTitle, showIdentity } from './canonicalIds';
@@ -206,8 +206,8 @@ function landingPage(req: any): string {
 </html>`;
 }
 
-const streamCacheKey = (userUUID: string, profile: string, type: string, id: string): string =>
-  `${userUUID}:${profile}:${type}:${id}`;
+const streamCacheKey = (userUUID: string, profile: string, type: string, id: string, client?: StreamClient): string =>
+  `${userUUID}:${profile}:${type}:${id}:${client?.tag ?? ''}`;
 
 export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): any {
   const loginRateLimit = options.loginRateLimit || ((_req: any, _res: any, next: any) => next());
@@ -1162,6 +1162,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return needed;
   };
 
+  const clientFor = (req: any, config: any): StreamClient | undefined =>
+    streamClient(`${req.params.userUUID}:${profileKey(config)}`, clientInfo(req), req.get?.('user-agent'));
+
   const resolveMediaSources = async (
     req: any,
     descriptor: any,
@@ -1181,12 +1184,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (!stremioId) return [];
 
     const stremioType = descriptor.k === 'movie' ? 'movie' : 'series';
-    const cacheKey = streamCacheKey(req.params.userUUID, profileKey(config), stremioType, stremioId);
+    const client = clientFor(req, config);
+    const cacheKey = streamCacheKey(req.params.userUUID, profileKey(config), stremioType, stremioId, client);
 
     const streams =
       (refresh ? undefined : recallStreams(cacheKey)) ??
       (await coalesce(cacheKey, async () => {
-        const fetched = await fetchStreams(base, stremioType, stremioId);
+        const fetched = await fetchStreams(base, stremioType, stremioId, client);
         if (fetched.streams.length) rememberStreams(cacheKey, fetched.streams);
         if (fetched.failure) rememberFailure(cacheKey, fetched.failure);
         return fetched.streams;
@@ -1219,7 +1223,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const streamFailure = async (req: any, descriptor: any): Promise<string> => {
     const stremioId = stremioIdFor(descriptor);
     const stremioType = descriptor.k === 'movie' ? 'movie' : 'series';
-    const key = streamCacheKey(req.params.userUUID, profileKey(await loadConfig(req)), stremioType, stremioId);
+    const config = await loadConfig(req);
+    const key = streamCacheKey(req.params.userUUID, profileKey(config), stremioType, stremioId, clientFor(req, config));
     return recallFailure(key) ?? 'No streams found for this title';
   };
 
@@ -1248,7 +1253,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const stremioId = stremioIdFor(descriptor);
     if (!stremioId) return null;
     const type = descriptor.k === 'movie' ? 'movie' : 'series';
-    return streamsState(streamCacheKey(req.params.userUUID, profileKey(await loadConfig(req)), type, stremioId));
+    const config = await loadConfig(req);
+    return streamsState(streamCacheKey(req.params.userUUID, profileKey(config), type, stremioId, clientFor(req, config)));
   };
 
   const attachSourcesInTime = async (req: any, item: any, descriptor: any, itemId: string): Promise<void> => {
