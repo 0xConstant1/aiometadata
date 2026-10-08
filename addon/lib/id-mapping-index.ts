@@ -157,7 +157,8 @@ function sortIds(owners: Map<number, number>): SortedIds {
   return { ids, rows };
 }
 
-export function buildIndex(primary: MappingColumns, backfill: MappingColumns, withTvmaze: boolean): MappingIndex {
+// `fillable` lists the fields a backfill row may write into an existing primary row.
+export function buildIndex(primary: MappingColumns, backfill: MappingColumns, withTvmaze: boolean, fillable: IdField[]): MappingIndex {
   const fields: IdField[] = withTvmaze ? ID_FIELDS : ['imdbId', 'tmdbId', 'tvdbId'];
   const columns = allocateColumns(primary.count + backfill.count, withTvmaze);
   const owners = {} as Record<IdField, Map<number, number>>;
@@ -220,7 +221,8 @@ export function buildIndex(primary: MappingColumns, backfill: MappingColumns, wi
     }
 
     // Any id owned by another row would have been a second match, so empty fields are safe to fill.
-    for (const field of fields) {
+    for (const field of fillable) {
+      if (!fields.includes(field)) continue;
       const id = valueAt(backfill, field, source);
       if (id && !columns[field][target]) {
         columns[field][target] = id;
