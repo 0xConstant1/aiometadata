@@ -548,8 +548,9 @@ function remoteTrailers(meta: any): any[] {
     .filter((t: any) => typeof t?.url === 'string' && /^https?:\/\//i.test(t.url))
     .map((t: any) => ({ Name: t.title || 'Trailer', Url: t.url }));
   const youtube = streams
-    .filter((t: any) => typeof t?.ytId === 'string' && t.ytId)
-    .map((t: any) => ({ Name: t.title || 'Trailer', Url: `https://www.youtube.com/watch?v=${t.ytId}` }));
+    .map((t: any) => ({ title: t?.title, id: typeof t?.ytId === 'string' ? t.ytId.match(/^[A-Za-z0-9_-]{11}(?![A-Za-z0-9_-])/)?.[0] : undefined }))
+    .filter((t: any) => t.id)
+    .map((t: any) => ({ Name: t.title || 'Trailer', Url: `https://www.youtube.com/watch?v=${t.id}` }));
   return [...direct, ...youtube].slice(0, envInt('JELLYFIN_MAX_TRAILERS', 8, 1));
 }
 
