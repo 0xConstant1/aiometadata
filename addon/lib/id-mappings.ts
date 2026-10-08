@@ -1,5 +1,5 @@
 import consola from 'consola';
-import { IdMap, IndexStats, MappingIndex, ParsedMappings, buildIndex, lookup, parseMappingCsv } from './id-mapping-index';
+import { IdField, IdMap, IndexStats, MappingIndex, ParsedMappings, buildIndex, lookup, parseMappingCsv } from './id-mapping-index';
 import { MappingSource, SOURCES, downloadCsv, readCachedCsv } from './mapping-sources';
 const redis = require('./redisClient');
 const logger = consola.withTag('ID Mappings');
@@ -9,9 +9,11 @@ const MAINTENANCE_KEY = 'maintenance:last_wiki_mapper_update';
 
 type MediaType = 'series' | 'movie';
 
-const MEDIA: Record<MediaType, { primary: MappingSource; backfill: MappingSource; withTvmaze: boolean }> = {
-  series: { primary: SOURCES.dinsSeries, backfill: SOURCES.wikiSeries, withTvmaze: true },
-  movie: { primary: SOURCES.dinsMovies, backfill: SOURCES.wikiMovies, withTvmaze: false },
+// Wikidata ids filled into dins rows were checked against TMDB, TVDB, Trakt and TVmaze: TMDB fills
+// and movie fills were too often dead or another title, while series TVDB and TVmaze fills held up.
+const MEDIA: Record<MediaType, { primary: MappingSource; backfill: MappingSource; withTvmaze: boolean; fillable: IdField[] }> = {
+  series: { primary: SOURCES.dinsSeries, backfill: SOURCES.wikiSeries, withTvmaze: true, fillable: ['tvdbId', 'tvmazeId'] },
+  movie: { primary: SOURCES.dinsMovies, backfill: SOURCES.wikiMovies, withTvmaze: false, fillable: [] },
 };
 
 let indexes: Record<MediaType, MappingIndex> | null = null;
@@ -29,8 +31,8 @@ function loadRows(source: MappingSource, skipIfUnchanged = false): Promise<Parse
 }
 
 function build(type: MediaType, primaryRows: ParsedMappings, backfillRows: ParsedMappings): MappingIndex {
-  const { withTvmaze } = MEDIA[type];
-  const index = buildIndex(primaryRows, backfillRows, withTvmaze);
+  const { withTvmaze, fillable } = MEDIA[type];
+  const index = buildIndex(primaryRows, backfillRows, withTvmaze, fillable);
   const { primaryRows: dinsRows, backfilledRows, filled, conflicts } = index.stats;
   logger.info(`Built ${type} index: ${dinsRows} dins rows, ${backfilledRows} backfilled from Wikidata, filled ${JSON.stringify(filled)}, ${conflicts} conflicting Wikidata rows skipped`);
   return index;
