@@ -22,10 +22,6 @@ const LIST_ROUTES = [
   '/Items/:itemId/Intros',
   '/Users/:userId/Items/Intros',
   '/Users/:userId/Items/:itemId/Intros',
-  '/Items/:itemId/SpecialFeatures',
-  '/Users/:userId/Items/:itemId/SpecialFeatures',
-  '/Items/:itemId/LocalTrailers',
-  '/Users/:userId/Items/:itemId/LocalTrailers',
   '/Items/:itemId/ThemeSongs',
   '/Items/:itemId/ThemeVideos',
   '/Items/:itemId/Chapters',
@@ -54,6 +50,11 @@ const ARRAY_ROUTES = [
   '/Library/PhysicalPaths',
   '/Sessions/SyncPlay/List',
   '/SyncPlay/List',
+  '/Items/:itemId/SpecialFeatures',
+  '/Users/:userId/Items/:itemId/SpecialFeatures',
+  '/Items/:itemId/LocalTrailers',
+  '/Users/:userId/Items/:itemId/LocalTrailers',
+  '/Movies/Recommendations',
 ];
 
 const BITRATE_TEST_DEFAULT = 102400;

@@ -1829,23 +1829,33 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     });
   });
 
-  router.get(['/Items/Filters', '/Items/Filters2'], async (req: any, res: any) => {
+  const genrePairs = async (req: any): Promise<{ genres: string[]; pairs: any[] }> => {
     const parentId = req.query.ParentId ?? req.query.parentId;
     const { catalog, genres } = await genreOptionsFor(req, parentId);
     const serverId = serverIdFor(req.params.userUUID);
+    const pairs = catalog
+      ? genres.map((genre: string) => ({
+          Name: genre,
+          Id: encodeJellyfinId({ k: 'genre', t: catalog.type, c: catalog.id, g: genre }),
+          ServerId: serverId,
+        }))
+      : [];
+    return { genres, pairs };
+  };
 
+  router.get('/Items/Filters', async (req: any, res: any) => {
+    const { genres, pairs } = await genrePairs(req);
+    res.json({ Genres: genres, Tags: [], OfficialRatings: [], Years: [], GenreItems: pairs });
+  });
+
+  // Unlike the legacy route, genres here are { Name, Id } pairs.
+  router.get('/Items/Filters2', async (req: any, res: any) => {
+    const { pairs } = await genrePairs(req);
     res.json({
-      Genres: genres,
+      Genres: pairs.map(({ Name, Id }: any) => ({ Name, Id })),
       Tags: [],
-      OfficialRatings: [],
-      Years: [],
-      GenreItems: catalog
-        ? genres.map((genre: string) => ({
-            Name: genre,
-            Id: encodeJellyfinId({ k: 'genre', t: catalog.type, c: catalog.id, g: genre }),
-            ServerId: serverId,
-          }))
-        : [],
+      AudioLanguages: [],
+      SubtitleLanguages: [],
     });
   });
 
@@ -3249,6 +3259,23 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       logger.debug(`Unplayed report failed: ${error.message}`)
     );
     res.json(playedState(String(req.params.itemId), false));
+  });
+
+  router.get(['/UserItems/:itemId/UserData', '/Users/:userId/Items/:itemId/UserData'], async (req: any, res: any) => {
+    const captured: any[] = [];
+    const forged = Object.create(req, {
+      params: { value: { ...req.params, listed: true }, enumerable: true },
+      query: { value: req.query, enumerable: true },
+    });
+    await singleItemHandler(
+      forged,
+      { json: (body: any) => captured.push(body), status: () => ({ json: () => undefined, end: () => undefined }) }
+    );
+    if (!captured[0]?.UserData) {
+      res.status(404).json({ Message: 'Item not found' });
+      return;
+    }
+    res.json(captured[0].UserData);
   });
 
   router.post(['/UserItems/:itemId/UserData', '/Users/:userId/Items/:itemId/UserData'], async (req: any, res: any) => {
