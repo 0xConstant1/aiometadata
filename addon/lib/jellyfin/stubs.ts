@@ -56,6 +56,9 @@ const ARRAY_ROUTES = [
   '/SyncPlay/List',
 ];
 
+const BITRATE_TEST_DEFAULT = 102400;
+const BITRATE_TEST_MAX = 10 * 1024 * 1024;
+
 export function registerStubs(router: any): void {
   for (const path of LIST_ROUTES) {
     router.get(path, (_req: any, res: any) => res.json(EMPTY_LIST));
@@ -75,6 +78,12 @@ export function registerStubs(router: any): void {
 
   router.get('/LiveTv/Info', (_req: any, res: any) => {
     res.json({ Services: [], IsEnabled: false, EnabledUsers: [] });
+  });
+
+  router.get('/Playback/BitrateTest', (req: any, res: any) => {
+    const requested = Math.floor(Number(req.query.Size ?? req.query.size));
+    const size = requested > 0 ? Math.min(requested, BITRATE_TEST_MAX) : BITRATE_TEST_DEFAULT;
+    res.type('application/octet-stream').send(Buffer.alloc(size));
   });
 }
 
