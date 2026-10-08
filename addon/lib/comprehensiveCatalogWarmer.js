@@ -486,16 +486,12 @@ class ComprehensiveCatalogWarmer {
           this.log('debug', 'Fetching anime genre list from Jikan...');
           return await jikan.getAnimeGenres();
         }, null);
-        const genreNameToFetch = genreName || allAnimeGenres[0]?.name;
-        if (genreNameToFetch) {
-          const selectedGenre = allAnimeGenres.find(g => g.name === genreNameToFetch);
-          if (selectedGenre) {
-            const genreId = selectedGenre.mal_id;
-            const animeResults = await cacheWrapJikanApi(`mal-genre-${genreId}-${mediaType || 'all'}-${page}-${config.sfw}`, async () => {
-              return await jikan.getAnimeByGenre(genreId, mediaType, page, config);
-            }, null);
-            metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
-          }
+        const genreId = genreName === 'None' ? null : allAnimeGenres.find(g => g.name === (genreName || allAnimeGenres[0]?.name))?.mal_id;
+        if (genreId !== undefined) {
+          const animeResults = await cacheWrapJikanApi(`mal-genre-${genreId ?? 'any'}-${mediaType || 'all'}-${page}-${config.sfw}`, async () => {
+            return await jikan.getAnimeByGenre(genreId, mediaType, page, config);
+          }, null);
+          metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         }
         break;
       }
@@ -582,7 +578,7 @@ class ComprehensiveCatalogWarmer {
 
     // Use the genre value that Stremio will actually send
     // For tvdb.genres, when showInHome is false the manifest does not add a 'None' option so the client defaults to the first genre.
-    // For MAL catalogs (except mal.genres) we use 'None' when showInHome is false.
+    // For MAL catalogs we use 'None' when showInHome is false.
     let genreValue = null;
     if (catalog.showInHome === false) {
       if (catalogId === 'tmdb.trending') {
@@ -630,19 +626,6 @@ class ComprehensiveCatalogWarmer {
         }).filter(Boolean);
           if (studioNames && studioNames.length > 0) {
             genreValue = studioNames[0];
-          }
-        } catch (e) {
-          // fallback to null
-        }
-      } else if (catalogId === 'mal.genres') {
-        try {
-          // Use the same cache key as getManifest for available anime genres
-          const animeGenres = await cacheWrapJikanApi('anime-genres', async () => await jikan.getAnimeGenres(), 30 * 24 * 60 * 60);
-          if (animeGenres && animeGenres.length > 0) {
-            let animeGenreNames = animeGenres.filter(Boolean).map(genre => genre.name).sort();
-            if (animeGenreNames.length > 0) {
-              genreValue = animeGenreNames[0];
-            }
           }
         } catch (e) {
           // fallback to null

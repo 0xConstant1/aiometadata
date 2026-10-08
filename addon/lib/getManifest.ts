@@ -1345,7 +1345,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
         );
       }
       else if (userCatalog.id === 'mal.genres') {
-          catalogOptions = animeGenreNames;
+          catalogOptions = userCatalog.showInHome ? animeGenreNames : ['None', ...animeGenreNames];
       } else if (userCatalog.id === 'mal.studios'){
         catalogOptions = studioNames.length > 0 ? studioNames : ['None'];
       }

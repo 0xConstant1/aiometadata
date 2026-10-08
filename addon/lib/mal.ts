@@ -606,9 +606,9 @@ async function getUpcoming(page: number = 1, config: any = {}): Promise<any[]> {
     });
 }
 
-async function getAnimeByGenre(genreId: number | string, typeFilter: string | null = null, page: number = 1, config: any = {}): Promise<any[]> {
+async function getAnimeByGenre(genreId: number | string | null, typeFilter: string | null = null, page: number = 1, config: any = {}): Promise<any[]> {
   const queryParams: Record<string, any> = {
-    genres: genreId,
+    ...(genreId ? { genres: genreId } : {}),
     order_by: 'members',
     sort: 'desc',
     page: page,

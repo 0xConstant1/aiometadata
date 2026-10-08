@@ -3,7 +3,6 @@ const FIRST_OPTION_CATALOGS = new Set([
   'tmdb.trending',
   'tvdb.genres',
   'tvdb.trending',
-  'mal.genres',
   'mal.studios',
   'mal.schedule',
   'mal.seasons',

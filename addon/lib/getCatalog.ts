@@ -333,15 +333,11 @@ async function getMalCatalog(
     const allAnimeGenres = await cacheWrapJikanApi('anime-genres', async () => {
       return await jikan.getAnimeGenres();
     }, null);
-    const genreNameToFetch = genre || allAnimeGenres[0]?.name;
-    if (genreNameToFetch) {
-      const selectedGenre = allAnimeGenres.find((g: any) => g.name === genreNameToFetch);
-      if (selectedGenre) {
-        const genreId = selectedGenre.mal_id;
-        animeResults = await cacheWrapJikanApi(`mal-genre-${genreId}-${mediaType || 'all'}-${page}-${config.sfw}`, async () => {
-          return await jikan.getAnimeByGenre(genreId, mediaType, page, config);
-        }, null);
-      }
+    const genreId = genre === 'None' ? null : allAnimeGenres.find((g: any) => g.name === (genre || allAnimeGenres[0]?.name))?.mal_id;
+    if (genreId !== undefined) {
+      animeResults = await cacheWrapJikanApi(`mal-genre-${genreId ?? 'any'}-${mediaType || 'all'}-${page}-${config.sfw}`, async () => {
+        return await jikan.getAnimeByGenre(genreId, mediaType, page, config);
+      }, null);
     }
   } else if (catalogId === 'mal.studios') {
     if (genre) {
@@ -3636,13 +3632,6 @@ async function getMergedCatalog(
       try {
         const studios = await cacheWrapJikanApi('mal-studios', async () => await jikan.getStudios(100), 30 * 24 * 60 * 60);
         const names = studios.map((s: any) => { const t = s.titles.find((x: any) => x.type === 'Default'); return t?.title; }).filter(Boolean);
-        if (names.length > 0) return names[0];
-      } catch {}
-    }
-    if (srcId === 'mal.genres') {
-      try {
-        const animeGenres = await cacheWrapJikanApi('anime-genres', async () => await jikan.getAnimeGenres(), 30 * 24 * 60 * 60);
-        const names = animeGenres.filter(Boolean).map((g: any) => g.name).sort();
         if (names.length > 0) return names[0];
       } catch {}
     }

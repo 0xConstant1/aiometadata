@@ -5405,16 +5405,12 @@ const catalogRoute = async function (req, res) {
             const allAnimeGenres = await cacheWrapJikanApi('anime-genres', async () => {
               return await jikan.getAnimeGenres();
             }, null);
-            const genreNameToFetch = genreName || allAnimeGenres[0]?.name;
-            if (genreNameToFetch) {
-              const selectedGenre = allAnimeGenres.find(g => g.name === genreNameToFetch);
-              if (selectedGenre) {
-                const genreId = selectedGenre.mal_id;
-                const animeResults = await cacheWrapJikanApi(`mal-genre-${genreId}-${mediaType || 'all'}-${page}-${config.sfw}`, async () => {
-                  return await jikan.getAnimeByGenre(genreId, mediaType, page, config);
-                }, null);
-                metas = await parseAnimeCatalogMetaBatch(animeResults, config, language);
-              }
+            const genreId = genreName === 'None' ? null : allAnimeGenres.find(g => g.name === (genreName || allAnimeGenres[0]?.name))?.mal_id;
+            if (genreId !== undefined) {
+              const animeResults = await cacheWrapJikanApi(`mal-genre-${genreId ?? 'any'}-${mediaType || 'all'}-${page}-${config.sfw}`, async () => {
+                return await jikan.getAnimeByGenre(genreId, mediaType, page, config);
+              }, null);
+              metas = await parseAnimeCatalogMetaBatch(animeResults, config, language);
             }
             break;
           }
