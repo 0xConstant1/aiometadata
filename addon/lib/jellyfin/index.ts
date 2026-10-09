@@ -2825,21 +2825,32 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       premieres.push(next);
     });
 
-    const watchlists = (await getCatalogs(userUUID, config)).filter(
-      (catalog: any) => /\.watchlist\b/.test(catalog.id) && collectionTypeFor(catalog.type) === 'movies'
-    );
+    const filmLimit = envInt('JELLYFIN_UPCOMING_WATCHLIST_LIMIT', 100, 1);
     const films: any[] = [];
+    const addFilm = (meta: any, type: string) => {
+      const item = metaToBaseItem(meta, type, serverId, null);
+      if (item.Type !== 'Movie' || !within(premiereAt(item)) || seen.has(item.Id)) return;
+      if (keepsAnimeOnly(config) && !isAnimeTitle(String(meta.id), 'movie')) return;
+      seen.add(item.Id);
+      films.push(item);
+    };
+    const watchlists = (await getCatalogs(userUUID, config)).filter(
+      (catalog: any) => /\.watchlist\b/.test(catalog.id) && (collectionTypeFor(catalog.type) === 'movies' || catalog.type === 'all')
+    );
     await mapWithConcurrency(watchlists, 2, async (catalog: any) => {
-      const window = await fetchWindow(userUUID, catalog, 0, envInt('JELLYFIN_UPCOMING_WATCHLIST_LIMIT', 100, 1), {}, undefined, profileTags(config))
+      const window = await fetchWindow(userUUID, catalog, 0, filmLimit, {}, undefined, profileTags(config))
         .catch(() => ({ items: [] as any[], hasMore: false }));
       for (const meta of window.items) {
-        const item = metaToBaseItem(meta, catalog.type, serverId, null);
-        if (item.Type === 'Movie' && within(premiereAt(item)) && !seen.has(item.Id)) {
-          if (keepsAnimeOnly(config) && !isAnimeTitle(String(meta.id), 'movie')) continue;
-          seen.add(item.Id);
-          films.push(item);
-        }
+        if (catalog.type !== 'all') addFilm(meta, catalog.type);
+        else if (meta?.type === 'movie') addFilm(meta, 'movie');
       }
+    });
+    const listed = (await watchlistEntries(userUUID, config, filmLimit).catch(() => ({ entries: [] as any[] }))).entries
+      .filter((entry: any) => entry.mediaType === 'movie')
+      .slice(0, filmLimit);
+    await mapWithConcurrency(listed, shelfConcurrency(), async (entry: any) => {
+      const meta = await fetchMeta(userUUID, 'movie', entry.metaId).catch(() => null);
+      if (meta) addFilm(meta, 'movie');
     });
 
     return [...premieres, ...films]
