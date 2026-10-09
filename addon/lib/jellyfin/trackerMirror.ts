@@ -245,8 +245,10 @@ async function syncMdblist(key: string, apiKey: string, watermark: any): Promise
   const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
   if (watched) {
     // The journal holds each item's latest state, removals included; replayed from the
-    // last sync, it says what left. What arrived is read whole from the history.
+    // last sync, it says what left. What arrived is read whole from the history, whose
+    // since filters on the watch date, so a watch dated before the last sync needs a full read.
     const removals: any[] = [];
+    let backdated = false;
     let cursor = '';
     for (let page = 0; page < envInt('JELLYFIN_WATCHED_MAX_PAGES', 50, 1); page += 1) {
       const query = cursor
@@ -258,10 +260,12 @@ async function syncMdblist(key: string, apiKey: string, watermark: any): Promise
       if (body?.requires_full_sync) return mdblistFull(key, apiKey, activities);
       for (const row of Array.isArray(body?.journal) ? body.journal : []) {
         if (row?.category === 'watched' && row?.status === 'removed') removals.push(row);
+        if (row?.category === 'watched' && row?.status === 'added' && row?.value_at && row.value_at < watermark.server_time) backdated = true;
       }
       cursor = body?.pagination?.next_cursor ?? '';
       if (!cursor) break;
     }
+    if (backdated) return mdblistFull(key, apiKey, activities);
 
     for (const row of removals) {
       const show = row?.ids?.mdblist;
