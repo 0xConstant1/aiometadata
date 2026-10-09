@@ -752,7 +752,6 @@ class RequestTracker {
       return;
     }
     try {
-      const today = new Date().toISOString().split("T")[0];
       const hour = new Date().toISOString().substring(0, 13);
 
       // Track response times hourly
@@ -760,9 +759,9 @@ class RequestTracker {
 
       // Track success/error rates
       if (success) {
-        metrics.incr(`provider_success:${provider}:${today}`, 86400 * 2);
+        metrics.incr(`provider_success:${provider}:${hour}`, 86400 * 2);
       } else {
-        metrics.incr(`provider_errors:${provider}:${today}`, 86400 * 2);
+        metrics.incr(`provider_errors:${provider}:${hour}`, 86400 * 2);
       }
 
       // Track hourly calls for rate limiting awareness
@@ -825,13 +824,31 @@ class RequestTracker {
     this.logError(level, `[${provider.toUpperCase()}] ${message}`, enrichedDetails);
   }
 
+  // Provider success and error counts over the last 24 hours
+  async getProviderCounts(providers) {
+    const now = Date.now();
+    const hours = hourKeysBetween(now - 24 * HOUR_MS, now);
+    const keys = providers.flatMap((p) =>
+      hours.flatMap((h) => [`provider_success:${p}:${h}`, `provider_errors:${p}:${h}`]),
+    );
+    const values = await redis.mget(...keys);
+    const counts = {};
+    providers.forEach((p, pi) => {
+      let success = 0;
+      let errors = 0;
+      for (let hi = 0; hi < hours.length; hi++) {
+        const base = (pi * hours.length + hi) * 2;
+        success += parseInt(values[base]) || 0;
+        errors += parseInt(values[base + 1]) || 0;
+      }
+      counts[p] = { success, errors };
+    });
+    return counts;
+  }
+
   // Get provider performance statistics
   async getProviderPerformance() {
     try {
-      const today = new Date().toISOString().split("T")[0];
-      const yesterday = new Date(Date.now() - 86400000)
-        .toISOString()
-        .split("T")[0];
       const providers = [
         "tmdb",
         "tvdb",
@@ -841,6 +858,7 @@ class RequestTracker {
         "fanart",
         "tvmaze",
       ];
+      const counts = await this.getProviderCounts(providers);
 
       const providerStats = await Promise.all(
         providers.map(async (provider) => {
@@ -888,23 +906,7 @@ class RequestTracker {
                   )
                 : 0;
 
-            // Get success/error rates
-            const [
-              todaySuccess,
-              todayErrors,
-              yesterdaySuccess,
-              yesterdayErrors,
-            ] = await Promise.all([
-              redis.get(`provider_success:${provider}:${today}`),
-              redis.get(`provider_errors:${provider}:${today}`),
-              redis.get(`provider_success:${provider}:${yesterday}`),
-              redis.get(`provider_errors:${provider}:${yesterday}`),
-            ]);
-
-            const totalSuccess =
-              (parseInt(todaySuccess) || 0) + (parseInt(yesterdaySuccess) || 0);
-            const totalErrors =
-              (parseInt(todayErrors) || 0) + (parseInt(yesterdayErrors) || 0);
+            const { success: totalSuccess, errors: totalErrors } = counts[provider];
             const totalCalls = totalSuccess + totalErrors;
 
             const errorRate =
@@ -1050,7 +1052,7 @@ class RequestTracker {
     try {
       const now = Date.now();
       const midnight = dayStartMs(tz, now);
-      const recentHours = hourKeysBetween(now - 23 * HOUR_MS, now);
+      const recentHours = hourKeysBetween(now - 24 * HOUR_MS, now);
 
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Redis timeout")), 5000),

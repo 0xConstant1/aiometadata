@@ -97,14 +97,13 @@ class MALCatalogWarmer {
     // Silent mode - no logs
     if (logLevel === 'silent') return;
     
-    // Normal mode - only info and errors
+    // Normal mode excludes debug logs
     if (logLevel === 'normal' && level === 'debug') return;
     
-    const write = malWarmerLogger[level === 'debug' ? 'debug' : 'info'];
     if (data) {
-      write(message, data);
+      malWarmerLogger[level](message, data);
     } else {
-      write(message);
+      malWarmerLogger[level](message);
     }
   }
 
@@ -240,9 +239,10 @@ class MALCatalogWarmer {
       if (WARMUP_CONFIG.warmPriority && this.shouldContinueWarming()) {
         this.warmupStats.phase = 'priority';
         this.log('info', '⭐ Phase 2: Warming high-priority catalogs...');
-        const count = await this.warmPriorityCatalogs();
+        const { count, errors: phaseErrors } = await this.warmPriorityCatalogs();
         itemsWarmed += count;
-        this.log('debug', `Priority phase complete: ${count} items warmed`);
+        errors += phaseErrors;
+        this.log('debug', `Priority phase complete: ${count} items warmed, ${phaseErrors} errors`);
         
         await this.delay(1000);
       }
@@ -251,9 +251,10 @@ class MALCatalogWarmer {
       if (WARMUP_CONFIG.warmSchedule && this.shouldContinueWarming()) {
         this.warmupStats.phase = 'schedule';
         this.log('info', '📅 Phase 3: Warming schedule catalogs...');
-        const count = await this.warmScheduleCatalogs();
+        const { count, errors: phaseErrors } = await this.warmScheduleCatalogs();
         itemsWarmed += count;
-        this.log('debug', `Schedule phase complete: ${count} items warmed`);
+        errors += phaseErrors;
+        this.log('debug', `Schedule phase complete: ${count} items warmed, ${phaseErrors} errors`);
         
         await this.delay(1000);
       }
@@ -262,13 +263,14 @@ class MALCatalogWarmer {
       if (WARMUP_CONFIG.warmDecades && this.shouldContinueWarming()) {
         this.warmupStats.phase = 'decades';
         this.log('info', '📆 Phase 4: Warming decade catalogs...');
-        const count = await this.warmDecadeCatalogs();
+        const { count, errors: phaseErrors } = await this.warmDecadeCatalogs();
         itemsWarmed += count;
-        this.log('debug', `Decade phase complete: ${count} items warmed`);
+        errors += phaseErrors;
+        this.log('debug', `Decade phase complete: ${count} items warmed, ${phaseErrors} errors`);
       }
 
     } catch (error) {
-      this.log('info', `❌ Error during warmup: ${error.message}`);
+      this.log('error', `❌ Error during warmup: ${error.message}`);
       errors++;
     } finally {
       this.isWarming = false;
@@ -290,7 +292,8 @@ class MALCatalogWarmer {
       // Mark this warmup as complete in Redis
       await this.markWarmed();
       
-      this.log('info', `${stoppedEarly ? '🛑 Warmup stopped' : '✅ Warmup complete'}: ${itemsWarmed} items, ${errors} errors, ${this.warmupStats.duration}s. Next run: ${nextRun.toISOString()}`);
+      const outcome = stoppedEarly ? '🛑 Warmup stopped' : errors > 0 ? '⚠️ Warmup complete with errors' : '✅ Warmup complete';
+      this.log(errors > 0 ? 'warn' : 'info', `${outcome}: ${itemsWarmed} items, ${errors} errors, ${this.warmupStats.duration}s. Next run: ${nextRun.toISOString()}`);
     }
   }
 
@@ -317,6 +320,7 @@ class MALCatalogWarmer {
 
   async warmPriorityCatalogs() {
     let count = 0;
+    let errors = 0;
     const config = { sfw: WARMUP_CONFIG.sfw };
     const pages = WARMUP_CONFIG.priorityPages;
     const language = 'en-US';
@@ -359,7 +363,7 @@ class MALCatalogWarmer {
     };
     
     const catalogFunctions = [
-      { fn: () => jikan.getAiringNow, name: 'airing-now', catalogId: 'mal.airing', hasGenreId: false },
+      { fn: () => jikan.getAiringNow, name: 'airing', catalogId: 'mal.airing', hasGenreId: false },
       { fn: () => jikan.getTopAnimeByType, name: 'top-anime', catalogId: 'mal.top_anime', args: ['anime'], hasGenreId: false },
       { fn: () => jikan.getTopAnimeByType, name: 'top-movies', catalogId: 'mal.top_movies', args: ['movie'], hasGenreId: false },
       { fn: () => jikan.getTopAnimeByType, name: 'top-series', catalogId: 'mal.top_series', args: ['tv'], hasGenreId: false },
@@ -399,7 +403,7 @@ class MALCatalogWarmer {
           // Wrap in cacheWrapCatalog just like the catalog route
           const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
             const fn = catalog.fn();
-            const args = catalog.args || [];
+            const args = [...(catalog.args || []), page, ...(catalog.hasGenreId ? [null] : [])];
             // Function signatures:
             // getAiringNow(page, config)
             // getTopAnimeByType(type, page, config)
@@ -407,13 +411,10 @@ class MALCatalogWarmer {
             // getTopAnimeByDateRange(startDate, endDate, page, genreId, config)
             const isVolatile = catalog.catalogId === 'mal.airing' || catalog.catalogId === 'mal.upcoming';
             const ttl = isVolatile ? 24 * 60 * 60 : null;
-            const animeResults = catalog.hasGenreId
-              ? await cacheWrapJikanApi(`mal-${catalog.name}-${page}-${warmingConfig.sfw}`, async () => {
-                  return await fn(...args, page, null, warmingConfig);  // Has genreId param
-                }, ttl)
-              : await cacheWrapJikanApi(`mal-${catalog.name}-${page}-${warmingConfig.sfw}`, async () => {
-                  return await fn(...args, page, warmingConfig);        // No genreId param
-                }, ttl);
+            const jikanKey = catalog.hasGenreId ? `mal-${catalog.catalogId}-${page}-all` : `mal-${catalog.name}-${page}`;
+            const animeResults = await cacheWrapJikanApi(`${jikanKey}-${warmingConfig.sfw}`, async () => {
+              return await fn(...args, warmingConfig, { throwOnError: true });
+            }, ttl);
             const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
             return { metas };
           }, { enableErrorCaching: false, maxRetries: 1, config: warmingConfig });
@@ -425,16 +426,18 @@ class MALCatalogWarmer {
           
           await this.delay(WARMUP_CONFIG.taskDelayMs);
         } catch (error) {
-          this.log('debug', `Error warming ${catalog.name} page ${page}: ${error.message}`);
+          errors++;
+          this.log('warn', `Error warming ${catalog.name} page ${page}: ${error.message}`);
         }
       }
     }
     
-    return count;
+    return { count, errors };
   }
 
   async warmScheduleCatalogs() {
     let count = 0;
+    let errors = 0;
     const config = { sfw: WARMUP_CONFIG.sfw };
     const language = 'en-US';
     
@@ -485,8 +488,8 @@ class MALCatalogWarmer {
         
         const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
           // getAiringSchedule(day, page, config)
-          const animeResults = await cacheWrapJikanApi(`mal-schedule-${day}-1-${warmingConfig.sfw}`, async () => {
-            return await jikan.getAiringSchedule(day, 1, warmingConfig);
+          const animeResults = await cacheWrapJikanApi(`mal-schedule-${dayCapitalized}-1-${warmingConfig.sfw}`, async () => {
+            return await jikan.getAiringSchedule(dayCapitalized, 1, warmingConfig, { throwOnError: true });
           }, null);
           const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
           return { metas };
@@ -499,15 +502,17 @@ class MALCatalogWarmer {
         
         await this.delay(WARMUP_CONFIG.taskDelayMs);
       } catch (error) {
-        this.log('debug', `Error warming schedule ${day}: ${error.message}`);
+        errors++;
+        this.log('warn', `Error warming schedule ${day}: ${error.message}`);
       }
     }
     
-    return count;
+    return { count, errors };
   }
 
   async warmDecadeCatalogs() {
     let count = 0;
+    let errors = 0;
     const config = { sfw: WARMUP_CONFIG.sfw };
     const language = 'en-US';
     
@@ -558,8 +563,8 @@ class MALCatalogWarmer {
           
           const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
             // getTopAnimeByDateRange(startDate, endDate, page, genreId, config)
-            const animeResults = await cacheWrapJikanApi(`mal-${decade.catalogId}-1-${warmingConfig.sfw}`, async () => {
-              return await jikan.getTopAnimeByDateRange(decade.start, decade.end, 1, null, warmingConfig);
+            const animeResults = await cacheWrapJikanApi(`mal-${decade.catalogId}-1-all-${warmingConfig.sfw}`, async () => {
+              return await jikan.getTopAnimeByDateRange(decade.start, decade.end, 1, null, warmingConfig, { throwOnError: true });
             }, null);
             const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
             return { metas };
@@ -572,14 +577,16 @@ class MALCatalogWarmer {
           
           await this.delay(WARMUP_CONFIG.taskDelayMs);
         } catch (error) {
-          this.log('debug', `Error warming decade ${decade.id}: ${error.message}`);
+          errors++;
+          this.log('warn', `Error warming decade ${decade.id}: ${error.message}`);
         }
       }
     } catch (error) {
-      this.log('info', `Error warming decade catalogs: ${error.message}`);
+      errors++;
+      this.log('warn', `Error warming decade catalogs: ${error.message}`);
     }
     
-    return count;
+    return { count, errors };
   }
 
   delay(ms) {

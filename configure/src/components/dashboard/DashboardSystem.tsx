@@ -556,11 +556,11 @@ export function DashboardSystem({ data }: DashboardSystemProps) {
               <div className="pt-3 border-t">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Provider Status</p>
-                  <p className="text-[10px] text-muted-foreground">calls today</p>
+                  <p className="text-[10px] text-muted-foreground">calls, last 24h</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {[...providerStatus]
-                    .sort((a, b) => (b.stats?.callsToday || 0) - (a.stats?.callsToday || 0))
+                    .sort((a, b) => (b.stats?.calls24h || 0) - (a.stats?.calls24h || 0))
                     .map((provider, i) => (
                     <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs">
                       <div className={`w-2 h-2 rounded-full ${
@@ -569,8 +569,8 @@ export function DashboardSystem({ data }: DashboardSystemProps) {
                         provider.status === "down" ? "bg-red-500" : "bg-gray-400"
                       }`} />
                       <span className="font-medium">{provider.name}</span>
-                      {provider.stats?.callsToday > 0 && (
-                        <span className="text-muted-foreground">{provider.stats.callsToday.toLocaleString()}</span>
+                      {provider.stats?.calls24h > 0 && (
+                        <span className="text-muted-foreground">{provider.stats.calls24h.toLocaleString()}</span>
                       )}
                     </div>
                   ))}

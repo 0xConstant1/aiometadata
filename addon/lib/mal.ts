@@ -34,6 +34,10 @@ interface RequestTask {
   retries: number;
 }
 
+interface CatalogRequestOptions {
+  throwOnError?: boolean;
+}
+
 const etagCache = new Map<string, EtagEntry>();
 
 setInterval(() => {
@@ -548,7 +552,7 @@ async function jikanGetAllPages(endpoint: string, initialParams: Record<string, 
   return allItems;
 }
 
-async function getAiringSchedule(day: string, page: number = 1, config: any = {}): Promise<any[]> {
+async function getAiringSchedule(day: string, page: number = 1, config: any = {}, options: CatalogRequestOptions = {}): Promise<any[]> {
   const queryParams: Record<string, any> = {
     filter: day.toLowerCase(),
     page: page,
@@ -564,12 +568,13 @@ async function getAiringSchedule(day: string, page: number = 1, config: any = {}
   return enqueueRequest(() => _makeJikanRequest(url), url)
     .then((response: any) => normalizeJikanCatalogForCache(response.data?.data || []))
     .catch((e: any) => {
+      if (options.throwOnError) throw e;
       logger.warn(`Could not fetch airing schedule for ${day}, page ${page}:`, e.message);
       return [];
     });
 }
 
-async function getAiringNow(page: number = 1, config: any = {}): Promise<any[]> {
+async function getAiringNow(page: number = 1, config: any = {}, options: CatalogRequestOptions = {}): Promise<any[]> {
   const queryParams: Record<string, any> = {
     page: page,
     limit: malPageSize()
@@ -582,6 +587,7 @@ async function getAiringNow(page: number = 1, config: any = {}): Promise<any[]> 
   return enqueueRequest(() => _makeJikanRequest(url), url)
     .then((response: any) => normalizeJikanCatalogForCache(response.data?.data || []))
     .catch((e: any) => {
+      if (options.throwOnError) throw e;
       logger.warn(`Could not fetch currently airing anime, page ${page}:`, e.message);
       return [];
     });
@@ -649,7 +655,7 @@ async function getAnimeGenres(): Promise<any[]> {
     });
 }
 
-async function getTopAnimeByDateRange(startDate: string, endDate: string, page: number = 1, genreId?: string | number, config: any = {}): Promise<any[]> {
+async function getTopAnimeByDateRange(startDate: string, endDate: string, page: number = 1, genreId?: string | number, config: any = {}, options: CatalogRequestOptions = {}): Promise<any[]> {
   const queryParams: Record<string, any> = {
     start_date: startDate,
     end_date: endDate,
@@ -672,12 +678,13 @@ async function getTopAnimeByDateRange(startDate: string, endDate: string, page: 
   return enqueueRequest(() => _makeJikanRequest(url), url)
     .then((response: any) => normalizeJikanCatalogForCache(response.data?.data || []))
     .catch((e: any) => {
+      if (options.throwOnError) throw e;
       logger.warn(`Could not fetch top anime between ${startDate} and ${endDate}, page ${page}:`, e.message);
       return [];
   });
 }
 
-async function getTopAnimeByType(type: string, page: number = 1, config: any = {}): Promise<any[]> {
+async function getTopAnimeByType(type: string, page: number = 1, config: any = {}, options: CatalogRequestOptions = {}): Promise<any[]> {
   const types = ['movie', 'tv', 'ova', 'ona'];
   const queryParams: Record<string, any> = {
     page: page,
@@ -695,12 +702,13 @@ async function getTopAnimeByType(type: string, page: number = 1, config: any = {
   return enqueueRequest(() => _makeJikanRequest(url), url)
     .then((response: any) => normalizeJikanCatalogForCache(response.data?.data || []))
     .catch((e: any) => {
+      if (options.throwOnError) throw e;
       logger.warn(`Could not fetch top  anime, page ${page}:`, e.message);
       return [];
     });
 }
 
-async function getTopAnimeByFilter(filter: string, page: number = 1, config: any = {}): Promise<any[]> {
+async function getTopAnimeByFilter(filter: string, page: number = 1, config: any = {}, options: CatalogRequestOptions = {}): Promise<any[]> {
   const queryParams: Record<string, any> = {
     page: page,
     limit: malPageSize(),
@@ -715,6 +723,7 @@ async function getTopAnimeByFilter(filter: string, page: number = 1, config: any
   return enqueueRequest(() => _makeJikanRequest(url), url)
     .then((response: any) => normalizeJikanCatalogForCache(response.data?.data || []))
     .catch((e: any) => {
+      if (options.throwOnError) throw e;
       logger.warn(`Could not fetch top anime by filter ${filter}, page ${page}:`, e.message);
       return [];
     });

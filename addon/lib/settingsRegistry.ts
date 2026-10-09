@@ -1922,7 +1922,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'PROVIDER_HEALTH_MIN_CALLS',
     envVar: 'PROVIDER_HEALTH_MIN_CALLS',
     label: 'Provider Health Minimum Calls',
-    description: 'How many calls a provider needs over the last day or two before the dashboard marks it slow or degraded for its error rate. Below this, a couple of failures are not enough to flag it.',
+    description: 'How many calls a provider needs in the last 24 hours before the dashboard marks it degraded or down for its error rate. Below this, a couple of failures are not enough to flag it.',
     category: 'Diagnostics',
     type: 'number',
     default: 20,

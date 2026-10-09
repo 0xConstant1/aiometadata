@@ -1,7 +1,9 @@
-import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import consola from 'consola';
 import { envInt } from '../utils/envNumber';
 import { onStall } from './stallProfiler';
+
+type IntervalHistogram = ReturnType<typeof monitorEventLoopDelay>;
 
 const logger = consola.withTag('EventLoop');
 
