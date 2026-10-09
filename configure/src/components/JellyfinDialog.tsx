@@ -492,10 +492,10 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
       { value: 'simkl', label: 'Simkl', shelves: ['movies', 'series', 'anime'], ready: Boolean(config.apiKeys?.simklTokenId) && config.simklWatchTracking !== false },
       { value: 'anilist', label: 'AniList', shelves: ['anime'], ready: Boolean(config.apiKeys?.anilistTokenId) && config.anilistWatchTracking !== false },
       { value: 'mal', label: 'MyAnimeList', shelves: ['anime'], ready: Boolean(config.apiKeys?.malTokenId) && config.malWatchTracking !== false },
-      { value: 'publicmetadb', label: 'PublicMetaDB', shelves: ['movies', 'series'], ready: Boolean(config.apiKeys?.publicmetadb) && config.publicmetadbWatchTracking !== false && (config.catalogs ?? []).some((c) => c.id.startsWith('publicmetadb.list.')) },
+      { value: 'publicmetadb', label: 'PublicMetaDB', shelves: ['movies', 'series'], ready: Boolean(config.apiKeys?.publicmetadb) && config.publicmetadbWatchTracking !== false },
     ];
     return candidates.filter((c) => c.ready).map(({ value, label, shelves }) => ({ value, label, shelves }));
-  }, [config.apiKeys, config.catalogs, config.mdblistWatchTracking, config.simklWatchTracking, config.anilistWatchTracking, config.malWatchTracking, config.publicmetadbWatchTracking]);
+  }, [config.apiKeys, config.mdblistWatchTracking, config.simklWatchTracking, config.anilistWatchTracking, config.malWatchTracking, config.publicmetadbWatchTracking]);
 
   const catalogCountFor = (chosen: string[]) => {
     const wanted = new Set(chosen.map((t) => t.toLowerCase()));

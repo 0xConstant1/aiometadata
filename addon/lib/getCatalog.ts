@@ -8,7 +8,7 @@ import { fetchTraktWatchlistItems, fetchTraktFavoritesItems, fetchTraktRecommend
 import { fetchSimklTrendingItems, fetchSimklRecipeItems, fetchSimklWatchlistItems, fetchSimklUpNextItems, parseSimklItems, parseSimklUpNextItems, getSimklToken, fetchSimklCalendarItems, fetchSimklGenreItems, fetchSimklDvdReleases, fetchSimklListPage } from "../utils/simklUtils.js";
 import { fetchLetterboxdList, parseLetterboxdItems, getLetterboxdGenreIdByName } from "../utils/letterboxdUtils.js";
 import { getFlixPatrolMetas } from "../utils/flixpatrolUtils.js";
-import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType } from "../utils/publicmetadbUtils.js";
+import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType, publicMetaDBListId, WATCHLIST_CATALOG_ID } from "../utils/publicmetadbUtils.js";
 import { mapWithLimit } from "../utils/concurrency.js";
 const anilist = require('./anilist');
 import { createHash } from 'crypto';
@@ -3439,9 +3439,9 @@ async function getPublicMetaDBCatalog(
       return metas;
     }
 
-    if (catalogId.startsWith('publicmetadb.list.')) {
-      const { pmdbListIdFor } = require('./accounts');
-      const listId = pmdbListIdFor(config, catalogId);
+    if (catalogId === WATCHLIST_CATALOG_ID || catalogId.startsWith('publicmetadb.list.')) {
+      const listId = await publicMetaDBListId(config, catalogId);
+      if (!listId) return [];
       const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
       const [data, listType] = await Promise.all([
         fetchListItems(apiKey, listId, page, pageSize).catch((error: any) => {
@@ -3449,7 +3449,7 @@ async function getPublicMetaDBCatalog(
           logger.warn(`[PublicMetaDB] List ${listId} is not on this account; it is a row left over from an older configuration. Remove it, or reinstall the addon in the client.`);
           return { items: [] };
         }),
-        publicMetaDBListType(config, catalogId),
+        catalogId === WATCHLIST_CATALOG_ID ? 'watchlist' : publicMetaDBListType(config, catalogId),
       ]);
       let metas = await parseListItems(data.items || [], type, language, config);
       metas = stampListedAt(metas, data.items || [], (item: any) => ({ tmdb: item?.tmdb_id }), (item: any) => item?.created);

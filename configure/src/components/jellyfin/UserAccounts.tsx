@@ -27,7 +27,6 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
   const [busy, setBusy] = useState<CardService | null>(null);
   const [stale, setStale] = useState<Partial<Record<CardService, boolean>>>({});
 
-  const hasPmdbWatchlist = catalogs.some((c) => c.id.startsWith('publicmetadb.list.') && c.metadata?.listType === 'watchlist');
   const simklToken = user.accounts?.apiKeys?.simklTokenId;
   const anilistToken = user.accounts?.apiKeys?.anilistTokenId;
   const malToken = user.accounts?.apiKeys?.malTokenId;
@@ -162,8 +161,6 @@ export function UserAccounts({ user, catalogs, onChange, onAddCatalogs }: UserAc
               </div>
               {selected === 'publicmetadb' && !user.accounts?.publicmetadbWatchlist ? (
                 <p className="text-[11px] text-amber-400">No watchlist list on this account, so PublicMetaDB is not one of their watchlist shelves.</p>
-              ) : selected === 'publicmetadb' && !hasPmdbWatchlist ? (
-                <p className="text-[11px] text-amber-400">Their PublicMetaDB watchlist is read through yours; add your PublicMetaDB watchlist catalog to give them the shelf.</p>
               ) : null}
               {missing.length ? (
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onAddCatalogs(missing)}>

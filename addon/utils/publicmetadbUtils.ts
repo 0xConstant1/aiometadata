@@ -257,7 +257,7 @@ async function fetchAllLists(apiKey: string): Promise<any[]> {
   return items;
 }
 
-async function resolveListType(apiKey: string, listId: string): Promise<PmdbListType | null> {
+async function listKinds(apiKey: string): Promise<Array<{ id: string; type: PmdbListType }>> {
   const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   const ttl = parseInt(process.env.PUBLICMETADB_LISTS_TTL || '3600', 10);
   const kinds: Array<{ id: string; type: PmdbListType }> = await cacheWrapGlobal(`publicmetadb:list-kinds:${keyHash}`, async () =>
@@ -265,7 +265,11 @@ async function resolveListType(apiKey: string, listId: string): Promise<PmdbList
       .map((list: any) => ({ id: list?.id, type: asListType(list?.type) }))
       .filter((k: any): k is { id: string; type: PmdbListType } => Boolean(k.id && k.type)),
   ttl);
-  return kinds?.find((k) => k.id === listId)?.type ?? null;
+  return kinds ?? [];
+}
+
+async function resolveListType(apiKey: string, listId: string): Promise<PmdbListType | null> {
+  return (await listKinds(apiKey)).find((k) => k.id === listId)?.type ?? null;
 }
 
 async function publicMetaDBListType(config: any, catalogId: string): Promise<PmdbListType | null> {
@@ -282,6 +286,27 @@ async function publicMetaDBListType(config: any, catalogId: string): Promise<Pmd
   }
 }
 
+const WATCHLIST_CATALOG_ID = 'publicmetadb.watchlist';
+
+async function accountWatchlistId(config: any): Promise<string | null> {
+  if (config?.jellyfinAccounts) return config.jellyfinAccounts.publicmetadbWatchlist ? String(config.jellyfinAccounts.publicmetadbWatchlist) : null;
+  const apiKey = config?.apiKeys?.publicmetadb;
+  if (!apiKey) return null;
+  try {
+    const found = (await listKinds(apiKey)).find((k) => k.type === 'watchlist');
+    return found ? String(found.id) : null;
+  } catch (error: any) {
+    logger.warn(`Could not find the PublicMetaDB watchlist: ${error?.message || error}`);
+    return null;
+  }
+}
+
+async function publicMetaDBListId(config: any, catalogId: string): Promise<string | null> {
+  if (catalogId === WATCHLIST_CATALOG_ID) return accountWatchlistId(config);
+  const { pmdbListIdFor } = require('../lib/accounts');
+  return pmdbListIdFor(config, catalogId);
+}
+
 async function publicMetaDBWatchlistCatalog(config: any): Promise<any | null> {
   const lists = (config?.catalogs ?? []).filter((c: any) => typeof c?.id === 'string' && c.id.startsWith('publicmetadb.list.'));
   const known = lists.find((c: any) => c?.metadata?.listType === 'watchlist');
@@ -290,7 +315,7 @@ async function publicMetaDBWatchlistCatalog(config: any): Promise<any | null> {
     if (catalog?.metadata?.listType) continue;
     if ((await publicMetaDBListType(config, catalog.id)) === 'watchlist') return catalog;
   }
-  return null;
+  return (await accountWatchlistId(config)) ? { id: WATCHLIST_CATALOG_ID, type: 'all' } : null;
 }
 
 async function setListItem(apiKey: string, listId: string, tmdbId: number | string, mediaType: 'movie' | 'tv', listed: boolean): Promise<void> {
@@ -697,6 +722,8 @@ export {
   fetchPublicListByLink,
   publicMetaDBListType,
   publicMetaDBWatchlistCatalog,
+  publicMetaDBListId,
+  WATCHLIST_CATALOG_ID,
   setListItem,
   setDropped,
   fetchPicks,

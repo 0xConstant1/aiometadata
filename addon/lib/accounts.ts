@@ -64,7 +64,7 @@ const SLOTS: Array<[AccountService, RegExp]> = [
   ['simkl', /^simkl\.(watchlist\..+|upnext(\.anime)?)$/],
   ['mal', /^mal\.(userlist\..+|suggestions)$/],
   ['anilist', /^anilist\.(?!trending$)[^.]+$/],
-  ['publicmetadb', /^publicmetadb\.upnext$/],
+  ['publicmetadb', /^publicmetadb\.(upnext|watchlist)$/],
 ];
 
 /** The service a catalog belongs to as "this account's own list"; null for public and named lists. */
