@@ -1,5 +1,5 @@
 const jikan = require('./mal');
-const { cacheWrapJikanApi, cacheWrapCatalog } = require('./getCache');
+const { cacheWrapJikanApi, cacheWrapCatalog, createWarmFailureGuard } = require('./getCache');
 const { sleep } = require('../utils/concurrency');
 const { parseAnimeCatalogMetaBatch } = require('../utils/parseProps');
 const { envInt } = require('../utils/envNumber');
@@ -401,9 +401,10 @@ class MALCatalogWarmer {
           warmingConfig._currentCatalogConfig = findCatalogConfig(catalog.catalogId);
           
           // Wrap in cacheWrapCatalog just like the catalog route
+          const guard = createWarmFailureGuard();
           const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
             const fn = catalog.fn();
-            const args = catalog.args || [];
+            const args = [...(catalog.args || []), page, ...(catalog.hasGenreId ? [null] : [])];
             // Function signatures:
             // getAiringNow(page, config)
             // getTopAnimeByType(type, page, config)
@@ -411,16 +412,13 @@ class MALCatalogWarmer {
             // getTopAnimeByDateRange(startDate, endDate, page, genreId, config)
             const isVolatile = catalog.catalogId === 'mal.airing' || catalog.catalogId === 'mal.upcoming';
             const ttl = isVolatile ? 24 * 60 * 60 : null;
-            const animeResults = catalog.hasGenreId
-              ? await cacheWrapJikanApi(`mal-${catalog.name}-${page}-${warmingConfig.sfw}`, async () => {
-                  return await fn(...args, page, null, warmingConfig, { throwOnError: true });
-                }, ttl)
-              : await cacheWrapJikanApi(`mal-${catalog.name}-${page}-${warmingConfig.sfw}`, async () => {
-                  return await fn(...args, page, warmingConfig, { throwOnError: true });
-                }, ttl);
+            const animeResults = await cacheWrapJikanApi(`mal-${catalog.name}-${page}-${warmingConfig.sfw}`, guard.fetch(async () => {
+              return await fn(...args, warmingConfig, { throwOnError: true });
+            }), ttl, guard.options);
             const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
             return { metas };
-          }, { enableErrorCaching: false, maxRetries: 1, config: warmingConfig });
+          }, { enableErrorCaching: false, maxRetries: 1, config: warmingConfig, ...guard.options });
+          guard.throwIfFailed();
           
           if (result && result.metas && result.metas.length > 0) {
             this.log('debug', `Cached ${result.metas.length} items from ${catalog.name} page ${page}`);
@@ -489,14 +487,16 @@ class MALCatalogWarmer {
         const extraArgs = { genre: dayCapitalized };
         const catalogKey = `mal.schedule:anime:${JSON.stringify(extraArgs || {})}`;
         
+        const guard = createWarmFailureGuard();
         const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
           // getAiringSchedule(day, page, config)
-          const animeResults = await cacheWrapJikanApi(`mal-schedule-${day}-1-${warmingConfig.sfw}`, async () => {
+          const animeResults = await cacheWrapJikanApi(`mal-schedule-${day}-1-${warmingConfig.sfw}`, guard.fetch(async () => {
             return await jikan.getAiringSchedule(day, 1, warmingConfig, { throwOnError: true });
-          }, null);
+          }), null, guard.options);
           const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
           return { metas };
-        }, { enableErrorCaching: false, maxRetries: 1, config: warmingConfig });
+        }, { enableErrorCaching: false, maxRetries: 1, config: warmingConfig, ...guard.options });
+        guard.throwIfFailed();
         
         if (result && result.metas && result.metas.length > 0) {
           this.log('debug', `Cached ${result.metas.length} items from schedule ${day}`);
@@ -564,14 +564,16 @@ class MALCatalogWarmer {
           // Decade catalogs are page 1 only, no skip
           const catalogKey = `${decade.catalogId}:anime:{}`;
           
+          const guard = createWarmFailureGuard();
           const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
             // getTopAnimeByDateRange(startDate, endDate, page, genreId, config)
-            const animeResults = await cacheWrapJikanApi(`mal-${decade.catalogId}-1-${warmingConfig.sfw}`, async () => {
+            const animeResults = await cacheWrapJikanApi(`mal-${decade.catalogId}-1-${warmingConfig.sfw}`, guard.fetch(async () => {
               return await jikan.getTopAnimeByDateRange(decade.start, decade.end, 1, null, warmingConfig, { throwOnError: true });
-            }, null);
+            }), null, guard.options);
             const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
             return { metas };
-          }, { enableErrorCaching: false, maxRetries: 1, config: warmingConfig });
+          }, { enableErrorCaching: false, maxRetries: 1, config: warmingConfig, ...guard.options });
+          guard.throwIfFailed();
           
           if (result && result.metas && result.metas.length > 0) {
             this.log('debug', `Cached ${result.metas.length} items from decade ${decade.id}`);

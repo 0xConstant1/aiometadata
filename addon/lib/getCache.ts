@@ -2469,6 +2469,33 @@ function cacheWrapJikanApi(key: string, method: () => Promise<any>, customTTL: n
   });
 }
 
+/**
+ * Warmers share cache keys, and so in-flight requests, with viewers. A failure
+ * must not reject that shared promise or be cached, so the fetch resolves to an
+ * empty list and the error is kept for the warmer to raise once the call returns.
+ */
+function createWarmFailureGuard() {
+  const guard = {
+    error: null as any,
+    fetch: (method: () => Promise<any>) => async () => {
+      try {
+        return await method();
+      } catch (error) {
+        guard.error = guard.error || error;
+        return [];
+      }
+    },
+    options: {
+      resultClassifier: (result: any, error: any = null, cacheKey: string | null = null) =>
+        guard.error ? { type: 'SKIP_CACHE', ttl: 0 } : classifyResult(result, error, cacheKey),
+    },
+    throwIfFailed: () => {
+      if (guard.error) throw guard.error;
+    },
+  };
+  return guard;
+}
+
 function cacheWrapMDBListGenres(genreType: string, method: () => Promise<any>): Promise<any> {
   cacheLogger.debug(`Caching MDBList genres for type: ${genreType}`);
   return cacheWrapGlobal(`mdblist-${genreType}`, method, MDBLIST_GENRES_TTL);
@@ -2651,6 +2678,7 @@ export {
   cacheWrapCatalog,
   cacheWrapSearch,
   cacheWrapJikanApi,
+  createWarmFailureGuard,
   cacheWrapMDBListGenres,
   cacheWrapTraktGenres,
   cacheWrapLumiereGenres,
@@ -2688,6 +2716,7 @@ module.exports = {
   cacheWrapCatalog,
   cacheWrapSearch,
   cacheWrapJikanApi,
+  createWarmFailureGuard,
   cacheWrapMDBListGenres,
   cacheWrapTraktGenres,
   cacheWrapLumiereGenres,
