@@ -1,11 +1,11 @@
-FROM node:24-alpine AS builder
+FROM mirror.gcr.io/library/node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build && npm run build:backend
 
-FROM node:24-alpine AS runner
+FROM mirror.gcr.io/library/node:24-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache ca-certificates wget
 COPY package*.json package-lock.json* ./
