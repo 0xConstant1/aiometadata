@@ -363,7 +363,7 @@ class MALCatalogWarmer {
     };
     
     const catalogFunctions = [
-      { fn: () => jikan.getAiringNow, name: 'airing-now', catalogId: 'mal.airing', hasGenreId: false },
+      { fn: () => jikan.getAiringNow, name: 'airing', catalogId: 'mal.airing', hasGenreId: false },
       { fn: () => jikan.getTopAnimeByType, name: 'top-anime', catalogId: 'mal.top_anime', args: ['anime'], hasGenreId: false },
       { fn: () => jikan.getTopAnimeByType, name: 'top-movies', catalogId: 'mal.top_movies', args: ['movie'], hasGenreId: false },
       { fn: () => jikan.getTopAnimeByType, name: 'top-series', catalogId: 'mal.top_series', args: ['tv'], hasGenreId: false },
@@ -412,7 +412,8 @@ class MALCatalogWarmer {
             // getTopAnimeByDateRange(startDate, endDate, page, genreId, config)
             const isVolatile = catalog.catalogId === 'mal.airing' || catalog.catalogId === 'mal.upcoming';
             const ttl = isVolatile ? 24 * 60 * 60 : null;
-            const animeResults = await cacheWrapJikanApi(`mal-${catalog.name}-${page}-${warmingConfig.sfw}`, guard.fetch(async () => {
+            const jikanKey = catalog.hasGenreId ? `mal-${catalog.catalogId}-${page}-all` : `mal-${catalog.name}-${page}`;
+            const animeResults = await cacheWrapJikanApi(`${jikanKey}-${warmingConfig.sfw}`, guard.fetch(async () => {
               return await fn(...args, warmingConfig, { throwOnError: true });
             }), ttl, guard.options);
             const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
@@ -490,8 +491,8 @@ class MALCatalogWarmer {
         const guard = createWarmFailureGuard();
         const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
           // getAiringSchedule(day, page, config)
-          const animeResults = await cacheWrapJikanApi(`mal-schedule-${day}-1-${warmingConfig.sfw}`, guard.fetch(async () => {
-            return await jikan.getAiringSchedule(day, 1, warmingConfig, { throwOnError: true });
+          const animeResults = await cacheWrapJikanApi(`mal-schedule-${dayCapitalized}-1-${warmingConfig.sfw}`, guard.fetch(async () => {
+            return await jikan.getAiringSchedule(dayCapitalized, 1, warmingConfig, { throwOnError: true });
           }), null, guard.options);
           const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);
           return { metas };
@@ -567,7 +568,7 @@ class MALCatalogWarmer {
           const guard = createWarmFailureGuard();
           const result = await cacheWrapCatalog(systemUUID, catalogKey, async () => {
             // getTopAnimeByDateRange(startDate, endDate, page, genreId, config)
-            const animeResults = await cacheWrapJikanApi(`mal-${decade.catalogId}-1-${warmingConfig.sfw}`, guard.fetch(async () => {
+            const animeResults = await cacheWrapJikanApi(`mal-${decade.catalogId}-1-all-${warmingConfig.sfw}`, guard.fetch(async () => {
               return await jikan.getTopAnimeByDateRange(decade.start, decade.end, 1, null, warmingConfig, { throwOnError: true });
             }), null, guard.options);
             const metas = await parseAnimeCatalogMetaBatch(animeResults, warmingConfig, language);

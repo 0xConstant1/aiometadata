@@ -473,7 +473,7 @@ class ComprehensiveCatalogWarmer {
         }, null);
         const genreId = genreName && genreName !== 'None' ? allAnimeGenres.find(g => g.name === genreName)?.mal_id : null;
         if (genreId !== undefined) {
-          const animeResults = await cacheWrapJikanApi(`mal-decade-${catalogId}-${page}-${genreId ?? 'all'}-${config.sfw}`, guard.fetch(async () => {
+          const animeResults = await cacheWrapJikanApi(`mal-${catalogId}-${page}-${genreId ?? 'all'}-${config.sfw}`, guard.fetch(async () => {
             return await jikan.getTopAnimeByDateRange(startDate, endDate, page, genreId ?? undefined, config, { throwOnError: true });
           }), null, guard.options);
           metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
