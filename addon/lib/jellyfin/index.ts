@@ -710,9 +710,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         res.json(itemList([], 0, startIndex));
         return;
       }
+      const withFilms = String(includeItemTypes ?? '').split(',').map((t) => t.trim()).includes('Movie');
       const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
-      const memoKey = `${userUUID}:${profileKey(config)}:calendar:${from}:${to}:${digest}`;
-      const episodes = await memoNextUp(userUUID, memoKey, () => buildCalendar(userUUID, config, from, to), (built) =>
+      const memoKey = `${userUUID}:${profileKey(config)}:calendar:${from}:${to}:${digest}${withFilms ? ':films' : ''}`;
+      const episodes = await memoNextUp(userUUID, memoKey, () => buildCalendar(userUUID, config, from, to, withFilms), (built) =>
         built.length === 0 ? Date.now() + envInt('JELLYFIN_CALENDAR_EMPTY_TTL', 30, 1) * 1000 : null);
       const pageSize = (req.query.Limit ?? req.query.limit) === undefined ? 500 : limit;
       res.json(itemList(episodes.slice(startIndex, startIndex + pageSize), episodes.length, startIndex));
@@ -2632,7 +2633,40 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return { snapshot, caughtUp, followed };
   };
 
-  const buildCalendar = async (userUUID: string, config: any, from: number, to: number): Promise<any[]> => {
+  /** Watchlisted films, from every watchlist, whose release date passes `keep`. */
+  const watchlistFilms = async (userUUID: string, config: any, keep: (at: number) => boolean, seen: Set<string> = new Set()): Promise<any[]> => {
+    const serverId = serverIdFor(userUUID);
+    const filmLimit = envInt('JELLYFIN_UPCOMING_WATCHLIST_LIMIT', 100, 1);
+    const films: any[] = [];
+    const addFilm = (meta: any, type: string) => {
+      const item = metaToBaseItem(meta, type, serverId, null);
+      if (item.Type !== 'Movie' || !keep(Date.parse(item?.PremiereDate || '')) || seen.has(item.Id)) return;
+      if (keepsAnimeOnly(config) && !isAnimeTitle(String(meta.id), 'movie')) return;
+      seen.add(item.Id);
+      films.push(item);
+    };
+    const watchlists = (await getCatalogs(userUUID, config)).filter(
+      (catalog: any) => /\.watchlist\b/.test(catalog.id) && (collectionTypeFor(catalog.type) === 'movies' || catalog.type === 'all')
+    );
+    await mapWithConcurrency(watchlists, 2, async (catalog: any) => {
+      const window = await fetchWindow(userUUID, catalog, 0, filmLimit, {}, undefined, profileTags(config))
+        .catch(() => ({ items: [] as any[], hasMore: false }));
+      for (const meta of window.items) {
+        if (catalog.type !== 'all') addFilm(meta, catalog.type);
+        else if (meta?.type === 'movie') addFilm(meta, 'movie');
+      }
+    });
+    const listed = (await watchlistEntries(userUUID, config, filmLimit).catch(() => ({ entries: [] as any[] }))).entries
+      .filter((entry: any) => entry.mediaType === 'movie')
+      .slice(0, filmLimit);
+    await mapWithConcurrency(listed, shelfConcurrency(), async (entry: any) => {
+      const meta = await fetchMeta(userUUID, 'movie', entry.metaId).catch(() => null);
+      if (meta) addFilm(meta, 'movie');
+    });
+    return films;
+  };
+
+  const buildCalendar = async (userUUID: string, config: any, from: number, to: number, withFilms = false): Promise<any[]> => {
     const serverId = serverIdFor(userUUID);
     const profile = profileKey(config);
     const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
@@ -2671,6 +2705,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         dated.push(episode);
       }
     });
+    if (withFilms) dated.push(...(await watchlistFilms(userUUID, config, (at) => Number.isFinite(at) && at >= from && at <= to)));
 
     await applyWatchedState(dated, snapshot, userUUID, profile);
     return dated
@@ -2825,33 +2860,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       premieres.push(next);
     });
 
-    const filmLimit = envInt('JELLYFIN_UPCOMING_WATCHLIST_LIMIT', 100, 1);
-    const films: any[] = [];
-    const addFilm = (meta: any, type: string) => {
-      const item = metaToBaseItem(meta, type, serverId, null);
-      if (item.Type !== 'Movie' || !within(premiereAt(item)) || seen.has(item.Id)) return;
-      if (keepsAnimeOnly(config) && !isAnimeTitle(String(meta.id), 'movie')) return;
-      seen.add(item.Id);
-      films.push(item);
-    };
-    const watchlists = (await getCatalogs(userUUID, config)).filter(
-      (catalog: any) => /\.watchlist\b/.test(catalog.id) && (collectionTypeFor(catalog.type) === 'movies' || catalog.type === 'all')
-    );
-    await mapWithConcurrency(watchlists, 2, async (catalog: any) => {
-      const window = await fetchWindow(userUUID, catalog, 0, filmLimit, {}, undefined, profileTags(config))
-        .catch(() => ({ items: [] as any[], hasMore: false }));
-      for (const meta of window.items) {
-        if (catalog.type !== 'all') addFilm(meta, catalog.type);
-        else if (meta?.type === 'movie') addFilm(meta, 'movie');
-      }
-    });
-    const listed = (await watchlistEntries(userUUID, config, filmLimit).catch(() => ({ entries: [] as any[] }))).entries
-      .filter((entry: any) => entry.mediaType === 'movie')
-      .slice(0, filmLimit);
-    await mapWithConcurrency(listed, shelfConcurrency(), async (entry: any) => {
-      const meta = await fetchMeta(userUUID, 'movie', entry.metaId).catch(() => null);
-      if (meta) addFilm(meta, 'movie');
-    });
+    const films = await watchlistFilms(userUUID, config, within, seen);
 
     return [...premieres, ...films]
       .filter(keepsUnderProfileCap(config))
