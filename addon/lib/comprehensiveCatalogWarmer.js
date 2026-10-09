@@ -3,7 +3,6 @@ const {
   cacheWrapCatalog,
   cacheWrapGlobal,
   cacheWrapJikanApi,
-  createWarmFailureGuard,
   stableStringify,
   projectCatalogPayloadForCache,
 } = require('./getCache');
@@ -375,7 +374,7 @@ class ComprehensiveCatalogWarmer {
     return projectCatalogPayloadForCache(result);
   }
 
-  async warmMALCatalog(catalogId, page, config, extraArgs, guard) {
+  async warmMALCatalog(catalogId, page, config, extraArgs) {
     const language = config.language || 'en-US';
     const { genre: genreName, type_filter } = extraArgs;
     let metas = [];
@@ -383,9 +382,9 @@ class ComprehensiveCatalogWarmer {
     // Replicate the exact switch case logic from index.js
     switch (catalogId) {
       case 'mal.airing': {
-        const animeResults = await cacheWrapJikanApi(`mal-airing-${page}-${config.sfw}`, guard.fetch(async () => {
+        const animeResults = await cacheWrapJikanApi(`mal-airing-${page}-${config.sfw}`, async () => {
           return await jikan.getAiringNow(page, config, { throwOnError: true });
-        }), 24 * 60 * 60, guard.options);
+        }, 24 * 60 * 60);
         metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         break;
       }
@@ -399,41 +398,41 @@ class ComprehensiveCatalogWarmer {
       }
 
       case 'mal.top_movies': {
-        const animeResults = await cacheWrapJikanApi(`mal-top-movies-${page}-${config.sfw}`, guard.fetch(async () => {
+        const animeResults = await cacheWrapJikanApi(`mal-top-movies-${page}-${config.sfw}`, async () => {
           return await jikan.getTopAnimeByType('movie', page, config, { throwOnError: true });
-        }), null, guard.options);
+        }, null);
         metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         break;
       }
 
       case 'mal.top_series': {
-        const animeResults = await cacheWrapJikanApi(`mal-top-series-${page}-${config.sfw}`, guard.fetch(async () => {
+        const animeResults = await cacheWrapJikanApi(`mal-top-series-${page}-${config.sfw}`, async () => {
           return await jikan.getTopAnimeByType('tv', page, config, { throwOnError: true });
-        }), null, guard.options);
+        }, null);
         metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         break;
       }
 
       case 'mal.most_popular': {
-        const animeResults = await cacheWrapJikanApi(`mal-most-popular-${page}-${config.sfw}`, guard.fetch(async () => {
+        const animeResults = await cacheWrapJikanApi(`mal-most-popular-${page}-${config.sfw}`, async () => {
           return await jikan.getTopAnimeByFilter('bypopularity', page, config, { throwOnError: true });
-        }), null, guard.options);
+        }, null);
         metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         break;
       }
 
       case 'mal.most_favorites': {
-        const animeResults = await cacheWrapJikanApi(`mal-most-favorites-${page}-${config.sfw}`, guard.fetch(async () => {
+        const animeResults = await cacheWrapJikanApi(`mal-most-favorites-${page}-${config.sfw}`, async () => {
           return await jikan.getTopAnimeByFilter('favorite', page, config, { throwOnError: true });
-        }), null, guard.options);
+        }, null);
         metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         break;
       }
 
       case 'mal.top_anime': {
-        const animeResults = await cacheWrapJikanApi(`mal-top-anime-${page}-${config.sfw}`, guard.fetch(async () => {
+        const animeResults = await cacheWrapJikanApi(`mal-top-anime-${page}-${config.sfw}`, async () => {
           return await jikan.getTopAnimeByType('anime', page, config, { throwOnError: true });
-        }), null, guard.options);
+        }, null);
         metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         break;
       }
@@ -473,9 +472,9 @@ class ComprehensiveCatalogWarmer {
         }, null);
         const genreId = genreName && genreName !== 'None' ? allAnimeGenres.find(g => g.name === genreName)?.mal_id : null;
         if (genreId !== undefined) {
-          const animeResults = await cacheWrapJikanApi(`mal-${catalogId}-${page}-${genreId ?? 'all'}-${config.sfw}`, guard.fetch(async () => {
+          const animeResults = await cacheWrapJikanApi(`mal-${catalogId}-${page}-${genreId ?? 'all'}-${config.sfw}`, async () => {
             return await jikan.getTopAnimeByDateRange(startDate, endDate, page, genreId ?? undefined, config, { throwOnError: true });
-          }), null, guard.options);
+          }, null);
           metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         }
         break;
@@ -521,9 +520,9 @@ class ComprehensiveCatalogWarmer {
 
       case 'mal.schedule': {
         const dayOfWeek = genreName || 'Monday';
-        const animeResults = await cacheWrapJikanApi(`mal-schedule-${dayOfWeek}-${page}-${config.sfw}`, guard.fetch(async () => {
+        const animeResults = await cacheWrapJikanApi(`mal-schedule-${dayOfWeek}-${page}-${config.sfw}`, async () => {
           return await jikan.getAiringSchedule(dayOfWeek, page, config, { throwOnError: true });
-        }), null, guard.options);
+        }, null);
         metas = await parseAnimeCatalogMetaBatch(animeResults, config, language, true);
         break;
       }
@@ -796,12 +795,11 @@ class ComprehensiveCatalogWarmer {
           const actualType = catalog.type;
           const catalogKey = `${catalogId}:${actualType}:${stableStringify(extraArgs || {})}`;
 
-          const guard = createWarmFailureGuard();
           const result = await cacheWrapCatalog(uuid, catalogKey, async () => {
           // Check if this is a MAL catalog
           if (catalogId.startsWith('mal.')) {
             const configWithUUID = { ...config, userUUID: uuid };
-            const fullResult = await this.warmMALCatalog(catalogId, derivedPage, configWithUUID, extraArgs, guard);
+            const fullResult = await this.warmMALCatalog(catalogId, derivedPage, configWithUUID, extraArgs);
             return this.projectCatalogResult(fullResult);
           } else if (catalogId === 'tmdb.trending') {
             // Special handling for tmdb.trending - call getTrending directly
@@ -842,13 +840,11 @@ class ComprehensiveCatalogWarmer {
             enableErrorCaching: false,
             maxRetries: 1,
             config,
-            ...guard.options,
             onHit: () => {
               this.stats.pagesFromCache++;
               if (this.stats.uuidStats[uuid]) this.stats.uuidStats[uuid].pagesFromCache++;
             },
           });
-          guard.throwIfFailed();
 
           const rawMetaCount = result?.metas?.length || 0;
 
