@@ -264,7 +264,7 @@ class AniListAPI {
 
   /**
    * Fetch items from a specific list with pagination
-   * Returns items: [{ score, media: { id, idMal } }], hasMore, total
+   * Returns items: [{ score, createdAt, media: { id, idMal } }], hasMore, total
    */
   async fetchListItems(username: string, listName: string, page = 1, pageSize = 50, sort = 'ADDED_TIME_DESC', accessToken?: string): Promise<any> {
     if (!username) {
@@ -343,6 +343,7 @@ class AniListAPI {
         .filter((entry: any) => !entry.hiddenFromStatusLists)
         .map((entry: any) => ({
           score: entry.score,
+          createdAt: entry.createdAt,
           media: entry.media,
         }));
 
@@ -360,6 +361,7 @@ class AniListAPI {
               name
               isCustomList
               entries {
+                createdAt
                 score(format: POINT_100)
                 media {
                   id
@@ -422,6 +424,7 @@ class AniListAPI {
 
       const items = paginatedEntries.map((entry: any) => ({
         score: entry.score,
+        createdAt: entry.createdAt,
         media: entry.media,
       }));
 
