@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, MoreHorizontal, Power, PowerOff, Home, HomeIcon, Trash2, Loader2, Star, Shuffle, ArrowUpToLine, ArrowDownToLine, Move, Type, GitMerge, Tag, Timer } from 'lucide-react';
+import { X, MoreHorizontal, Power, PowerOff, Home, HomeIcon, Trash2, Loader2, Star, Shuffle, ArrowUpToLine, ArrowDownToLine, Move, Type, GitMerge, Tag, Timer, RectangleHorizontal, RectangleVertical } from 'lucide-react';
 import { CatalogConfig } from '@/contexts/config';
 import { cn } from '@/lib/utils';
 import { TagEditorDialog } from '@/components/TagEditorDialog';
@@ -33,6 +33,8 @@ type BulkActionType =
   | 'disableRatingPosters'
   | 'enableRandomize'
   | 'disableRandomize'
+  | 'setLandscape'
+  | 'setPoster'
   | 'moveToTop'     
   | 'moveToBottom'   
   | 'setDisplayType'
@@ -56,6 +58,8 @@ interface BulkActionBarProps {
   onDisableRatingPosters?: () => void;
   onEnableRandomize?: () => void;
   onDisableRandomize?: () => void;
+  onSetLandscape?: () => void;
+  onSetPoster?: () => void;
   onSetDisplayType?: (type: string) => void;
   onResetDisplayType?: () => void;
   onSetCacheTTL?: (ttl: number) => void;
@@ -82,6 +86,8 @@ export function BulkActionBar({
   onDisableRatingPosters,
   onEnableRandomize,
   onDisableRandomize,
+  onSetLandscape,
+  onSetPoster,
   onSetDisplayType,
   onResetDisplayType,
   onSetCacheTTL,
@@ -104,6 +110,8 @@ export function BulkActionBar({
   const hasRatingPostersEnabled = selectedCatalogs.some(c => c.enableRatingPosters !== false);
   const hasRandomizeDisabled = selectedCatalogs.some(c => !c.randomizePerPage);
   const hasRandomizeEnabled = selectedCatalogs.some(c => c.randomizePerPage);
+  const hasPosterShape = selectedCatalogs.some(c => c.metadata?.posterShape !== 'landscape');
+  const hasLandscapeShape = selectedCatalogs.some(c => c.metadata?.posterShape === 'landscape');
   
   // Count non-removable catalogs for tooltip (merged catalogs are disbanded, not deleted)
   const nonRemovableCount = selectedCatalogs.filter(c => c.source === 'merged').length;
@@ -211,6 +219,20 @@ export function BulkActionBar({
       icon: loadingAction === 'disableRandomize' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Shuffle className="h-5 w-5 text-muted-foreground" />,
       onClick: () => onDisableRandomize?.(),
       show: hasRandomizeEnabled && !!onDisableRandomize,
+    },
+    {
+      id: 'setLandscape',
+      label: 'Landscape',
+      icon: loadingAction === 'setLandscape' ? <Loader2 className="h-5 w-5 animate-spin" /> : <RectangleHorizontal className="h-5 w-5 text-sky-500" />,
+      onClick: () => onSetLandscape?.(),
+      show: hasPosterShape && !!onSetLandscape,
+    },
+    {
+      id: 'setPoster',
+      label: 'Poster',
+      icon: loadingAction === 'setPoster' ? <Loader2 className="h-5 w-5 animate-spin" /> : <RectangleVertical className="h-5 w-5 text-muted-foreground" />,
+      onClick: () => onSetPoster?.(),
+      show: hasLandscapeShape && !!onSetPoster,
     },
     {
       id: 'setDisplayType',
@@ -758,6 +780,58 @@ export function BulkActionBar({
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Restore original ordering for selected catalogs</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Landscape Poster Shape */}
+            {hasPosterShape && onSetLandscape && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onSetLandscape}
+                    disabled={isLoading}
+                    aria-label="Use the landscape poster shape for selected catalogs"
+                    className="w-full md:w-auto justify-start md:justify-center min-h-[44px] md:min-h-0"
+                  >
+                    {loadingAction === 'setLandscape' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RectangleHorizontal className="h-4 w-4 text-sky-500" />
+                    )}
+                    <span className="ml-2">Landscape Shape</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Show landscape art for selected catalogs</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Poster Shape */}
+            {hasLandscapeShape && onSetPoster && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onSetPoster}
+                    disabled={isLoading}
+                    aria-label="Use the poster shape for selected catalogs"
+                    className="w-full md:w-auto justify-start md:justify-center min-h-[44px] md:min-h-0"
+                  >
+                    {loadingAction === 'setPoster' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RectangleVertical className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="ml-2">Poster Shape</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Show posters for selected catalogs</p>
                 </TooltipContent>
               </Tooltip>
             )}

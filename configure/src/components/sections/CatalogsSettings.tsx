@@ -4188,6 +4188,8 @@ function CatalogsSettingsContent({
     | 'disableRatingPosters'
     | 'enableRandomize'
     | 'disableRandomize'
+    | 'setLandscape'
+    | 'setPoster'
     | 'moveToTop'     
     | 'moveToBottom' 
     | null
@@ -4830,6 +4832,34 @@ function CatalogsSettingsContent({
       toast.success(`Randomize enabled for ${catalogsToEnableRandomize.length} catalog${catalogsToEnableRandomize.length === 1 ? '' : 's'}`);
     } catch (error) {
       showBulkActionError('enable randomize', error as Error);
+    } finally {
+      setIsLoading(false);
+      setLoadingAction(null);
+    }
+  };
+
+  const handleBulkSetPosterShape = async (shape: 'poster' | 'landscape') => {
+    setIsLoading(true);
+    setLoadingAction(shape === 'landscape' ? 'setLandscape' : 'setPoster');
+
+    try {
+      const toChange = selectedCatalogs.filter(catalog => (catalog.metadata?.posterShape === 'landscape') !== (shape === 'landscape'));
+      const keys = new Set(toChange.map(cat => `${cat.id}-${cat.type}`));
+
+      if (keys.size > 0) {
+        setConfig(prev => ({
+          ...prev,
+          catalogs: prev.catalogs.map(c =>
+            keys.has(`${c.id}-${c.type}`)
+              ? { ...c, metadata: { ...c.metadata, posterShape: shape === 'landscape' ? 'landscape' : undefined } }
+              : c
+          )
+        }));
+      }
+
+      toast.success(`${shape === 'landscape' ? 'Landscape' : 'Poster'} shape set for ${toChange.length} catalog${toChange.length === 1 ? '' : 's'}`);
+    } catch (error) {
+      showBulkActionError('set poster shape', error as Error);
     } finally {
       setIsLoading(false);
       setLoadingAction(null);
@@ -5661,6 +5691,8 @@ function CatalogsSettingsContent({
           onDisableRatingPosters={handleBulkDisableRatingPosters}
           onEnableRandomize={handleBulkEnableRandomize}
           onDisableRandomize={handleBulkDisableRandomize}
+          onSetLandscape={() => handleBulkSetPosterShape('landscape')}
+          onSetPoster={() => handleBulkSetPosterShape('poster')}
           onSetDisplayType={handleBulkSetDisplayType}
           onResetDisplayType={handleBulkResetDisplayType}
           onSetCacheTTL={handleBulkSetCacheTTL}
