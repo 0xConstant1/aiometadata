@@ -85,6 +85,7 @@ export async function watchlistItems(userUUID: string, config: any, serverId: st
     if (!meta) return null;
     const item = metaToBaseItem(meta, entry.mediaType, serverId, null);
     item.UserData = { ...item.UserData, [mark]: true };
+    if (entry.addedAt > 0) item.DateCreated = new Date(entry.addedAt).toISOString();
     return item;
   });
   return built.filter(Boolean);
