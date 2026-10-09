@@ -83,6 +83,7 @@ const { getWarmupStats: getEssentialWarmupStats } = require('./cacheWarmer');
 const { getWarmupStats: getMALWarmupStats } = require('./malCatalogWarmer');
 const { getWarmupStats: getCatalogWarmupStats } = require('./comprehensiveCatalogWarmer');
 const { getTraktMemoryStats } = require('../utils/traktUtils');
+const { envInt } = require('../utils/envNumber');
 
 class DashboardAPI {
   constructor(cache, idMapper, config, database, requestTracker) {
@@ -699,15 +700,16 @@ class DashboardAPI {
         },
       ];
 
-      const today = new Date().toISOString().split("T")[0];
+      const counts = this.requestTracker
+        ? await this.requestTracker.getProviderCounts(providers.map((p) => p.name.toLowerCase()))
+        : {};
+      const minCalls = envInt("PROVIDER_HEALTH_MIN_CALLS", 20, 1);
       const providerStatus = await Promise.all(
         providers.map(async (provider) => {
           try {
             const providerKey = provider.name.toLowerCase();
 
-            // Get today's success/error counts
-            const successCount = parseInt(await this.cache.get(`provider_success:${providerKey}:${today}`)) || 0;
-            const errorCount = parseInt(await this.cache.get(`provider_errors:${providerKey}:${today}`)) || 0;
+            const { success: successCount = 0, errors: errorCount = 0 } = counts[providerKey] || {};
             const totalCalls = successCount + errorCount;
 
             // Calculate success rate
@@ -726,9 +728,8 @@ class DashboardAPI {
             let status = "healthy";
             
             if (totalCalls === 0) {
-              // No calls today - can't determine status
               status = "unknown";
-            } else if (successRate !== null) {
+            } else if (totalCalls >= minCalls) {
               if (successRate < 50) {
                 status = "down";
               } else if (successRate < 90) {
@@ -742,7 +743,7 @@ class DashboardAPI {
               keyStatus: provider.keyStatus,
               requiresKey: provider.requiresKey,
               stats: {
-                callsToday: totalCalls,
+                calls24h: totalCalls,
                 successRate,
                 avgResponseTime,
               },
