@@ -158,6 +158,35 @@ export interface TrackerWatchlist {
   exhausted: boolean;
 }
 
+/**
+ * One entry per title across sources. Where an anime entry and a whole show meet, the anime
+ * meta provider decides: a grouped one (TVDB, TMDB, IMDb) keeps the show, Kitsu or MAL keeps
+ * the per-entry anime ids.
+ */
+export async function dedupeWatchlist(rows: WatchlistEntry[], config: any): Promise<WatchlistEntry[]> {
+  const { watchlistIdentity } = require('./canonicalIds');
+  const { mapWithConcurrency } = require('../../utils/concurrency');
+  const perEntry = ['kitsu', 'mal'].includes(config?.providers?.anime || 'mal');
+  const named: Array<{ row: WatchlistEntry; key: string; anime: boolean }> = await mapWithConcurrency(rows, 8, async (row: WatchlistEntry) => {
+    const identity = await watchlistIdentity(row.metaId, row.mediaType, config).catch(() => ({ key: row.metaId, anime: false }));
+    return { row, ...identity };
+  });
+  const animeShows = new Set(named.filter((entry) => entry.anime).map((entry) => entry.key));
+  const kept = new Map<string, { row: WatchlistEntry; anime: boolean }>();
+  for (const { row, key, anime } of named) {
+    if (perEntry && !anime && animeShows.has(key)) continue;
+    const slot = perEntry && anime ? `${key}#${row.metaId}` : key;
+    const held = kept.get(slot);
+    const addedAt = Math.max(row.addedAt, held?.row.addedAt ?? -Infinity);
+    if (!held || (held.anime && !anime) || (held.anime === anime && row.addedAt > held.row.addedAt)) {
+      kept.set(slot, { row: { ...row, addedAt }, anime });
+    } else {
+      held.row = { ...held.row, addedAt };
+    }
+  }
+  return [...kept.values()].map((entry) => entry.row);
+}
+
 export async function trackerWatchlist(config: any, userUUID: string, need = Number.MAX_SAFE_INTEGER): Promise<TrackerWatchlist> {
   const shelves = await pickedShelves(config);
   const parts = await Promise.all(shelves.map((shelf) => shelfEntries(userUUID, config, shelf, need)));
@@ -167,7 +196,7 @@ export async function trackerWatchlist(config: any, userUUID: string, need = Num
     if (!held || row.addedAt > held.addedAt) merged.set(row.metaId, row);
   }
   return {
-    rows: [...merged.values()].sort((a, b) => b.addedAt - a.addedAt),
+    rows: (await dedupeWatchlist([...merged.values()], config)).sort((a, b) => b.addedAt - a.addedAt),
     complete: parts.every((part) => part.ok),
     exhausted: parts.every((part) => part.exhausted),
   };

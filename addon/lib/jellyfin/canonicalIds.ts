@@ -73,3 +73,31 @@ export async function titleIdentity(videoId: string, config: any): Promise<strin
   const all = await resolve(parsed.base, 'movie', config, ['tmdb']);
   return all.tmdb ? `tmdb:${all.tmdb}` : parsed.base;
 }
+
+const ANIME_LOOKUPS: Record<string, string> = { mal: 'getMappingByMalId', kitsu: 'getMappingByKitsuId', anilist: 'getMappingByAnilistId', anidb: 'getMappingByAnidbId' };
+
+function firstId(value: any): string | null {
+  const id = Array.isArray(value) ? value[0] : value;
+  return id === undefined || id === null || id === '' ? null : String(id);
+}
+
+/** One title however a source spells it: `m|` films by TMDB, `s|` shows by TVDB or TMDB. `anime` marks a per-entry anime id. */
+export async function watchlistIdentity(metaId: string, mediaType: 'movie' | 'series' | 'anime', config: any): Promise<{ key: string; anime: boolean }> {
+  const { parseStremioId } = require('./ids');
+  const base = String(parseStremioId(metaId)?.base ?? metaId);
+  const [prefix, value] = base.split(':');
+  const idMapper = require('../id-mapper');
+  if (ANIME_LOOKUPS[prefix]) {
+    const entry = idMapper[ANIME_LOOKUPS[prefix]]?.(value);
+    if (!entry) return { key: base, anime: true };
+    const movie = entry.type === 'MOVIE' || entry.themoviedb_type === 'movie';
+    const tmdb = firstId(entry.themoviedb_id);
+    if (movie) return { key: tmdb ? `m|tmdb:${tmdb}` : base, anime: true };
+    const tvdb = firstId(entry.tvdb_id);
+    return { key: tvdb ? `s|tvdb:${tvdb}` : tmdb && entry.themoviedb_type === 'tv' ? `s|tmdb:${tmdb}` : base, anime: true };
+  }
+  const movie = mediaType === 'movie' || (mediaType === 'anime' && idMapper.getMappingByImdbId?.(base)?.type === 'MOVIE');
+  return movie
+    ? { key: `m|${await titleIdentity(base, config)}`, anime: false }
+    : { key: `s|${await showIdentity(base, config)}`, anime: false };
+}

@@ -1,7 +1,7 @@
 import { fetchMeta, metaToBaseItem } from './items';
 import { clientHasOwnWatchlist } from './context';
 import { profileKey, writesTrackers } from './profiles';
-import { shelfCacheWindowMs, trackerWatchlist, watchlistPicks, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
+import { dedupeWatchlist, shelfCacheWindowMs, trackerWatchlist, watchlistPicks, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
@@ -74,7 +74,8 @@ export async function watchlistEntries(userUUID: string, config: any, need = Num
       out.delete(metaId);
     }
   }
-  return { entries: [...out.values()].sort((a, b) => b.addedAt - a.addedAt), exhausted: held.exhausted, complete: held.complete };
+  const entries = local.some((row) => Number(row.listed)) ? await dedupeWatchlist([...out.values()], config) : [...out.values()];
+  return { entries: entries.sort((a, b) => b.addedAt - a.addedAt), exhausted: held.exhausted, complete: held.complete };
 }
 
 /** The titles of a shelf, marked as it is to the client: a favourite, or a liked title for a watchlist. */
