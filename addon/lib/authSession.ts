@@ -22,7 +22,7 @@ function accountSessionsKey(accountId: string): string {
  * after a longer one, stranding live sessions outside the index.
  */
 async function refreshIndexExpiry(key: string): Promise<void> {
-  const top: string[] = await redis.zrange(key, -1, -1, 'WITHSCORES');
+  const top: string[] = await redis.zrange(key, -1, '-1', 'WITHSCORES');
   if (top.length === 2) await redis.pexpireat(key, Number(top[1]) + 60000);
 }
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
@@ -173,7 +173,7 @@ export async function destroyAccountSessions(accountId: string): Promise<number>
   const removed = new Set<string>();
 
   try {
-    const ids: string[] = await redis.zrange(key, 0, -1);
+    const ids: string[] = await redis.zrange(key, 0, '-1');
     for (const id of ids) {
       await redis.del(`${SESSION_PREFIX}${id}`);
       removed.add(id);

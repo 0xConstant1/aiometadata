@@ -86,7 +86,7 @@ export async function recordSigninFailure(
       .expire(index, ttl)
       .exec();
 
-    const stale: string[] = await redis.zrange(index, 0, -(keep + 1));
+    const stale: string[] = await redis.zrange(index, 0, String(-(keep + 1)));
     if (stale.length > 0) {
       const pipeline = redis.pipeline();
       for (const id of stale) pipeline.del(`${FAILURE_PREFIX}${id}`);
@@ -142,8 +142,8 @@ export async function listSigninFailures(limit = logMax()): Promise<SigninFailur
 export async function clearSigninFailures(): Promise<void> {
   try {
     const [refusals, unverified]: [string[], string[]] = await Promise.all([
-      redis.zrange(FAILURE_INDEX, 0, -1),
-      redis.zrange(UNVERIFIED_INDEX, 0, -1),
+      redis.zrange(FAILURE_INDEX, 0, '-1'),
+      redis.zrange(UNVERIFIED_INDEX, 0, '-1'),
     ]);
     const pipeline = redis.pipeline();
     for (const id of [...refusals, ...unverified]) pipeline.del(`${FAILURE_PREFIX}${id}`);
