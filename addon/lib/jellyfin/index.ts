@@ -881,7 +881,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const personIds = String(req.query.PersonIds ?? req.query.personIds ?? '').split(',').map((v) => v.trim()).filter(Boolean);
     if (personIds.length) {
       const items = await personItems(userUUID, config, serverId, personIds[0], includeItemTypes);
-      res.json(itemList(items.slice(startIndex, startIndex + limit), items.length, startIndex));
+      const asked = req.query.Limit ?? req.query.limit;
+      const take = asked === undefined ? 500 : limit;
+      res.json(itemList(items.slice(startIndex, startIndex + take), items.length, startIndex));
       return;
     }
 
