@@ -921,12 +921,13 @@ function getTvdbCertification(contentRatings, countryCode, contentType, fallback
 }
 
 function processOverviewTranslations(translations, language, overview) {
-  if(language === 'pt-PT'){
-    let translation = tmdb.getTranslations(translations, 'pt-PT');
+  // Try the other Portuguese variant before falling back to English.
+  if(language === 'pt-PT' || language === 'pt-BR'){
+    let translation = tmdb.getTranslations(translations, language);
       if(translation && translation.data.overview && translation.data.overview.trim() !== ''){
         overview = translation.data.overview;
       } else {
-        translation = tmdb.getTranslations(translations, 'pt-BR');
+        translation = tmdb.getTranslations(translations, language === 'pt-BR' ? 'pt-PT' : 'pt-BR');
         if(translation && translation.data.overview && translation.data.overview.trim() !== ''){
           overview = translation.data.overview;
         } else{
