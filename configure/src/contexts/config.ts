@@ -255,6 +255,8 @@ export interface AppConfig {
   tvdbSeasonType: string;
   animeEpisodeDates?: 'provider' | 'earliest' | 'dub';
   tvdbEpisodeOrders?: Record<string, string>;
+  tvdbNormalizeYearSeasons?: boolean;
+  tvdbShowSeasonNumbering?: Record<string, 'years' | 'sequential'>;
   mal: {
     skipFiller: boolean;
     skipRecap: boolean;

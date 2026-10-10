@@ -149,6 +149,7 @@ const initialConfig: AppConfig = {
   },
   tvdbSeasonType: 'default',
   animeEpisodeDates: 'provider',
+  tvdbNormalizeYearSeasons: true,
   mal: {
     skipFiller: false, 
     skipRecap: false,

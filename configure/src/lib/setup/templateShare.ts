@@ -20,6 +20,7 @@ const SHARED_SETTING_KEYS = [
   'tmdb',
   'tvdbSeasonType',
   'animeEpisodeDates',
+  'tvdbNormalizeYearSeasons',
   'language',
   'ageRating',
   'sfw',

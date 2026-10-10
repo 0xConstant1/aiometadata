@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { EpisodeOrderOverrides } from '@/components/settings/EpisodeOrderOverrides';
+import { TvdbShowSettings } from '@/components/settings/TvdbShowSettings';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -234,7 +234,7 @@ export function ProvidersSettings() {
       {/* TVDB Specific Settings */}
       <CollapsibleSettingCard
         title="TheTVDB Settings"
-        anchorIds={['tvdb-season-order']}
+        anchorIds={['tvdb-season-order', 'tvdb-normalize-year-seasons']}
         inUse={isInUse(config, 'tvdb')}
         description={hasTvdbKey
           ? 'Customize how episode data is fetched from TheTVDB.'
@@ -257,12 +257,25 @@ export function ProvidersSettings() {
             />
           }
         />
+        <SettingRow
+          htmlFor="tvdb-normalize-year-seasons"
+          label="Normalize Year Seasons"
+          description="Number year-based seasons 1, 2, 3… instead of TVDB's years (S2014). Changes those shows' episode ids, so turn it off only if your stream sources number them by year."
+          control={
+            <Switch
+              id="tvdb-normalize-year-seasons"
+              checked={config.tvdbNormalizeYearSeasons !== false}
+              onCheckedChange={(val) => setConfig(prev => ({ ...prev, tvdbNormalizeYearSeasons: val }))}
+              disabled={!hasTvdbKey}
+            />
+          }
+        />
         <div className="space-y-2 pt-2">
-          <p className="text-sm font-medium">Per-show Episode Order</p>
+          <p className="text-sm font-medium">Per-show settings</p>
           <p className="text-sm text-muted-foreground">
-            Enter a show's TVDB id to give it its own episode order instead of the Season Order above.
+            Enter a show's TVDB id to give it its own episode order or season numbering.
           </p>
-          <EpisodeOrderOverrides disabled={!hasTvdbKey} />
+          <TvdbShowSettings disabled={!hasTvdbKey} />
         </div>
       </CollapsibleSettingCard>
 
