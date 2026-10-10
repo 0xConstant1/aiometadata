@@ -81,7 +81,7 @@ function parseMediaId(id: any): ParsedMediaId | null {
       const [seasonStr, episodeStr] = rest;
       const season = parseInt(seasonStr, 10);
       const episode = parseInt(episodeStr, 10);
-      if (Number.isNaN(season) || season < 1 || season > 999) {
+      if (Number.isNaN(season) || season < 1 || season > 9999) {
         logger.debug(`[Watch Tracking] Invalid season value in IMDb ID: season=${seasonStr}`);
         return null;
       }
@@ -136,7 +136,7 @@ function parseMediaId(id: any): ParsedMediaId | null {
     const [seasonStr, episodeStr] = rest.slice(1);
     const season = parseInt(seasonStr, 10);
     const episode = parseInt(episodeStr, 10);
-    if (Number.isNaN(season) || season < 1 || season > 999) {
+    if (Number.isNaN(season) || season < 1 || season > 9999) {
       logger.debug(`[Watch Tracking] Invalid season value for provider ${provider}: ${seasonStr}`);
       return null;
     }
