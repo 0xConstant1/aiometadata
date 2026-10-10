@@ -1400,6 +1400,9 @@ async function resolveConfigForCache(userUUID: string, options: any = {}): Promi
   return config;
 }
 
+// Rows that link straight to an episode, so the page holds episode ids in the user's season numbering.
+const EPISODE_LINK_CATALOGS = new Set(['trakt.upnext', 'trakt.unwatched', 'simkl.upnext', 'simkl.upnext.anime', 'mdblist.upnext', 'publicmetadb.upnext']);
+
 async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: () => Promise<any>, options: any = {}): Promise<any> {
   let config: any;
   try {
@@ -1543,6 +1546,11 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
 
   if (catalogFromConfig?.metadata?.useUpstreamArt === true) {
     catalogConfig.upstreamArt = true;
+  }
+
+  if (EPISODE_LINK_CATALOGS.has(idOnly)) {
+    const seasonNumbering = seasonNumberingProfile(config);
+    if (seasonNumbering) catalogConfig.seasonNumbering = seasonNumbering;
   }
 
   const catalogConfigString = JSON.stringify(catalogConfig);
