@@ -184,6 +184,37 @@ export async function refreshSeriesIndex(userUUID: string, metaId: string): Prom
   return config ? build(userUUID, config, metaId) : null;
 }
 
+const queued = new Set<string>();
+const waiting: Array<() => Promise<void>> = [];
+let building = 0;
+
+function drainQueue(): void {
+  const limit = envInt('JELLYFIN_INDEX_QUEUE_CONCURRENCY', 2, 1);
+  while (building < limit && waiting.length) {
+    const job = waiting.shift()!;
+    building++;
+    void job().finally(() => {
+      building--;
+      drainQueue();
+    });
+  }
+}
+
+export function queueSeriesIndex(userUUID: string, metaIds: string[]): void {
+  const max = envInt('JELLYFIN_INDEX_QUEUE_MAX', 500, 1);
+  for (const metaId of metaIds) {
+    const key = `${userUUID}:${metaId}`;
+    if (queued.has(key) || waiting.length >= max) continue;
+    queued.add(key);
+    waiting.push(async () => {
+      const config = await configFor(userUUID);
+      if (config && !memory.has(memoryKey(userUUID, config, metaId))) await build(userUUID, config, metaId).catch(() => null);
+      queued.delete(key);
+    });
+  }
+  drainQueue();
+}
+
 /** Builds whatever the Next Up candidates of a configuration lack, off the request path. */
 export async function warmNextUpIndex(userUUID: string, config: any): Promise<number> {
   const { watchedSnapshot, ownNextUpRows } = require('./watched');

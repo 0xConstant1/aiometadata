@@ -1347,7 +1347,7 @@ function airedFrom(videos: any[]): string[] {
 /**
  * A show's aired episode ids from the episode index, or null when it is not held.
  * A listing never builds one: that is a full meta read per show on the page, all
- * competing with the page itself. Opening the show stores it.
+ * competing with the page itself. Started shows are queued instead.
  */
 async function airedEpisodeIds(userUUID: string, descriptor: any): Promise<string[] | null> {
   const { seriesIndex } = require('./episodeIndex');
@@ -1453,6 +1453,10 @@ export async function applyWatchedState(
     await Promise.all(seriesDescriptors.map(async (d) => {
       if (seriesCounts.has(String(d.i)) || ownPlayed.size) airedBySeries.set(String(d.i), await airedEpisodeIds(userUUID, d));
     }));
+    const missing = [...airedBySeries.entries()].filter(([, aired]) => !aired).map(([metaId]) => metaId);
+    const playedShows = missing.length && ownPlayed.size ? new Set([...ownPlayed].map((id) => id.replace(/:\d+:\d+$/, ''))) : new Set<string>();
+    const started = missing.filter((metaId) => seriesCounts.has(metaId) || playedShows.has(metaId));
+    if (started.length) require('./episodeIndex').queueSeriesIndex(userUUID, started);
   }
   const direct = [
     ...[...descriptors.values()].filter((d) => d.k === 'movie' || d.k === 'episode').map((d) => stremioIdFor(d)).filter(Boolean) as string[],
