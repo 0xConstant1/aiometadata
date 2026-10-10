@@ -1,5 +1,5 @@
 import { LRUCache } from 'lru-cache';
-import { readsBySeason, withEpisodeOrder } from '../utils/episodeOrder';
+import { readsBySeason, seasonNumberingProfile, withEpisodeOrder } from '../utils/episodeOrder';
 import { applySeasonNumberingProjection, predatesSeasonNumbering } from './seasonNumberingProjection';
 import type { MetaHashEntry } from './metaHashStore';
 const redis: any = require('./redisClient');
@@ -999,12 +999,14 @@ function hashProfile(profile: any): string {
 }
 
 function getMetaSmartLockContextHash(config: any, metaId: string, type: string | null, includeVideos: boolean, useShowPoster: boolean): string {
+  const seasonNumbering = seasonNumberingProfile(config);
   return hashConfig({
     cacheContext: getMetaCacheContext(config, metaId, type, useShowPoster),
     projection: {
       blurThumbs: config.blurThumbs || false,
       displayAgeRating: config.displayAgeRating || false,
       ...(config.animeEpisodeDates && config.animeEpisodeDates !== 'provider' ? { animeEpisodeDates: config.animeEpisodeDates } : {}),
+      ...(seasonNumbering ? { seasonNumbering } : {}),
     },
     includeVideos: !!includeVideos,
   });

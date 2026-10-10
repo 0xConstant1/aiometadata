@@ -36,6 +36,15 @@ export function seasonNumberingFor(config: any, tvdbId: string | number | null |
   return config?.tvdbNormalizeYearSeasons === false ? 'years' : 'sequential';
 }
 
+// Null for the default, so keys built from it stay where they are for default users.
+export function seasonNumberingProfile(config: any): { years: boolean; shows: Array<[string, SeasonNumbering]> } | null {
+  const shows = Object.entries(mapAt(config, 'tvdbShowSeasonNumbering') ?? {})
+    .filter((entry): entry is [string, SeasonNumbering] => entry[0].startsWith('tvdb:') && isSeasonNumbering(entry[1]))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const years = config?.tvdbNormalizeYearSeasons === false;
+  return years || shows.length ? { years, shows } : null;
+}
+
 export function countShowSettings(config: any): number {
   const shows = new Set<string>();
   for (const [key, value] of Object.entries(mapAt(config, 'tvdbEpisodeOrders') ?? {})) {
