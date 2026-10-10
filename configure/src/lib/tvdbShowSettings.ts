@@ -14,10 +14,13 @@ export function withShowValue<V extends string>(
   showKey: string,
   value: V | null,
 ): Record<string, V> {
-  const next = Object.fromEntries(
-    Object.entries(map).filter(([key]) => key !== showKey && key.startsWith('tvdb:')),
-  ) as Record<string, V>;
-  if (value) next[showKey] = value;
+  const next: Record<string, V> = {};
+  for (const [key, current] of Object.entries(map)) {
+    if (!key.startsWith('tvdb:')) continue;
+    if (key !== showKey) next[key] = current;
+    else if (value) next[key] = value;
+  }
+  if (value && !(showKey in next)) next[showKey] = value;
   return next;
 }
 
@@ -34,6 +37,18 @@ export function showSettingKeys(
     if (key.startsWith('tvdb:') && isSeasonNumbering(value)) keys.add(key);
   }
   return [...keys];
+}
+
+// A listed show starts from its own settings, so adding one of them keeps the other.
+export function pickerStart(
+  series: { orders?: { type: string }[]; yearSeasons?: boolean },
+  current: { order: string | null; seasons: SeasonNumbering | null } | null,
+  globalYears: boolean,
+): { order: string | null; seasons: SeasonNumbering | null } {
+  if (current) return { order: current.order, seasons: series.yearSeasons ? current.seasons : null };
+  if (series.yearSeasons) return { order: null, seasons: globalYears ? 'sequential' : 'years' };
+  const orders = series.orders ?? [];
+  return { order: orders.find((o) => o.type !== 'official')?.type ?? orders[0]?.type ?? null, seasons: null };
 }
 
 export interface ImportEntry {

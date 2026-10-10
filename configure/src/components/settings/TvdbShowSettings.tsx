@@ -16,6 +16,7 @@ import {
   SEASON_NUMBERING_LABELS,
   isSeasonNumbering,
   mergeImport,
+  pickerStart,
   readImportEntry,
   showSettingKeys,
   withShowValue,
@@ -146,17 +147,19 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
       if (!series) return;
       setTvdbInput("");
       setPicked(series);
-      if (series.yearSeasons) {
-        setOrder(GLOBAL);
-        setSeasons(config.tvdbNormalizeYearSeasons === false ? "sequential" : "years");
-      } else {
-        setOrder(
-          series.orders?.find((o) => o.type !== "official")?.type ??
-            series.orders?.[0]?.type ??
-            GLOBAL,
-        );
-        setSeasons(GLOBAL);
-      }
+      const showKey = `tvdb:${series.tvdbId}`;
+      const start = pickerStart(
+        series,
+        showKeys.includes(showKey)
+          ? {
+              order: isOrder(orders[showKey] ?? "") ? orders[showKey] : null,
+              seasons: isSeasonNumbering(numbering[showKey]) ? numbering[showKey] : null,
+            }
+          : null,
+        config.tvdbNormalizeYearSeasons === false,
+      );
+      setOrder(start.order ?? GLOBAL);
+      setSeasons(start.seasons ?? GLOBAL);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not read the series",
