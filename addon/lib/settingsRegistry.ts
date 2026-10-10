@@ -466,7 +466,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'JELLYFIN_PLAYED_THRESHOLD',
     envVar: 'JELLYFIN_PLAYED_THRESHOLD',
     label: 'Jellyfin Played Threshold (%)',
-    description: 'A stop at or past this share of the runtime marks the title played; an earlier one keeps its position for Continue Watching. The trackers mark a watch at 80, so a higher value leaves a title finished on them yet still resumable here. The runtime is the file\'s own when the stream addon reports it, else the metadata\'s.',
+    description: 'A stop at or past this share of the runtime marks the title played; an earlier one keeps its position for Continue Watching. Simkl is sent the same threshold (it accepts 50 to 100); the other trackers mark a watch at 80, so a higher value leaves a title finished on them yet still resumable here. The runtime is the file\'s own when the stream addon reports it, else the metadata\'s.',
     category: 'Features',
     type: 'number',
     default: 80,
