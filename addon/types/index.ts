@@ -97,6 +97,8 @@ export interface UserConfig {
   tvdbSeasonType?: string;
   animeEpisodeDates?: 'provider' | 'earliest' | 'dub';
   tvdbEpisodeOrders?: Record<string, string>;
+  tvdbNormalizeYearSeasons?: boolean;
+  tvdbShowSeasonNumbering?: Record<string, 'years' | 'sequential'>;
   castCount?: number;
   blurThumbs?: boolean;
   displayAgeRating?: boolean;
