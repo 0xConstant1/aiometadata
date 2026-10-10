@@ -2578,6 +2578,7 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
               released: releasedAt,
               available: isReleasedBy(releasedAt, nowMs),
               runtime: Utils.parseRunTime(episode.runtime),
+              ...(episode.originalSeasonNumber != null ? { _tvdbSeason: episode.originalSeasonNumber } : {}),
           };
         })
     );

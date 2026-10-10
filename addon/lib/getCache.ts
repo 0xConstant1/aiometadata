@@ -1,5 +1,6 @@
 import { LRUCache } from 'lru-cache';
 import { readsBySeason, withEpisodeOrder } from '../utils/episodeOrder';
+import { applySeasonNumberingProjection, predatesSeasonNumbering } from './seasonNumberingProjection';
 import type { MetaHashEntry } from './metaHashStore';
 const redis: any = require('./redisClient');
 const { loadConfigFromDatabase }: any = require('./configApi');
@@ -1249,6 +1250,7 @@ async function projectMetaForUser(meta: any, config: any, opts: { addonTrailers?
   applyTrailerStreamsProjection(meta);
   if (opts.addonTrailers !== false) await applyTrailerAddonProjection(meta, config);
   applyCastCountProjection(meta, config);
+  applySeasonNumberingProjection(meta, config);
   applyBlurThumbProjection(meta, config);
   applyDisplayAgeRatingProjection(meta, config);
   applyLinksUserScopeProjection(meta, config);
@@ -1900,7 +1902,7 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
   if (meta.landscapePoster) components.push({ name: 'landscapePoster', data: { landscapePoster: meta.landscapePoster } });
   if (meta.logo) components.push({ name: 'logo', data: { logo: meta.logo } });
   if (meta.videos && Array.isArray(meta.videos) && meta.videos.length > 0) {
-    components.push({ name: 'videos', data: { videos: canonicalizeVideosForCache(meta.videos), _metaProvider: meta._metaProvider } });
+    components.push({ name: 'videos', data: { videos: canonicalizeVideosForCache(meta.videos), _metaProvider: meta._metaProvider, _seasonNumbering: 1 } });
   }
   if (meta.app_extras?.cast?.length) components.push({ name: 'cast', data: { cast: meta.app_extras.cast } });
   if (meta.app_extras?.directors?.length) components.push({ name: 'director', data: { directors: meta.app_extras.directors } });
@@ -2154,6 +2156,10 @@ async function reconstructMetaFromComponentsWithConfig({ config, metaId, type = 
     if (index >= 0) availableComponents.splice(index, 1);
     if (videos) availableComponents.push({ componentName: 'videos', data: videos });
   }
+  if (includeVideos && predatesSeasonNumbering(bd, availableComponents.find((c: any) => c.componentName === 'videos')?.data, config)) {
+    updateCacheHealth(`meta:reconstructed:${metaId}`, 'miss', true);
+    return { errorReason: 'videos predate season numbering' };
+  }
   Object.assign(reconstructedMeta, bd);
   delete reconstructedMeta._components;
   reconstructedMeta.posterShape = bd.posterShape;
@@ -2356,6 +2362,7 @@ async function cacheWrapMetaSmart(userUUID: string, metaId: string, method: () =
     if (meta.__degradedFallback) {
       delete meta.__degradedFallback;
       cacheLogger.warn(`[Meta] Skipping cache for degraded fallback result: ${metaId}`);
+      applySeasonNumberingProjection(meta, config);
       return result;
     }
 
