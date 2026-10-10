@@ -2893,6 +2893,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const items = built
       .filter(keepsUnderProfileCap(config))
       .slice(0, limit);
+    await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
     res.json(itemList(items, items.length, 0));
   });
 
