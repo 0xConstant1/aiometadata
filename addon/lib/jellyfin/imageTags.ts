@@ -14,6 +14,10 @@ export function wideTag(artTag: string): string {
   return `${WIDE}${artTag}`;
 }
 
+export function artTag(tag: string): string {
+  return tag.startsWith(WIDE) ? tag.slice(WIDE.length) : tag;
+}
+
 export function isWideTag(tag: unknown): boolean {
   return typeof tag === 'string' && tag.startsWith(WIDE);
 }

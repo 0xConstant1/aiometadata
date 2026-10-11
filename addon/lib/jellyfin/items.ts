@@ -37,6 +37,12 @@ function imageKey(scope: string, itemId: string): string {
 }
 
 const imageHash = (scope: string): string => `jf:img:${scope}`;
+const artHash = (scope: string): string => `jf:img:tag:${scope}`;
+
+const artByTag = new LRUCache<string, string>({
+  max: envInt('JELLYFIN_IMAGE_CACHE_MAX', 20000, 1) * 2,
+  ttl: envInt('JELLYFIN_IMAGE_MEMO_TTL', 6 * 60 * 60, 60) * 1000,
+});
 const imageField = (itemId: string): string => normaliseJellyfinId(itemId);
 
 function imageTtl(): number {
@@ -69,7 +75,7 @@ export async function flushRememberedImages(): Promise<void> {
 
   const ttl = imageTtl();
   await Promise.all(
-    batches.map(async ([scope, fields]) => {
+    batches.map(async ([hash, fields]) => {
       const flat: string[] = [];
       for (const [field, value] of fields) flat.push(field, value);
       try {
@@ -77,9 +83,9 @@ export async function flushRememberedImages(): Promise<void> {
         // figures on a busy instance and slowed every scan of the keyspace.
         await redis
           .multi()
-          .hsetex(imageHash(scope), 'EX', ttl, 'FIELDS', fields.size, ...flat)
-          .expire(imageHash(scope), ttl, 'NX')
-          .expire(imageHash(scope), ttl, 'GT')
+          .hsetex(hash, 'EX', ttl, 'FIELDS', fields.size, ...flat)
+          .expire(hash, ttl, 'NX')
+          .expire(hash, ttl, 'GT')
           .exec();
       } catch {
         // Art is a cache; a lost write is read from the meta again.
@@ -88,23 +94,54 @@ export async function flushRememberedImages(): Promise<void> {
   );
 }
 
+function queueImageWrite(hash: string, field: string, value: string): void {
+  let fields = pendingImages.get(hash);
+  if (!fields) {
+    fields = new Map<string, string>();
+    pendingImages.set(hash, fields);
+  }
+  fields.set(field, value);
+  scheduleImageFlush();
+}
+
+function rememberArt(scope: string, url: string | undefined): void {
+  if (!url) return;
+  const tag = imageTag(url);
+  const key = `${scope}|${tag}`;
+  if (artByTag.get(key) === url) return;
+  artByTag.set(key, url);
+  if (redis) queueImageWrite(artHash(scope), tag, url);
+}
+
 export function rememberImages(scope: string, itemId: string, images: ItemImages): void {
   if (!images.primary && !images.backdrop && !images.logo && !images.thumb) return;
+
+  rememberArt(scope, images.primary);
+  rememberArt(scope, images.backdrop);
+  rememberArt(scope, images.logo);
+  rememberArt(scope, images.thumb);
 
   const key = imageKey(scope, itemId);
   const held = imageCache.get(key);
   if (held && held.primary === images.primary && held.backdrop === images.backdrop && held.logo === images.logo && held.thumb === images.thumb) return;
   imageCache.set(key, images);
 
-  if (!redis) return;
+  if (redis) queueImageWrite(imageHash(scope), imageField(itemId), JSON.stringify(images));
+}
 
-  let fields = pendingImages.get(scope);
-  if (!fields) {
-    fields = new Map<string, string>();
-    pendingImages.set(scope, fields);
+export async function recallArt(scope: string, tag: string): Promise<string | undefined> {
+  const key = `${scope}|${tag}`;
+  const local = artByTag.get(key);
+  if (local) return local;
+  if (!redis) return undefined;
+  try {
+    const stored = await redis.hget(artHash(scope), tag);
+    if (!stored) return undefined;
+    artByTag.set(key, stored);
+    return stored;
+  } catch {
+    return undefined;
   }
-  fields.set(imageField(itemId), JSON.stringify(images));
-  scheduleImageFlush();
 }
 
 export async function recallImages(scope: string, itemId: string): Promise<ItemImages | undefined> {

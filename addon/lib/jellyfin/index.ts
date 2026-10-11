@@ -28,8 +28,8 @@ import {
 } from './dto';
 import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBoxSetCatalog, isBrowsable, requiresGenre, viewTypeFor } from './views';
 import { decodeJellyfinId } from './ids';
-import { imageTag, isWideTag } from './imageTags';
-import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
+import { artTag, imageTag, isWideTag } from './imageTags';
+import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallArt, recallImages, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamClient, streamsState, streamUserAgent, toNotice, toPlayable, type StreamClient } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
@@ -1948,19 +1948,20 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   router.get(['/Items/:itemId/Images/:imageType', '/Items/:itemId/Images/:imageType/:index'], async (req: any, res: any) => {
     const requested = String(req.params.imageType).toLowerCase();
+    const tag = String(req.query.tag ?? req.query.Tag ?? '');
     const images = await imagesFor(req, String(req.params.itemId));
-    if (!images) {
-      res.status(404).end();
-      return;
-    }
-    const wide = requested === 'primary' && isWideTag(req.query.tag ?? req.query.Tag);
-    const kind = wide ? (images.thumb ? 'thumb' : 'backdrop') : requested;
+    const wide = requested === 'primary' && isWideTag(tag);
+    const kind = wide ? (images?.thumb ? 'thumb' : 'backdrop') : requested;
     let url =
-      kind === 'primary' ? images.primary
-      : kind === 'backdrop' ? images.backdrop
-      : kind === 'logo' ? images.logo
-      : kind === 'thumb' ? images.thumb
+      kind === 'primary' ? images?.primary
+      : kind === 'backdrop' ? images?.backdrop
+      : kind === 'logo' ? images?.logo
+      : kind === 'thumb' ? images?.thumb
       : undefined;
+    const named = tag ? artTag(tag) : '';
+    if (named && (!url || imageTag(url) !== named)) {
+      url = (await recallArt(serverIdFor(req.params.userUUID), named)) ?? url;
+    }
 
     if (!url) {
       res.status(404).end();
