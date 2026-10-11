@@ -82,8 +82,12 @@ export function parseMediaBrowserHeader(value: string | undefined): Record<strin
     const eq = part.indexOf('=');
     if (eq === -1) continue;
     const key = part.slice(0, eq).trim().toLowerCase();
-    const raw = part.slice(eq + 1).trim();
-    out[key] = raw.replace(/^"(.*)"$/, '$1');
+    const raw = part.slice(eq + 1).trim().replace(/^"(.*)"$/, '$1');
+    try {
+      out[key] = decodeURIComponent(raw);
+    } catch {
+      out[key] = raw;
+    }
   }
   return out;
 }
