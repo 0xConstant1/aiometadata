@@ -881,10 +881,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const personIds = String(req.query.PersonIds ?? req.query.personIds ?? '').split(',').map((v) => v.trim()).filter(Boolean);
     if (personIds.length) {
-      const items = await personItems(userUUID, config, serverId, personIds[0], includeItemTypes);
       const asked = req.query.Limit ?? req.query.limit;
-      const take = asked === undefined ? 500 : limit;
-      res.json(itemList(items.slice(startIndex, startIndex + take), items.length, startIndex));
+      const take = asked === undefined ? envInt('JELLYFIN_FILMOGRAPHY_PAGE', 100, 1) : limit;
+      const ascending = String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase().startsWith('asc');
+      const { items, total } = await personItems(userUUID, config, serverId, personIds[0], includeItemTypes, startIndex, take, ascending);
+      res.json(itemList(items, total, startIndex));
       return;
     }
 
@@ -1641,14 +1642,34 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     };
   };
 
-  const personItems = async (userUUID: string, config: any, serverId: string, personId: string, includeItemTypes: any): Promise<any[]> => {
+  const personItems = async (
+    userUUID: string,
+    config: any,
+    serverId: string,
+    personId: string,
+    includeItemTypes: any,
+    startIndex: number,
+    take: number,
+    ascending = false
+  ): Promise<{ items: any[]; total: number }> => {
     const descriptor = await decodeJellyfinId(personId);
-    if (!descriptor || descriptor.k !== 'person') return [];
+    if (!descriptor || descriptor.k !== 'person') return { items: [], total: 0 };
     const person = await personByName(config, descriptor.n);
-    if (!person) return [];
-    const metas = await personCredits(config, person.id);
-    const items = metas.map((meta: any) => metaToBaseItem(meta, meta.type, serverId, null));
-    return filterByIncludeTypes(items, includeItemTypes ? String(includeItemTypes) : undefined).filter(keepsUnderProfileCap(config));
+    if (!person) return { items: [], total: 0 };
+    const wanted = includeItemTypes ? String(includeItemTypes) : undefined;
+    const newest = (await personCredits(config, person.id)).filter(
+      (meta: any) => !wanted || wanted.split(',').map((t) => t.trim()).includes(meta.type === 'movie' ? 'Movie' : 'Series')
+    );
+    const listed = ascending
+      ? [...newest.filter((meta: any) => meta.released).reverse(), ...newest.filter((meta: any) => !meta.released)]
+      : newest;
+    const page = await mapWithConcurrency(listed.slice(startIndex, startIndex + take), shelfConcurrency(), async (meta: any) => {
+      const card = await previewMeta(config, userUUID, meta.type, meta.id).catch(() => null);
+      return metaToBaseItem(card ?? meta, meta.type, serverId, null);
+    });
+    const items = page.filter(keepsUnderProfileCap(config));
+    await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
+    return { items, total: listed.length };
   };
 
   const searchAcross = async (

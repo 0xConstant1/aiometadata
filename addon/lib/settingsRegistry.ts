@@ -608,6 +608,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_FILMOGRAPHY_PAGE',
+    envVar: 'JELLYFIN_FILMOGRAPHY_PAGE',
+    label: 'Jellyfin Filmography Page',
+    description: 'How many titles of a person\'s filmography a client gets when it does not say how many it wants. A client that pages asks for the rest; the total is always the whole filmography.',
+    category: 'Features',
+    type: 'number',
+    default: 100,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_INDEX_QUEUE_CONCURRENCY',
     envVar: 'JELLYFIN_INDEX_QUEUE_CONCURRENCY',
     label: 'Jellyfin Show Index Concurrency',
