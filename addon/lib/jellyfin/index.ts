@@ -1580,6 +1580,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       '/Videos/:itemId/stream/:filename',
       '/Videos/:itemId/original',
       '/Videos/:itemId/original.:ext',
+      '/Items/:itemId/Download',
     ],
     videoStreamHandler
   );
