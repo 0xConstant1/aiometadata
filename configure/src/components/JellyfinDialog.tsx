@@ -814,6 +814,19 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                   aria-label="Show a Latest row per catalog"
                 />
               </div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium">Mark unaired episodes</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    On by default. Episodes that have not aired yet are sent as missing, so apps that support it show them as upcoming and do not offer to play them. Turn off to keep them playable, for when a stream addon has an episode early.
+                  </p>
+                </div>
+                <Switch
+                  checked={config.jellyfinMarkUnaired !== false}
+                  onCheckedChange={(next) => setConfig(prev => ({ ...prev, jellyfinMarkUnaired: next ? undefined : false }))}
+                  aria-label="Mark unaired episodes"
+                />
+              </div>
             </div>
           </div>
           <div className="space-y-2 border-t pt-4">

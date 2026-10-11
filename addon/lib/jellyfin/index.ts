@@ -2291,6 +2291,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const seriesMetaFor = async (req: any) => {
     const descriptor = await decodeJellyfinId(String(req.params.seriesId));
     if (!descriptor || descriptor.k !== 'series') return null;
+    await loadConfig(req);
     const meta = await fetchMeta(req.params.userUUID, 'series', descriptor.i);
     return meta ? { descriptor, meta } : null;
   };

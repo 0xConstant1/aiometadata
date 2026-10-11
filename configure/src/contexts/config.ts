@@ -438,6 +438,7 @@ export interface AppConfig {
   jellyfinStreamUrl?: string;
   jellyfinResolveOnOpen?: boolean;
   jellyfinLatestRows?: boolean;
+  jellyfinMarkUnaired?: boolean;
   /** Playback is reported by the client, so the subtitle trigger is not used. */
   playbackReporting?: boolean;
   /** Password a Jellyfin client signs in with, for accounts that have no configuration password. */

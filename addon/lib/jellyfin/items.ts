@@ -8,7 +8,7 @@ import { EMPTY_USER_DATA } from './dto';
 import { placeholderSources } from './streams';
 import redis from '../redisClient';
 import type { CatalogRef } from './views';
-import { viewerAccountOwner, viewerReadsExtensions } from './viewer';
+import { viewerAccountOwner, viewerMarksUnaired, viewerReadsExtensions } from './viewer';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -1049,7 +1049,7 @@ export function buildEpisode(
     if (video.thumbnail) rememberImages(serverId, id, { primary: video.thumbnail });
 
     const premiere = isoDate(video.released);
-    const unaired = viewerReadsExtensions() && (video.available === false || (premiere ? Date.parse(premiere) > Date.now() : false));
+    const unaired = viewerReadsExtensions() && viewerMarksUnaired() && (video.available === false || (premiere ? Date.parse(premiere) > Date.now() : false));
 
     return {
       Name: video.title || `Episode ${video.episode}`,

@@ -3,7 +3,7 @@ import { readTokenSession, revokeToken } from './tokens';
 import { listProfiles, scopeConfigToProfile } from './profiles';
 import { normaliseJellyfinId } from './idsCodec';
 import { LRUCache } from 'lru-cache';
-import { noteAccountOwner, runInViewerScope, viewerOwnsWatchlist } from './viewer';
+import { noteAccountOwner, noteMarksUnaired, runInViewerScope, viewerOwnsWatchlist } from './viewer';
 import { accountOwner } from '../accounts';
 
 const redis: any = require('../redisClient');
@@ -195,6 +195,7 @@ export async function loadConfig(req: any): Promise<any> {
   config.userUUID = req.jellyfin.userUUID;
   req.jellyfin.config = config;
   noteAccountOwner(accountOwner(config));
+  noteMarksUnaired(config.jellyfinMarkUnaired !== false);
   return config;
 }
 
