@@ -4053,6 +4053,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 500,
   },
   {
+    key: 'LUMIERE_SUGGEST_TIMEOUT_MS',
+    envVar: 'LUMIERE_SUGGEST_TIMEOUT_MS',
+    label: 'LumiereDB Suggestion Timeout',
+    description: 'How long a Jellyfin client\'s search suggestions wait for LumiereDB before showing none, in milliseconds.',
+    category: 'Catalogs & Search',
+    type: 'number',
+    default: 1500,
+    min: 100,
+  },
+  {
     key: 'LUMIERE_SEARCH_TTL_SECONDS',
     envVar: 'LUMIERE_SEARCH_TTL_SECONDS',
     label: 'LumiereDB Search Cache TTL',

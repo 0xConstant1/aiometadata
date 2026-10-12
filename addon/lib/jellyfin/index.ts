@@ -1749,44 +1749,60 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json(itemList([personItem(id, serverIdFor(req.params.userUUID), person.name, person)], 1, 0));
   });
 
+  const toHint = (item: any) => ({
+    ItemId: item.Id,
+    Id: item.Id,
+    Name: item.Name,
+    Type: item.Type,
+    MediaType: item.MediaType ?? 'Video',
+    ProductionYear: item.ProductionYear,
+    PrimaryImageTag: item.ImageTags?.Primary,
+    BackdropImageTag: item.BackdropImageTags?.[0],
+    BackdropImageItemId: item.Id,
+    PrimaryImageAspectRatio: item.PrimaryImageAspectRatio,
+    RunTimeTicks: item.RunTimeTicks,
+  });
+
+  // LumiereDB's typeahead, for a search bar asking on each key press. Nothing else is
+  // fast enough to answer it, so without it there are no hints. It carries no age
+  // ratings, so a capped profile gets none either.
+  const suggestHints = async (config: any, serverId: string, term: string, limit: number, includeItemTypes: any): Promise<any[]> => {
+    const { lumiereApiBase } = require('../../utils/lumiereLists');
+    const { fetchLumiereSuggest } = require('../../utils/lumiereSearch');
+    const { getSetting } = require('../settingsService');
+    const base = lumiereApiBase();
+    if (!base || hasAgeRatingCap(config)) return [];
+
+    const wanted = includeItemTypes
+      ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
+      : null;
+    const movies = !wanted || !wanted.size || wanted.has('Movie');
+    const shows = !wanted || !wanted.size || wanted.has('Series');
+    if (!movies && !shows) return [];
+
+    const timeoutMs = parseInt(getSetting('LUMIERE_SUGGEST_TIMEOUT_MS'), 10) || 1500;
+    const found = await fetchLumiereSuggest(base, movies && shows ? null : movies ? 'movie' : 'series', term, limit, !!config.includeAdult, timeoutMs);
+    return (found ?? []).map((title: any) =>
+      metaToBaseItem({ id: title.imdbId, type: title.kind, name: title.title, releaseInfo: title.year ? String(title.year) : undefined }, title.kind, serverId, null)
+    );
+  };
+
   router.get('/Search/Hints', async (req: any, res: any) => {
     const term = String(req.query.SearchTerm ?? req.query.searchTerm ?? '').trim();
     const limit = Math.min(Math.max(1, qInt(req, 'Limit', 20)), 50);
     const includeItemTypes = req.query.IncludeItemTypes ?? req.query.includeItemTypes;
 
-    if (!term) {
-      res.json({ SearchHints: [], TotalRecordCount: 0 });
-      return;
-    }
-
-    const config = await loadConfig(req);
+    const config = term ? await loadConfig(req) : null;
     if (!config) {
       res.json({ SearchHints: [], TotalRecordCount: 0 });
       return;
     }
 
-    const userUUID = req.params.userUUID;
-    const serverId = serverIdFor(userUUID);
-    const items = await searchAcross(userUUID, config, serverId, term, limit, includeItemTypes);
-
-    const filtered = items.slice(0, limit);
-
-    res.json({
-      SearchHints: filtered.map((item: any) => ({
-        ItemId: item.Id,
-        Id: item.Id,
-        Name: item.Name,
-        Type: item.Type,
-        MediaType: item.MediaType ?? 'Video',
-        ProductionYear: item.ProductionYear,
-        PrimaryImageTag: item.ImageTags?.Primary,
-        BackdropImageTag: item.BackdropImageTags?.[0],
-        BackdropImageItemId: item.Id,
-        PrimaryImageAspectRatio: item.PrimaryImageAspectRatio,
-        RunTimeTicks: item.RunTimeTicks,
-      })),
-      TotalRecordCount: filtered.length,
+    const items = await suggestHints(config, serverIdFor(req.params.userUUID), term, limit, includeItemTypes).catch((error: any) => {
+      logger.debug(`Search suggestions unavailable: ${error.message}`);
+      return [];
     });
+    res.json({ SearchHints: items.map(toHint), TotalRecordCount: items.length });
   });
 
   router.get('/Genres', async (req: any, res: any) => {
