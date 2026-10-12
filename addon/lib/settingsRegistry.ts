@@ -1570,11 +1570,11 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     key: 'JELLYFIN_RESUME_MAX_AGE',
     envVar: 'JELLYFIN_RESUME_MAX_AGE',
-    label: 'Tracker Paused Titles Max Age (seconds)',
-    description: "How long a tracker's paused titles are reused while its activity shows no new playback. Simkl and MDBList are read again as soon as their activity moves, or when a play through this server changes them; PublicMetaDB reports no activity, so it is read again every Jellyfin Tracker Read Memory seconds.",
+    label: 'MDBList Paused Titles Max Age (seconds)',
+    description: "How long MDBList's paused titles are reused while its activity shows no new playback. Clearing a paused title that is not the newest moves none of MDBList's activity, so this is how soon such a clear shows. Simkl's activity moves on every change, so it is read again as soon as it does; PublicMetaDB reports no activity and is read again every Jellyfin Tracker Read Memory seconds.",
     category: 'Cache',
     type: 'number',
-    default: 21600,
+    default: 900,
     min: 60,
   },
   {

@@ -1229,7 +1229,7 @@ async function clearUnmarked(userUUID: string, profile: string, config: any, bef
   return cleared;
 }
 
-async function movieSpellings(id: string, config: any): Promise<string[]> {
+export async function movieSpellings(id: string, config: any): Promise<string[]> {
   try {
     const { resolveAllIds } = require('../id-resolver');
     const ids = await resolveAllIds(id, 'movie', config, {}, [id.startsWith('tmdb:') ? 'imdb' : 'tmdb']);
