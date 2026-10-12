@@ -196,11 +196,11 @@ class RequestTracker {
         const hour = new Date().toISOString().substring(0, 13);
         metrics.push(`response_times:${hour}`, responseTime, 1000, 86400 * 7);
 
-        // Track errors
-        if (statusCode >= 400) {
+        if (statusCode >= 500 || statusCode === 429) {
           metrics.incr(`errors:total`);
           metrics.incr(`errors:${today}`);
           metrics.incr(`errors:${hour}`, 86400 * 2);
+          metrics.zincr(`error_paths:${hour}`, `${statusCode} ${endpoint}`, 86400 * 2);
         } else {
           metrics.incr(`success:${today}`, 86400 * 30);
           metrics.incr(`success:${hour}`, 86400 * 2);
@@ -1047,6 +1047,24 @@ class RequestTracker {
     }
   }
 
+  async topErrorPaths(hours, limit) {
+    const pipeline = redis.pipeline();
+    for (const h of hours) pipeline.zrange(`error_paths:${h}`, 0, -1, "WITHSCORES");
+    const totals = new Map();
+    for (const [, flat] of (await pipeline.exec()) || []) {
+      for (let i = 0; i + 1 < (flat || []).length; i += 2) {
+        totals.set(flat[i], (totals.get(flat[i]) || 0) + (Number(flat[i + 1]) || 0));
+      }
+    }
+    return [...totals]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([key, count]) => {
+        const [status, ...path] = key.split(" ");
+        return { status: Number(status), path: path.join(" "), count };
+      });
+  }
+
   // Get request statistics
   async getStats(tz = null) {
     try {
@@ -1102,6 +1120,8 @@ class RequestTracker {
           ? parseFloat(((trackedResponses / coveredRequests) * 100).toFixed(1))
           : 100;
 
+      const topErrorPaths = recentErr > 0 ? await this.topErrorPaths(recentHours, 3).catch(() => []) : [];
+
       return {
         totalRequests: parseInt(totalRequests) || 0,
         todayRequests: todayReq,
@@ -1113,6 +1133,7 @@ class RequestTracker {
         successRate: Math.min(successRate, 100), // Cap at 100%
         errorRate: Math.min(errorRate, 100), // Cap at 100%
         trackingCoverage: trackingCoverage, // % of requests that were tracked
+        topErrorPaths,
       };
     } catch (error) {
       logger.error("[Request Tracker] Failed to get stats:", error);

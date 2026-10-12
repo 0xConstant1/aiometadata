@@ -148,12 +148,15 @@ export async function buildOverviewSignals(
     }
   }
 
+  const topErrors: Array<{ status: number; path: string; count: number }> = stats?.topErrorPaths || [];
+  const errorDetail = `${stats?.errors24h} errors of ${tracked} tracked in the last 24 hours`
+    + (topErrors.length ? `. Most from ${topErrors.map((e) => `${e.status} ${e.path} (${e.count})`).join(', ')}` : '');
   if (tracked >= 50 && errorRate >= 5) {
     needsAttention.push({
       id: 'error-rate',
       severity: 'critical',
       title: `Error rate elevated: ${errorRate}%`,
-      detail: `${stats.errors24h} errors of ${tracked} tracked in the last 24 hours`,
+      detail: errorDetail,
       link: { tab: 'logs', label: 'View in Logs' },
     });
   } else if (tracked >= 50 && errorRate >= 2) {
@@ -161,7 +164,7 @@ export async function buildOverviewSignals(
       id: 'error-rate',
       severity: 'warning',
       title: `Error rate ${errorRate}%`,
-      detail: `${stats.errors24h} errors of ${tracked} tracked in the last 24 hours`,
+      detail: errorDetail,
       link: { tab: 'logs', label: 'View in Logs' },
     });
   }
