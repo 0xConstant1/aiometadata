@@ -3,7 +3,7 @@ import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { encodeJellyfinId } from './ids';
 import { collectionFolder, EMPTY_USER_DATA } from './dto';
-import { fetchWindow, includeTypesFilter, isLandscapeCatalog, knownCatalogLength, metaToBaseItem, rememberImages, showLandscape } from './items';
+import { fetchWindow, includeTypesFilter, isLandscapeCatalog, knownCatalogLength, metaToBaseItem, rememberImages, showLandscape, warmCatalogLengths } from './items';
 import { getCatalogs, type CatalogRef } from './views';
 import { viewerAccountOwner } from './viewer';
 import { profileTags } from './profiles';
@@ -85,7 +85,41 @@ function visibleDeep(catalogs: CatalogRef[], folder: FolderDraft): number {
   return visibleSources(catalogs, folder).length + subFolders(folder).reduce((sum, child) => sum + visibleDeep(catalogs, child), 0);
 }
 
-function boxSetItem(serverId: string, collection: CollectionDraft, folder: FolderDraft, sourceCount: number, parentId: string): any {
+interface CountScope {
+  userUUID: string;
+  tags: string[];
+}
+
+// Titles are counted once a folder's one source has been read to its end; several
+// sources share titles, so their lengths add up to more than the folder shows.
+function childCount(scope: CountScope, catalogs: CatalogRef[], folder: FolderDraft): number | null {
+  const sources = visibleSources(catalogs, folder);
+  if (sources.length > 1) return null;
+  const folders = subFolders(folder).filter((child) => visibleDeep(catalogs, child) > 0).length;
+  if (sources.length === 0) return folders;
+  const { source, catalog } = sources[0];
+  const genre = pinnedGenre(source);
+  const known = knownCatalogLength(scope.userUUID, catalog, genre ? { genre } : {}, scope.tags);
+  return known === undefined ? null : folders + known;
+}
+
+async function countScope(userUUID: string, config: any, catalogs: CatalogRef[], folders: FolderDraft[]): Promise<CountScope> {
+  const tags = profileTags(config);
+  const unpinned = new Map<string, CatalogRef>();
+  const walk = (list: FolderDraft[]) => {
+    for (const folder of list) {
+      for (const { source, catalog } of visibleSources(catalogs, folder)) {
+        if (!pinnedGenre(source)) unpinned.set(`${catalog.type}|${catalog.id}`, catalog);
+      }
+      walk(subFolders(folder));
+    }
+  };
+  walk(folders);
+  await warmCatalogLengths(userUUID, [...unpinned.values()], {}, tags);
+  return { userUUID, tags };
+}
+
+function boxSetItem(serverId: string, collection: CollectionDraft, folder: FolderDraft, childCount: number | null, parentId: string): any {
   const id = boxSetId(collection, folder);
   const cover = imageOf(folder.coverImageUrl);
   const backdrop = imageOf(folder.heroBackdropUrl);
@@ -116,7 +150,7 @@ function boxSetItem(serverId: string, collection: CollectionDraft, folder: Folde
     Genres: [],
     LocalTrailerCount: 0,
     UserData: { ...EMPTY_USER_DATA, Key: id, ItemId: id },
-    ChildCount: sourceCount,
+    ChildCount: childCount,
     RecursiveItemCount: null,
     DisplayPreferencesId: id,
     Tags: folder.hideTitle ? [HIDE_TITLE_TAG] : [],
@@ -131,13 +165,13 @@ function boxSetItem(serverId: string, collection: CollectionDraft, folder: Folde
   };
 }
 
-function boxSetsOf(catalogs: CatalogRef[], serverId: string, collection: CollectionDraft, folders: FolderDraft[], parentId: string, deep: boolean): any[] {
+function boxSetsOf(scope: CountScope, catalogs: CatalogRef[], serverId: string, collection: CollectionDraft, folders: FolderDraft[], parentId: string, deep: boolean): any[] {
   const out: any[] = [];
   for (const folder of folders) {
     if (!folder?.id || typeof folder.title !== 'string') continue;
-    const set = boxSetItem(serverId, collection, folder, visibleDeep(catalogs, folder), parentId);
+    const set = boxSetItem(serverId, collection, folder, childCount(scope, catalogs, folder), parentId);
     out.push(set);
-    if (deep) out.push(...boxSetsOf(catalogs, serverId, collection, subFolders(folder), set.Id, true));
+    if (deep) out.push(...boxSetsOf(scope, catalogs, serverId, collection, subFolders(folder), set.Id, true));
   }
   return out;
 }
@@ -145,17 +179,19 @@ function boxSetsOf(catalogs: CatalogRef[], serverId: string, collection: Collect
 /** The folders of a collection, including those with nothing this user can see. */
 export async function boxSetsFor(userUUID: string, config: any, serverId: string, collection: CollectionDraft): Promise<any[]> {
   const catalogs = await getCatalogs(userUUID, config);
-  return boxSetsOf(catalogs, serverId, collection, Array.isArray(collection.folders) ? collection.folders : [], collectionViewId(collection), false);
+  const folders = Array.isArray(collection.folders) ? collection.folders : [];
+  return boxSetsOf(await countScope(userUUID, config, catalogs, folders), catalogs, serverId, collection, folders, collectionViewId(collection), false);
 }
 
 export async function boxSetsUnder(userUUID: string, config: any, serverId: string, collection: CollectionDraft, folder: FolderDraft): Promise<any[]> {
   const catalogs = await getCatalogs(userUUID, config);
-  return boxSetsOf(catalogs, serverId, collection, subFolders(folder), boxSetId(collection, folder), false);
+  return boxSetsOf(await countScope(userUUID, config, catalogs, subFolders(folder)), catalogs, serverId, collection, subFolders(folder), boxSetId(collection, folder), false);
 }
 
 export async function boxSetsDeep(userUUID: string, config: any, serverId: string, collection: CollectionDraft): Promise<any[]> {
   const catalogs = await getCatalogs(userUUID, config);
-  return boxSetsOf(catalogs, serverId, collection, Array.isArray(collection.folders) ? collection.folders : [], collectionViewId(collection), true);
+  const folders = Array.isArray(collection.folders) ? collection.folders : [];
+  return boxSetsOf(await countScope(userUUID, config, catalogs, folders), catalogs, serverId, collection, folders, collectionViewId(collection), true);
 }
 
 export async function allBoxSets(userUUID: string, config: any, serverId: string): Promise<any[]> {
