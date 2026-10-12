@@ -104,7 +104,7 @@ function queueImageWrite(hash: string, field: string, value: string): void {
   scheduleImageFlush();
 }
 
-function rememberArt(scope: string, url: string | undefined): void {
+export function rememberArt(scope: string, url: string | undefined): void {
   if (!url) return;
   const tag = imageTag(url);
   const key = `${scope}|${tag}`;
