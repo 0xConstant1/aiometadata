@@ -244,8 +244,8 @@ export function CustomManifestIntegration({ isOpen, onClose }: CustomManifestInt
                 label="Default Cache TTL (seconds)"
                 value={defaultCacheTTL}
                 onChange={setDefaultCacheTTL}
-                min={300}
-                help="How long to cache newly added catalogs before refreshing. Range: 5 minutes to 7 days."
+                min={0}
+                help="How long to cache newly added catalogs before refreshing, up to 7 days. 0 turns caching off."
               />
 
 

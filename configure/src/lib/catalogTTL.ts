@@ -29,7 +29,7 @@ export function setSimklListMinTTL(seconds: number): void {
 }
 
 export function minCacheTTLFor(catalogId: string, metadata?: { listType?: string }): number {
-  if (catalogId === 'mdblist.upnext' || catalogId.startsWith('mdblist.watchlist')) return 0;
+  if (catalogId === 'mdblist.upnext' || catalogId.startsWith('mdblist.watchlist') || catalogId.startsWith('custom.')) return 0;
   if (catalogId.startsWith('simkl.list.')) return simklListMinTTL;
   if (catalogId.startsWith('simkl.trending.')) return 3600;
   if (catalogId.startsWith('letterboxd.')) return 7200;

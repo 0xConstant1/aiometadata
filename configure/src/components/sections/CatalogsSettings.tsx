@@ -1867,7 +1867,7 @@ const CustomManifestSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: C
             value={cacheTTL}
             onChange={setCacheTTL}
             min={minCacheTTLFor(catalog.id)}
-            help="How long to cache this catalog before refreshing. Range: 5 minutes to 7 days."
+            help="How long to cache this catalog before refreshing, up to 7 days. 0 turns caching off."
           />
           <div className="space-y-2">
             <div className="flex items-center justify-between">

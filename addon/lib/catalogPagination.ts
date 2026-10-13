@@ -15,7 +15,7 @@ export function fillMaxPages(): number {
   return envInt('CATALOG_FILTER_FILL_MAX_PAGES', 5, 1);
 }
 
-function cursorTtlSeconds(): number {
+export function cursorTtlSeconds(): number {
   return envInt('CATALOG_CURSOR_TTL', 6 * 60 * 60, 60);
 }
 
