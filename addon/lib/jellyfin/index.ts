@@ -263,16 +263,17 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   // The official SDK parses ids as UUIDs and refuses the bare form. ServerId is
   // a plain string, but a client matches it to the Id it saw at discovery.
-  const ID_FIELD = /^(Id|ItemId|ParentId|SeriesId|SeasonId|UserId|ServerId|AlbumId|ChannelId|ParentLogoItemId|ParentBackdropItemId|ParentThumbItemId|ParentPrimaryImageItemId|Key|DisplayPreferencesId|PlaylistItemId|MediaSourceId)$/;
+  // A media source's Id stays bare, as a real server sends it: a client reads it up to the first dash.
+  const ID_FIELD = /^(Id|ItemId|ParentId|SeriesId|SeasonId|UserId|ServerId|AlbumId|ChannelId|ParentLogoItemId|ParentBackdropItemId|ParentThumbItemId|ParentPrimaryImageItemId|Key|DisplayPreferencesId|PlaylistItemId)$/;
   const BARE_GUID = /^[0-9a-f]{32}$/i;
-  const dashIds = (value: any): any => {
-    if (Array.isArray(value)) return value.map(dashIds);
+  const dashIds = (value: any, source = false): any => {
+    if (Array.isArray(value)) return value.map((v) => dashIds(v, source));
     if (!value || typeof value !== 'object') return value;
     const out: any = {};
     for (const [k, v] of Object.entries(value)) {
-      if (typeof v === 'string' && BARE_GUID.test(v) && (ID_FIELD.test(k) || k.endsWith('Ids'))) out[k] = dashedGuid(v);
+      if (typeof v === 'string' && BARE_GUID.test(v) && !(source && k === 'Id') && (ID_FIELD.test(k) || k.endsWith('Ids'))) out[k] = dashedGuid(v);
       else if (Array.isArray(v) && k.endsWith('Ids')) out[k] = v.map((x) => (typeof x === 'string' && BARE_GUID.test(x) ? dashedGuid(x) : x));
-      else out[k] = dashIds(v);
+      else out[k] = dashIds(v, k === 'MediaSources');
     }
     return out;
   };
