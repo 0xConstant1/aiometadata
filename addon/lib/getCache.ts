@@ -1726,6 +1726,7 @@ async function cacheWrapSearch(userUUID: string, searchKey: string, method: () =
     showMetaProviderAttribution: config.showMetaProviderAttribution || false,
     displayAgeRating: config.displayAgeRating || false,
     useImdbIdForCatalogAndSearch: config.mal?.useImdbIdForCatalogAndSearch || false,
+    jikanEnabled: require('./mal').isJikanEnabled(),
     aiProvider: config.search?.ai_provider || 'gemini',
     aiModel: config.search?.ai_model || '',
     aiWebSearch: config.search?.ai_web_search || false,

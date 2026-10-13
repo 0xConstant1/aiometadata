@@ -134,3 +134,7 @@ export const allCatalogDefinitions: CatalogDefinition[] = [
 ]; 
 
 export type Catalog = CatalogDefinition;
+
+export function isJikanCatalog(catalog: { id: string }): boolean {
+  return catalog.id.startsWith('mal.') && !catalog.id.startsWith('mal.userlist.') && catalog.id !== 'mal.suggestions';
+}

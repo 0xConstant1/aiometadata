@@ -126,8 +126,8 @@ export function LineupGallery({
   selectedKind: LineupKind;
   onSelect: (option: LineupOption) => void;
 }) {
-  const { lumiereEnabled } = useConfig();
-  const options = useMemo(() => listLineupOptions(content, { lumiere: lumiereEnabled }), [content, lumiereEnabled]);
+  const { lumiereEnabled, jikanEnabled } = useConfig();
+  const options = useMemo(() => listLineupOptions(content, { lumiere: lumiereEnabled, jikan: jikanEnabled }), [content, lumiereEnabled, jikanEnabled]);
 
   return (
     <section className="space-y-4">

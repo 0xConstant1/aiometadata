@@ -1108,7 +1108,7 @@ async function getAnimeMeta(preferredProvider, stremioId, language, config, user
   // --- Fallback / Native Provider Logic ---
 
   // 1. Try Kitsu (if it's the preferred provider OR as a fallback, but not if MAL was the preferred provider)
-  if (allIds?.kitsuId && (preferredProvider === 'kitsu' || preferredProvider !== 'mal')) {
+  if (allIds?.kitsuId && (preferredProvider !== 'mal' || !jikan.isJikanEnabled())) {
     try {
       logger.debug(`[AnimeMeta] Using provider 'kitsu' for ${stremioId} (Kitsu ID: ${allIds.kitsuId})`);
       const kitsuDetails = await cacheWrapGlobal(
@@ -1138,7 +1138,7 @@ async function getAnimeMeta(preferredProvider, stremioId, language, config, user
   }
 
   // 2. Try MAL (if it's the preferred provider OR as the final fallback)
-  if (allIds?.malId) {
+  if (allIds?.malId && jikan.isJikanEnabled()) {
     try {
       logger.debug(`[AnimeMeta] Using provider 'mal' for ${stremioId}`);
       const [details, characters, episodes] = await Promise.all([

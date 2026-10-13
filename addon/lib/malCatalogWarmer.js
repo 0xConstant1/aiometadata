@@ -125,6 +125,10 @@ class MALCatalogWarmer {
 
   async startBackgroundWarming() {
     this.syncConfigFromEnv();
+    if (!jikan.isJikanEnabled()) {
+      this.log('info', 'MAL catalog warming skipped: Jikan is turned off (JIKAN_ENABLED)');
+      return;
+    }
     if (!WARMUP_CONFIG.enabled) {
       const mode = process.env.CACHE_WARMUP_MODE || 'essential';
       this.log('info', `MAL catalog warming disabled (CACHE_WARMUP_MODE=${mode})`);
@@ -211,6 +215,7 @@ class MALCatalogWarmer {
     }
 
     this.syncConfigFromEnv();
+    if (!jikan.isJikanEnabled()) return;
 
     // Check if we're in quiet hours
     if (WARMUP_CONFIG.quietHoursEnabled) {
@@ -622,6 +627,9 @@ class MALCatalogWarmer {
   forceRunWarmup() {
     if (this.isWarming) {
       return { success: false, message: 'MAL warming is already running' };
+    }
+    if (!jikan.isJikanEnabled()) {
+      return { success: false, message: 'Jikan is turned off (JIKAN_ENABLED)' };
     }
 
     const wasDisabled = !WARMUP_CONFIG.enabled;

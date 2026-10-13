@@ -34,6 +34,7 @@ interface ConfigContextType {
   traktSearchEnabled: boolean;
   simklSearchEnabled: boolean;
   lumiereEnabled: boolean;
+  jikanEnabled: boolean;
   aiCatalogMaxPerRequest: number;
   anilistRequiresAuth: boolean;
   catalogTTL: number;
@@ -420,6 +421,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [traktSearchEnabled, setTraktSearchEnabled] = useState(true);
   const [simklSearchEnabled, setSimklSearchEnabled] = useState(true);
   const [lumiereEnabled, setLumiereEnabled] = useState(false);
+  const [jikanEnabled, setJikanEnabled] = useState(true);
   const [instanceLoaded, setInstanceLoaded] = useState(false);
   const [aiCatalogMaxPerRequest, setAiCatalogMaxPerRequest] = useState(20);
   const [catalogTTL, setCatalogTTL] = useState(86400); // Default to 24 hours
@@ -477,6 +479,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         setTraktSearchEnabled(envApiKeys.traktSearchEnabled ?? true);
         setSimklSearchEnabled(envApiKeys.simklSearchEnabled ?? true);
         setLumiereEnabled(envApiKeys.lumiereEnabled ?? false);
+        setJikanEnabled(envApiKeys.jikanEnabled ?? true);
         setInstanceLoaded(true);
         setAiCatalogMaxPerRequest(envApiKeys.aiCatalogMaxPerRequest || 20);
         setCatalogTTL(envApiKeys.catalogTTL || 86400);
@@ -555,7 +558,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, maxEpisodeOrders, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, lumiereEnabled, aiCatalogMaxPerRequest, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
+    <ConfigContext.Provider value={{ config, setConfig, addonVersion, resetConfig, auth, setAuth, hasBuiltInTvdb, hasBuiltInTmdb, hasBuiltInMdblist, hasBuiltInGemini, catalogTTL, maxCatalogs, collectionImportCatalogCap, maxEpisodeOrders, refreshInstanceLimits, isLoading, sessionId, setSessionId, anilistRequiresAuth, traktSearchEnabled, simklSearchEnabled, lumiereEnabled, jikanEnabled, aiCatalogMaxPerRequest, manifestFingerprint, manifestChangedSinceInstall, markManifestInstalled }}>
       {children}
     </ConfigContext.Provider>
   );

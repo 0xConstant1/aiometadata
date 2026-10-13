@@ -43,9 +43,10 @@ function isSimklSearchDisabled(): boolean {
 function getDefaultProvider(type: string): string {
   if (type === 'movie') return 'tmdb.search';
   if (type === 'series') return 'tvdb.search';
-  if (type === 'anime.movie') return 'mal.search.movie';
-  if (type === 'anime.series') return 'mal.search.series';
-  if (type === 'anime') return 'mal.search.series';
+  const anime = jikan.isJikanEnabled() ? 'mal' : 'kitsu';
+  if (type === 'anime.movie') return `${anime}.search.movie`;
+  if (type === 'anime.series') return `${anime}.search.series`;
+  if (type === 'anime') return `${anime}.search.series`;
   return 'tmdb.search';
 }
 
@@ -2634,6 +2635,12 @@ async function getSearch(id: string, type: string, language: string, extra: any,
           if (providerId === 'lumiere.search' && !lumiereApiBase()) {
             const fallback = getDefaultProvider(type);
             logger.info(`LumiereDB is not configured on this instance, falling back to '${fallback}' for "${query}"`);
+            providerId = fallback;
+          }
+
+          if (providerId.startsWith('mal.search') && !jikan.isJikanEnabled()) {
+            const fallback = getDefaultProvider(type);
+            logger.debug(`Jikan is turned off on this instance, falling back to '${fallback}' for "${query}"`);
             providerId = fallback;
           }
 

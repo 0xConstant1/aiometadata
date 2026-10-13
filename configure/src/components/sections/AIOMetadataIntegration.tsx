@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Check, Plus, Minus, ChevronDown } from 'lucide-react';
 import { toast } from "sonner";
-import { baseCatalogs, animeCatalogs, CatalogDefinition } from '@/data/catalogs';
+import { baseCatalogs, animeCatalogs, CatalogDefinition, isJikanCatalog } from '@/data/catalogs';
 import { cn } from '@/lib/utils';
 
 interface AIOMetadataIntegrationProps {
@@ -93,7 +93,7 @@ const typeLabel = (type: string) => {
 };
 
 export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrationProps) {
-  const { config, setConfig, lumiereEnabled } = useConfig();
+  const { config, setConfig, lumiereEnabled, jikanEnabled } = useConfig();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const addedSet = useMemo(() => {
@@ -105,8 +105,8 @@ export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrati
   }, [config.catalogs]);
 
   const availableCatalogs = useMemo(
-    () => allBuiltInCatalogs.filter(c => c.source !== 'lumiere' || lumiereEnabled),
-    [lumiereEnabled]
+    () => allBuiltInCatalogs.filter(c => (c.source !== 'lumiere' || lumiereEnabled) && (jikanEnabled || !isJikanCatalog(c))),
+    [lumiereEnabled, jikanEnabled]
   );
 
   const groups = useMemo(() => {

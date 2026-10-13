@@ -1,6 +1,6 @@
 # Self-Hosted Jikan API
 
-Anime metadata is sourced from [MyAnimeList](https://myanimelist.net/) via the [Jikan](https://jikan.moe/) API. By default the addon uses the public instance (`https://api.jikan.moe/v4`), but **the public Jikan API is shutting down on October 1, 2026** (brownout from September 1). To keep anime metadata working, run your own Jikan instance and point the addon at it with a single environment variable:
+MAL catalogs, MAL search and MAL anime metadata come from [MyAnimeList](https://myanimelist.net/) via the [Jikan](https://jikan.moe/) API. The public Jikan API shut down on October 1, 2026, so the addon now defaults to [Tenrai](https://tenrai.org), a public Jikan-compatible API limited to 120 requests a minute per IP. For more headroom, run your own Jikan instance and point the addon at it with a single environment variable:
 
 ```env
 JIKAN_API_BASE=http://jikan_rest:8080/v4

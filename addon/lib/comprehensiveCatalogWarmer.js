@@ -988,7 +988,7 @@ class ComprehensiveCatalogWarmer {
             const { isRecommendationCatalog } = require('../utils/recommendations/catalog');
             const enabledCatalogs = allCatalogs.filter(c =>
               c.source !== 'merged' && !skipIds.has(c.id) && !isRecommendationCatalog(c.id) &&
-              c.cacheTTL !== 0 &&
+              c.cacheTTL !== 0 && (jikan.isJikanEnabled() || !jikan.isJikanCatalogId(c.id)) &&
               (c.enabled || mergedChildIds.has(`${c.id}:${c.type}`))
             );
             userConfigs[uuid] = { config, enabledCatalogs };

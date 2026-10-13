@@ -233,8 +233,9 @@ export async function resolveEntities(catalog: AICatalogOutput, ctx: ResolveCont
     }
   }
 
-  if (catalog.source === 'mal' && resolve.producers?.length) {
-    const JIKAN_API_BASE = process.env.JIKAN_API_BASE || 'https://api.jikan.moe/v4';
+  const jikan: any = require('../lib/mal');
+  if (catalog.source === 'mal' && resolve.producers?.length && jikan.isJikanEnabled()) {
+    const JIKAN_API_BASE = jikan.jikanApiBase();
     const items: Array<{ id: number; label: string }> = [];
     for (const name of resolve.producers) {
       try {

@@ -31,6 +31,7 @@ interface AvailableKeys {
   tmdb?: boolean;
   tvdb?: boolean;
   simkl?: boolean;
+  mal?: boolean;
 }
 
 interface ResolveContext {

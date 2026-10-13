@@ -779,7 +779,7 @@ function LabelWithTooltip({
 }
 
 export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customizeTemplate }: DiscoverBuilderDialogProps) {
-  const { config, setConfig, catalogTTL, auth, hasBuiltInMdblist, anilistRequiresAuth } = useConfig();
+  const { config, setConfig, catalogTTL, auth, hasBuiltInMdblist, anilistRequiresAuth, jikanEnabled } = useConfig();
   const tmdbApiKey = config.apiKeys?.tmdb?.trim() || '';
   const tvdbApiKey = config.apiKeys?.tvdb?.trim() || '';
   const mdblistApiKey = config.apiKeys?.mdblist?.trim() || '';
@@ -2956,7 +2956,9 @@ export function DiscoverBuilderDialog({ isOpen, onClose, editingCatalog, customi
                           {hasSimklClientId ? 'Simkl' : 'Simkl (Disabled)'}
                         </SelectItem>
                         <SelectItem value="anilist">AniList</SelectItem>
-                        <SelectItem value="mal">MAL</SelectItem>
+                        <SelectItem value="mal" disabled={!jikanEnabled}>
+                          {jikanEnabled ? 'MAL' : 'MAL (Disabled)'}
+                        </SelectItem>
                         <SelectItem value="mdblist" disabled={!hasMdblistApiKey}>
                           {hasMdblistApiKey ? 'MDBList' : 'MDBList (No API Key)'}
                         </SelectItem>

@@ -1,4 +1,4 @@
-import { allCatalogDefinitions, type CatalogDefinition } from '@/data/catalogs';
+import { allCatalogDefinitions, isJikanCatalog, type CatalogDefinition } from '@/data/catalogs';
 import type { CatalogConfig } from '@/contexts/config';
 import { includesAnime } from './animeProfiles';
 import type { ContentChoice, LineupKind } from './types';
@@ -28,10 +28,11 @@ function isAnime(definition: CatalogDefinition): boolean {
 
 export interface LineupSources {
   lumiere: boolean;
+  jikan: boolean;
 }
 
 export function isSourceAvailable(definition: CatalogDefinition, sources: LineupSources): boolean {
-  return definition.source !== 'lumiere' || sources.lumiere;
+  return (definition.source !== 'lumiere' || sources.lumiere) && (sources.jikan || !isJikanCatalog(definition));
 }
 
 /** Emits every definition, enabled or not: the Catalogs tab expects the full set. */

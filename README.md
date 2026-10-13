@@ -105,7 +105,7 @@ docker compose up -d
 Three optional pieces of infrastructure have guides of their own, since none is needed to run the addon:
 
 - **[Image Cache](docs/image-cache.md)** — serve artwork from disk instead of re-fetching it upstream.
-- **[Self-Hosted Jikan API](docs/self-hosted-jikan.md)** — run your own anime metadata source. The public Jikan API shuts down on **October 1, 2026**, so anyone relying on anime catalogs needs this.
+- **[Self-Hosted Jikan API](docs/self-hosted-jikan.md)** — run your own anime metadata source. The public Jikan API has shut down; the addon defaults to the public Tenrai API, and your own instance gives more headroom.
 - **[LumiereDB](docs/lumiere-db.md)** — a self-hosted IMDb database that adds LumiereDB search, people search, and Popular and Trending catalogs for movies and series.
 
 ### 4. Sign-in with an identity provider (Optional)

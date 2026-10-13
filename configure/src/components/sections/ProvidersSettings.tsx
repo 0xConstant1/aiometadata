@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { EpisodeOrderOverrides } from '@/components/settings/EpisodeOrderOverrides';
 import { Switch } from '@/components/ui/switch';
@@ -62,8 +63,13 @@ const tvdbSeasonTypes: SelectableOption[] = [
 ];
 
 export function ProvidersSettings() {
-  const { config, setConfig, hasBuiltInTvdb } = useConfig();
+  const { config, setConfig, hasBuiltInTvdb, jikanEnabled } = useConfig();
   const isImdbForCatalog = !!config.mal?.useImdbIdForCatalogAndSearch;
+
+  useEffect(() => {
+    if (jikanEnabled || config.providers.anime !== 'mal') return;
+    setConfig(prev => ({ ...prev, providers: { ...prev.providers, anime: 'kitsu' } }));
+  }, [jikanEnabled, config.providers.anime]);
   const hasTvdbKey = !!config.apiKeys?.tvdb?.trim() || hasBuiltInTvdb;
 
   const handleProviderChange = (type: 'movie' | 'series' | 'anime', value: string) => {
@@ -184,7 +190,7 @@ export function ProvidersSettings() {
               onValueChange={(val) => handleProviderChange('anime', val)}
               options={isImdbForCatalog
                 ? animeProviders.filter(p => p.value !== 'mal' && p.value !== 'kitsu')
-                : animeProviders}
+                : animeProviders.filter(p => p.value !== 'mal' || jikanEnabled)}
               hasTvdbKey={hasTvdbKey}
             />
             {isImdbForCatalog && (

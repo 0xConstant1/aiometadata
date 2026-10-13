@@ -77,7 +77,7 @@ const EXAMPLE_PROMPTS: Record<AICatalogGenerationMode, string[]> = {
 type DialogState = 'idle' | 'generating' | 'resolving' | 'success' | 'error';
 
 export function AICatalogDialog({ isOpen, onClose, embedded, onCatalogsCreated }: AICatalogDialogProps) {
-  const { config, setConfig, auth, aiCatalogMaxPerRequest } = useConfig();
+  const { config, setConfig, auth, aiCatalogMaxPerRequest, jikanEnabled } = useConfig();
   const [query, setQuery] = useState('');
   const [state, setState] = useState<DialogState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -303,8 +303,8 @@ export function AICatalogDialog({ isOpen, onClose, embedded, onCatalogsCreated }
                   </SelectTrigger>
                   <SelectContent>
                     {GENERATION_MODE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                      <SelectItem key={option.value} value={option.value} disabled={option.value === 'mal' && !jikanEnabled}>
+                        {option.value === 'mal' && !jikanEnabled ? 'MAL (Disabled)' : option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

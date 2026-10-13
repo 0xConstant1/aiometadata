@@ -165,7 +165,7 @@ function SortableEngineRow(props: EngineRowProps) {
 }
 
 export function SearchSettings() {
-  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini, traktSearchEnabled, simklSearchEnabled, lumiereEnabled } = useConfig();
+  const { config, setConfig, hasBuiltInTvdb, hasBuiltInGemini, traktSearchEnabled, simklSearchEnabled, lumiereEnabled, jikanEnabled } = useConfig();
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState('');
@@ -184,6 +184,7 @@ export function SearchSettings() {
   const hasRPDBKey = !!config.apiKeys?.rpdb || !!config.apiKeys?.topPoster || !!config.customPosterUrlPattern;
   const isTraktSearchEnabled = traktSearchEnabled;
   const isSimklSearchEnabled = simklSearchEnabled;
+  const animeSearchFallback = jikanEnabled ? 'mal' : 'kitsu';
 
   const caps = { hasTvdbKey, hasAnyAiKey };
   const slotViews = listSlots(config, caps);
@@ -224,6 +225,9 @@ export function SearchSettings() {
 
   const animeSearchProviders = allSearchProviders.filter(p => {
     if (p.value.startsWith('simkl.search') && !isSimklSearchEnabled) {
+      return false;
+    }
+    if (p.value.startsWith('mal.search') && !jikanEnabled) {
       return false;
     }
     return p.mediaType.includes('anime_movie') || p.mediaType.includes('anime_series');
@@ -436,8 +440,8 @@ export function SearchSettings() {
       const updates: Partial<Record<string, string>> = {};
       if (config.search.providers.movie === 'simkl.search') updates.movie = 'tmdb.search';
       if (config.search.providers.series === 'simkl.search') updates.series = 'tvdb.search';
-      if (config.search.providers.anime_movie === 'simkl.search.movie') updates.anime_movie = 'mal.search.movie';
-      if (config.search.providers.anime_series === 'simkl.search.series') updates.anime_series = 'mal.search.series';
+      if (config.search.providers.anime_movie === 'simkl.search.movie') updates.anime_movie = `${animeSearchFallback}.search.movie`;
+      if (config.search.providers.anime_series === 'simkl.search.series') updates.anime_series = `${animeSearchFallback}.search.series`;
 
       if (Object.keys(updates).length > 0) {
         setConfig(prev => ({
@@ -453,6 +457,19 @@ export function SearchSettings() {
       }
     }
   }, [simklSearchEnabled]);
+
+  useEffect(() => {
+    if (jikanEnabled) return;
+    const updates: Partial<Record<string, string>> = {};
+    if (config.search.providers.anime_movie === 'mal.search.movie') updates.anime_movie = 'kitsu.search.movie';
+    if (config.search.providers.anime_series === 'mal.search.series') updates.anime_series = 'kitsu.search.series';
+    if (Object.keys(updates).length > 0) {
+      setConfig(prev => ({
+        ...prev,
+        search: { ...prev.search, providers: { ...prev.search.providers, ...updates } },
+      }));
+    }
+  }, [jikanEnabled]);
 
   useEffect(() => {
     if (!traktSearchEnabled) {

@@ -36,8 +36,8 @@ export function SetupPage({
   onApplied?: () => void;
   onExit?: (target: SettingsSectionId) => void;
 }) {
-  const { config, setConfig, hasBuiltInTmdb, hasBuiltInTvdb, catalogTTL, lumiereEnabled } = useConfig();
-  const sources = useMemo(() => ({ lumiere: lumiereEnabled }), [lumiereEnabled]);
+  const { config, setConfig, hasBuiltInTmdb, hasBuiltInTvdb, catalogTTL, lumiereEnabled, jikanEnabled } = useConfig();
+  const sources = useMemo(() => ({ lumiere: lumiereEnabled, jikan: jikanEnabled }), [lumiereEnabled, jikanEnabled]);
 
   const [content, setContent] = useState<ContentChoice>('with-anime');
   const [animeSource, setAnimeSource] = useState<AnimeSource>(defaultAnimeSource('with-anime'));

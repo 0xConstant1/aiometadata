@@ -678,6 +678,7 @@ const respond = function (req, res, data, opts?) {
       traktSearchEnabled: getSetting('DISABLE_TRAKT_SEARCH') !== 'true',
       simklSearchEnabled: getSetting('DISABLE_SIMKL_SEARCH') !== 'true',
       lumiereEnabled: !!String(getSetting('LUMIERE_API_BASE') || '').trim(),
+      jikanEnabled: jikan.isJikanEnabled(),
     };
     
     // No cache to prevent cross-instance contamination
@@ -2285,10 +2286,12 @@ addon.get("/api/mal/discover/search/producer", async (req, res) => {
       return res.json({ results: [] });
     }
 
-    const { httpGet } = require('./utils/httpClient');
-    const JIKAN_API_BASE = process.env.JIKAN_API_BASE || 'https://api.jikan.moe/v4';
+    if (!jikan.isJikanEnabled()) {
+      return res.json({ results: [] });
+    }
 
-    const url = `${JIKAN_API_BASE}/producers?q=${encodeURIComponent(query)}&limit=20&order_by=favorites&sort=desc`;
+    const { httpGet } = require('./utils/httpClient');
+    const url = `${jikan.jikanApiBase()}/producers?q=${encodeURIComponent(query)}&limit=20&order_by=favorites&sort=desc`;
     const response = await httpGet(url, { timeout: 15000 });
 
     const producers = (response.data?.data || []).map((p) => {
@@ -2651,12 +2654,15 @@ addon.post("/api/ai/create-catalog", async (req, res) => {
     if (generationMode === 'tvdb' && !hasTvdb) {
       return res.status(400).json({ error: 'TVDB catalog generation requires a TVDB API key.' });
     }
+    if (generationMode === 'mal' && !jikan.isJikanEnabled()) {
+      return res.status(400).json({ error: 'MAL catalog generation needs Jikan, which is turned off on this instance.' });
+    }
     const maxCatalogs = Math.max(1, parseInt(getSetting('AI_CATALOG_MAX_PER_REQUEST'), 10) || 20);
     const viewerLanguage = String(config.language || 'en-US');
     const viewerRegion = (viewerLanguage.split('-')[1] || 'US').toUpperCase();
     const { systemPrompt, userPrompt } = buildCatalogCreationPrompt(query.trim(), {
       mode: generationMode,
-      keys: { tmdb: hasTmdb, tvdb: hasTvdb, simkl: hasSimkl },
+      keys: { tmdb: hasTmdb, tvdb: hasTvdb, simkl: hasSimkl, mal: jikan.isJikanEnabled() },
       maxCatalogs,
       region: viewerRegion,
       language: viewerLanguage,

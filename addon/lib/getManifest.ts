@@ -909,8 +909,9 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   // any one of them is in, so several profiles install as a single addon.
   const tags = Array.isArray(opts.tags) ? opts.tags.filter(Boolean) : [];
   const tagSet = new Set(tags.map((t: string) => t.toLowerCase()));
+  const jikanEnabled = jikan.isJikanEnabled();
   const enabledCatalogs = userCatalogs.filter((c: any) =>
-    c.enabled && servesCatalog(config, c) && (tagSet.size === 0 || (Array.isArray(c.tags) && c.tags.some((t: any) => tagSet.has(String(t).toLowerCase()))))
+    c.enabled && servesCatalog(config, c) && (jikanEnabled || !jikan.isJikanCatalogId(c.id)) && (tagSet.size === 0 || (Array.isArray(c.tags) && c.tags.some((t: any) => tagSet.has(String(t).toLowerCase()))))
   );
 
   // Absorbed merge sources must be built (even if disabled) so their genres feed the parent.
@@ -923,7 +924,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   }
   const enabledKeys = new Set(enabledCatalogs.map((c: any) => `${c.id}:${c.type}`));
   const absorbedSourceCatalogs = userCatalogs.filter((c: any) =>
-    mergedSourceKeys.has(`${c.id}:${c.type}`) && !enabledKeys.has(`${c.id}:${c.type}`)
+    mergedSourceKeys.has(`${c.id}:${c.type}`) && !enabledKeys.has(`${c.id}:${c.type}`) && (jikanEnabled || !jikan.isJikanCatalogId(c.id))
   );
   const absorbedKeys = new Set<string>(absorbedSourceCatalogs.map((c: any) => `${c.id}:${c.type}`));
 
@@ -1653,7 +1654,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
           extra: [{ name: 'search', isRequired: true }, { name: 'skip' }]
         });
       });
-    const isMalSearchInUse = Object.entries(searchProviders).some(
+    const isMalSearchInUse = jikanEnabled && Object.entries(searchProviders).some(
       ([, providerId]: [string, any]) =>
         typeof providerId === 'string' &&
         providerId.startsWith('mal.search') &&

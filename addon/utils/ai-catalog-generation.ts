@@ -323,7 +323,7 @@ function getPromptSources(mode: AICatalogGenerationMode, keys: AvailableKeys): P
     return [
       ...(keys.tmdb ? ['tmdb' as const] : []),
       'anilist',
-      'mal',
+      ...(keys.mal !== false ? ['mal' as const] : []),
       ...(keys.simkl ? ['simkl' as const] : []),
       ...(keys.tvdb ? ['tvdb' as const] : []),
     ];
@@ -334,6 +334,9 @@ function getPromptSources(mode: AICatalogGenerationMode, keys: AvailableKeys): P
   }
   if (mode === 'tvdb' && !keys.tvdb) {
     throw new Error('TVDB catalog generation requires a TVDB API key');
+  }
+  if (mode === 'mal' && keys.mal === false) {
+    throw new Error('MAL catalog generation needs Jikan, which is turned off on this instance');
   }
 
   return [mode];

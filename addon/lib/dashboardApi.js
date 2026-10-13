@@ -656,8 +656,9 @@ class DashboardAPI {
         },
         {
           name: "MAL",
-          keyStatus: null, // Doesn't require API key
+          keyStatus: require('./mal').isJikanEnabled() ? null : "Disabled",
           requiresKey: false,
+          off: !require('./mal').isJikanEnabled(),
         },
         {
           name: "Kitsu",
@@ -727,7 +728,7 @@ class DashboardAPI {
             // Determine health status based purely on success/failure metrics
             let status = "healthy";
             
-            if (totalCalls === 0) {
+            if (totalCalls === 0 || provider.off) {
               status = "unknown";
             } else if (totalCalls >= minCalls) {
               if (successRate < 50) {

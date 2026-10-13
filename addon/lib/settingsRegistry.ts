@@ -2736,13 +2736,22 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 6 * 60 * 60,
   },
   {
+    key: 'JIKAN_ENABLED',
+    envVar: 'JIKAN_ENABLED',
+    label: 'Enable Jikan (MAL)',
+    description: 'MAL catalogs, MAL search and MAL anime metadata come from a Jikan API. Turn this off to drop them: anime search and metadata use Kitsu instead and the warmers skip MAL. MAL lists, suggestions and tracking use the official MAL API and keep working.',
+    category: 'Providers',
+    type: 'boolean',
+    default: true,
+  },
+  {
     key: 'JIKAN_API_BASE',
     envVar: 'JIKAN_API_BASE',
     label: 'Jikan API Base URL',
-    description: 'Base URL for Jikan API (self-hosted or default)',
+    description: 'Base URL of a Jikan v4 compatible API, such as a self-hosted Jikan. Leave empty for the public Tenrai API, which allows 120 requests a minute per IP.',
     category: 'Providers',
     type: 'string',
-    default: 'https://api.jikan.moe/v4',
+    default: 'https://api.tenrai.org/v1',
   },
   {
     key: 'TEST_KEYS_RATE_LIMIT_PER_MIN',
@@ -4644,6 +4653,17 @@ export interface ConditionalRule {
 }
 
 export const CONDITIONAL_RULES: ConditionalRule[] = [
+  {
+    when: { key: 'JIKAN_ENABLED', eq: 'false' },
+    disable: {
+      categories: ['Warming: MAL'],
+      keys: [
+        'JIKAN_API_BASE', 'JIKAN_MAX_CONCURRENT', 'JIKAN_MAX_PER_MINUTE', 'JIKAN_MIN_INTERVAL',
+        'JIKAN_EPISODE_PAGE_TTL', 'JIKAN_EPISODE_LATEST_PAGE_TTL', 'MAL_PAGE_SIZE',
+      ],
+    },
+    reason: 'Jikan is turned off',
+  },
   {
     when: { key: 'CACHE_WARMUP_MODE', eq: 'comprehensive' },
     disable: { categories: ['MAL Warming'], keys: ['TMDB_POPULAR_WARMING_ENABLED'] },

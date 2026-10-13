@@ -306,13 +306,17 @@ to every visitor, so which one you reach for depends on who uses the instance.
 ## Jikan API Configuration (MyAnimeList)
 
 ### `JIKAN_API_BASE`
-- **Default**: `https://api.jikan.moe/v4`
-- **Description**: Base URL for Jikan API
-- **Example**: `JIKAN_API_BASE=https://api.jikan.moe/v4`
+- **Default**: `https://api.tenrai.org/v1` (public Tenrai API, 120 requests a minute per IP)
+- **Description**: Base URL of a Jikan v4 compatible API. Empty means the default. The public Jikan API has shut down; an instance still set to `https://api.jikan.moe/v4` uses the default instead. For more headroom, run your own (see [Self-Hosted Jikan API](self-hosted-jikan.md)).
+
+### `JIKAN_ENABLED`
+- **Default**: `true`
+- **Description**: Set to `false` to turn MAL off: MAL catalogs and MAL search are left out, anime metadata and search use Kitsu instead, and the warmers skip MAL. MAL lists, suggestions and tracking use the official MAL API and keep working.
+- **Example**: `JIKAN_API_BASE=http://jikan_rest:8080/v4`
 
 ### `MAL_PAGE_SIZE`
 - **Default**: `25`
-- **Description**: Items per page for all MAL/Jikan catalogs and search. The public Jikan API caps `limit` at 25; only raise this on a self-hosted instance, and keep it **≤** that instance's `MAX_RESULTS_PER_PAGE` or requests will fail with a 400.
+- **Description**: Items per page for all MAL/Jikan catalogs and search. Jikan caps `limit` at 25 by default; only raise this on a self-hosted instance, and keep it **≤** that instance's `MAX_RESULTS_PER_PAGE` or requests will fail with a 400.
 - **Example**: `MAL_PAGE_SIZE=50`
 
 ### `MAL_SOCKS_PROXY_URL`

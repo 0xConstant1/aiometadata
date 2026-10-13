@@ -71,26 +71,28 @@ async function warmEssentialContent() {
     await getGenreList('tvdb', 'en-US', 'series', {});
     warmingItemsCount++;
     
-    // Warm MAL genres
-    if (!shouldContinueWarming()) { isCurrentlyWarming = false; return; }
-    await cacheWrapJikanApi('anime-genres', async () => {
-      return await mal.getAnimeGenres();
-    }, null);
-    warmingItemsCount++;
+    if (mal.isJikanEnabled()) {
+      // Warm MAL genres
+      if (!shouldContinueWarming()) { isCurrentlyWarming = false; return; }
+      await cacheWrapJikanApi('anime-genres', async () => {
+        return await mal.getAnimeGenres();
+      }, null);
+      warmingItemsCount++;
     
-    // Warm MAL studios
-    if (!shouldContinueWarming()) { isCurrentlyWarming = false; return; }
-    await cacheWrapJikanApi('mal-studios', async () => {
-      return await mal.getStudios(100);
-    }, 30 * 24 * 60 * 60); // Cache for 30 days
-    warmingItemsCount++;
+      // Warm MAL studios
+      if (!shouldContinueWarming()) { isCurrentlyWarming = false; return; }
+      await cacheWrapJikanApi('mal-studios', async () => {
+        return await mal.getStudios(100);
+      }, 30 * 24 * 60 * 60); // Cache for 30 days
+      warmingItemsCount++;
     
-    // Warm MAL available seasons
-    if (!shouldContinueWarming()) { isCurrentlyWarming = false; return; }
-    await cacheWrapJikanApi('mal-available-seasons', async () => {
-      return await mal.getAvailableSeasons();
-    }, 7 * 24 * 60 * 60); // Cache for 7 days (seasons only change quarterly)
-    warmingItemsCount++;
+      // Warm MAL available seasons
+      if (!shouldContinueWarming()) { isCurrentlyWarming = false; return; }
+      await cacheWrapJikanApi('mal-available-seasons', async () => {
+        return await mal.getAvailableSeasons();
+      }, 7 * 24 * 60 * 60); // Cache for 7 days (seasons only change quarterly)
+      warmingItemsCount++;
+    }
     
     // Warm TVDB collections (first page)
     if (!shouldContinueWarming()) { isCurrentlyWarming = false; return; }

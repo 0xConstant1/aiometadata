@@ -91,6 +91,9 @@ async function getCatalog(type: string, language: string, page: number, id: stri
       const traktResults = await getTraktCatalog(type, id, genre, page, language, config, userUUID, includeVideos);
       return { metas: traktResults };
     }
+    else if (jikan.isJikanCatalogId(id) && !jikan.isJikanEnabled()) {
+      return { metas: [] };
+    }
     else if (id.startsWith('mal.discover.')) {
       logger.debug(`Routing to MAL discover catalog handler for id: ${id}`);
       const malDiscoverResults = await getMalDiscoverCatalog(type, id, genre, page, language, config, userUUID, includeVideos);
