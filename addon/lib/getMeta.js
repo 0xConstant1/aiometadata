@@ -311,24 +311,44 @@ const host = process.env.HOST_NAME.startsWith('http')
     : `https://${process.env.HOST_NAME}`;
 
 // --- Main Orchestrator ---
+function artPolicyOf(config) {
+  return {
+    englishArtOnly: !!config.artProviders?.englishArtOnly,
+    originalLangFallback: !!config.artProviders?.originalLangFallback,
+  };
+}
+
+// TMDB and TVDB pick their art by the art language policy, so their URLs are only
+// reused under the policy they were picked with. Unpolicied ones predate the record.
+function providerArtFitsPolicy(metaProvider, providerArt, config) {
+  if (!providerArt.policy) return metaProvider !== 'tmdb' && metaProvider !== 'tvdb';
+  const policy = artPolicyOf(config);
+  return providerArt.policy.englishArtOnly === policy.englishArtOnly
+    && providerArt.policy.originalLangFallback === policy.originalLangFallback;
+}
+
+const ALL_ART = ['poster', 'background', 'logo', 'landscapePoster'];
+
 // The art a builder would have chosen for this configuration. Mirrors the builders' dispatch.
-async function resolveArtworkForProfile({ type, ids, providerArt }, config) {
+async function resolveArtworkForProfile({ type, ids, metaProvider, providerArt, wanted = ALL_ART }, config) {
   const mediaType = type === 'movie' ? 'movie' : 'series';
+  const fits = providerArtFitsPolicy(metaProvider, providerArt, config);
+  const own = fits ? providerArt : { poster: null, background: null, logo: null, landscape: null };
   if (providerArt.anime) {
-    const art = await getAnimeArtwork(ids, config, providerArt.poster, providerArt.background, mediaType);
+    const art = await getAnimeArtwork(ids, config, own.poster, own.background, mediaType);
     return { poster: art.poster, background: art.background, logo: art.logo, landscapePosterUrl: art.landscapePosterUrl };
   }
 
-  // Shared providerArt URLs may belong to another artwork profile and must be reselected.
-  const base = { tmdbId: ids.tmdbId, tvdbId: ids.tvdbId, imdbId: ids.imdbId, metaProvider: null, originalLanguage: providerArt.originalLanguage };
+  const base = { tmdbId: ids.tmdbId, tvdbId: ids.tvdbId, imdbId: ids.imdbId, metaProvider: fits ? metaProvider : null, originalLanguage: providerArt.originalLanguage };
   const get = mediaType === 'movie'
     ? { poster: Utils.getMoviePoster, background: Utils.getMovieBackground, logo: Utils.getMovieLogo }
     : { poster: Utils.getSeriesPoster, background: Utils.getSeriesBackground, logo: Utils.getSeriesLogo };
+  const want = (name) => wanted.includes(name);
   const [poster, background, logo, landscapePosterUrl] = await Promise.all([
-    get.poster({ ...base, fallbackPosterUrl: providerArt.poster }, config),
-    get.background({ ...base, fallbackBackgroundUrl: providerArt.background }, config),
-    get.logo({ ...base, fallbackLogoUrl: providerArt.logo }, config),
-    get.background({ ...base, fallbackBackgroundUrl: providerArt.landscape }, config, true),
+    want('poster') ? get.poster({ ...base, fallbackPosterUrl: own.poster }, config) : null,
+    want('background') ? get.background({ ...base, fallbackBackgroundUrl: own.background }, config) : null,
+    want('logo') ? get.logo({ ...base, fallbackLogoUrl: own.logo }, config) : null,
+    want('landscapePoster') ? get.background({ ...base, fallbackBackgroundUrl: own.landscape }, config, true) : null,
   ]);
   return { poster, background, logo, landscapePosterUrl };
 }
@@ -1552,7 +1572,7 @@ async function buildTmdbMovieResponse(stremioId, movieData, language, config, us
     imdbRating,
     poster: Utils.isPosterRatingEnabled(config) ? posterProxyUrl : poster,
     _rawPosterUrl: _rawPosterUrl,
-    _providerArt: { poster: tmdbPosterUrl, background: tmdbBackgroundUrl, logo: tmdbLogoUrl, landscape: tmdbLandscapePosterUrl, originalLanguage, anime: isAnime },
+    _providerArt: { poster: tmdbPosterUrl, background: tmdbBackgroundUrl, logo: tmdbLogoUrl, landscape: tmdbLandscapePosterUrl, originalLanguage, anime: isAnime, policy: artPolicyOf(config) },
     background: background,
     landscapePoster: landscapePosterUrl,
     logo: processLogo(logoUrl),
@@ -1990,7 +2010,7 @@ async function buildTmdbSeriesResponse(stremioId, seriesData, language, config, 
     imdbRating,
     poster: Utils.isPosterRatingEnabled(config) ? posterProxyUrl : poster,
     _rawPosterUrl: _rawPosterUrl,
-    _providerArt: { poster: tmdbPosterUrl, background: tmdbBackgroundUrl, logo: tmdbLogoUrl, landscape: tmdbLandscapePosterUrl, originalLanguage, anime: isAnime },
+    _providerArt: { poster: tmdbPosterUrl, background: tmdbBackgroundUrl, logo: tmdbLogoUrl, landscape: tmdbLandscapePosterUrl, originalLanguage, anime: isAnime, policy: artPolicyOf(config) },
     background: background,
     landscapePoster: landscapePosterUrl,
     logo: logoUrl,
@@ -2182,7 +2202,7 @@ async function buildTvdbMovieResponse(stremioId, movieData, language, config, us
     imdbRating,
     poster: Utils.isPosterRatingEnabled(config) ? posterProxyUrl : poster,
     _rawPosterUrl: _rawPosterUrl,
-    _providerArt: { poster: tvdbPosterUrl, background: tvdbBackgroundUrl, logo: tvdbLogoUrl, landscape: tvdbLandscapePosterUrl, anime: isAnime },
+    _providerArt: { poster: tvdbPosterUrl, background: tvdbBackgroundUrl, logo: tvdbLogoUrl, landscape: tvdbLandscapePosterUrl, anime: isAnime, policy: artPolicyOf(config) },
     background: background,
     landscapePoster: landscapePosterUrl,
     logo: processLogo(logoUrl),
@@ -2640,7 +2660,7 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
     imdbRating,
     poster: Utils.isPosterRatingEnabled(config) ? posterProxyUrl : poster,
     _rawPosterUrl: _rawPosterUrl,
-    _providerArt: { poster: tvdbPosterUrl, background: tvdbBackgroundUrl, logo: tvdbLogoUrl, landscape: tvdbLandscapePosterUrl, anime: isAnime },
+    _providerArt: { poster: tvdbPosterUrl, background: tvdbBackgroundUrl, logo: tvdbLogoUrl, landscape: tvdbLandscapePosterUrl, anime: isAnime, policy: artPolicyOf(config) },
     background: background, 
     landscapePoster: landscapePosterUrl,
     logo: logoUrl,

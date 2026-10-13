@@ -1090,13 +1090,13 @@ Art the addon **passes through without storing** is decided by a chain of its ow
 ## Cache Epoch
 
 ### `CACHE_EPOCH`
-- **Default**: `2` (compiled in as `DEFAULT_CACHE_EPOCH` in `addon/lib/cacheEpoch.ts`)
+- **Default**: `3` (compiled in as `DEFAULT_CACHE_EPOCH` in `addon/lib/cacheEpoch.ts`)
 - **Description**: The invalidation lever for caches that hold payloads the addon assembles itself. It is deliberately **not** the addon version. Releases ship every few days, but the *shape* of a cached payload changes far less often, so keying caches on the release version discards good data on every upgrade — fatal for the cold store, whose TTLs run 60–180 days.
 
   The epoch is bumped by hand, in the same change that alters a payload shape. Anything stored under a lower epoch is dropped on the next start; anything stored under a *higher* one is left alone and simply not read, so rolling a release back and forward again costs nothing.
 
   Set this variable to force a rebuild without waiting for a release — for example after a bad deploy has written malformed metadata to disk. Values below `1` or non-numeric values are ignored and the compiled-in default is used.
-- **Example**: `CACHE_EPOCH=3`
+- **Example**: `CACHE_EPOCH=4`
 
 **What it covers.** Both cache tiers:
 
