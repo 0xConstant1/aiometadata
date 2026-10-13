@@ -1734,7 +1734,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
   if (watchTrackingEnabled) {
     resources.push("subtitles");
   }
-  if(config.showRateMeButton) {
+  if (config.showRateMeButton && !config.catalogModeOnly) {
     resources.push("stream");
   }
 

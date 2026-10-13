@@ -5850,7 +5850,7 @@ addon.get("/stremio/:userUUID/stream/:type/:id.json", async function (req, res) 
   }
   let streamUrl = null;
   consola.debug(`[Stream Route] Showing rate me button: ${config.showRateMeButton}, id: ${id}`);
-  if (config.showRateMeButton && id) {
+  if (config.showRateMeButton && !config.catalogModeOnly && id) {
     const host = process.env.HOST_NAME && process.env.HOST_NAME.startsWith('http')
       ? process.env.HOST_NAME
       : `https://${process.env.HOST_NAME}`;

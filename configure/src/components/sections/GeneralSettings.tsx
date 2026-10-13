@@ -357,9 +357,13 @@ export function GeneralSettings() {
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 rounded-lg hover:bg-accent/50 transition-colors">
               <div className="min-w-[12rem] flex-1">
                 <Label htmlFor="show-rate-me-button" className="font-medium">Show Rate Me Button</Label>
-                <p className="text-sm text-muted-foreground">Display a rating button in meta pages.</p>
+                <p className="text-sm text-muted-foreground">
+                  {config.catalogModeOnly
+                    ? 'Catalog Mode Only leaves the rating button to the install that supplies meta.'
+                    : 'Display a rating button in meta pages.'}
+                </p>
               </div>
-              <Switch id="show-rate-me-button" checked={!!config.showRateMeButton} onCheckedChange={handleShowRateMeButtonChange} />
+              <Switch id="show-rate-me-button" checked={!!config.showRateMeButton && !config.catalogModeOnly} disabled={config.catalogModeOnly} onCheckedChange={handleShowRateMeButtonChange} />
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 rounded-lg hover:bg-accent/50 transition-colors">
