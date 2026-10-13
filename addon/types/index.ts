@@ -102,6 +102,7 @@ export interface UserConfig {
   castCount?: number;
   blurThumbs?: boolean;
   displayAgeRating?: boolean;
+  contentRatingCountry?: string;
   configVersion?: number;
   userUUID?: string;
   sessionId?: string;

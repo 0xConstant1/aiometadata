@@ -27,6 +27,12 @@ import {
 } from '@/lib/watchTracking';
 
 import { languageOptions } from '@/data/languages';
+import { ratingCountryCodes } from '@/data/ratingCountries';
+
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+const ratingCountryOptions = ratingCountryCodes
+  .map(code => ({ value: code, label: regionNames.of(code) || code }))
+  .sort((a, b) => a.label.localeCompare(b.label));
 
 const castCountOptions = [
     { value: 0, label: '0 Members' },
@@ -142,6 +148,10 @@ export function GeneralSettings() {
 
   const handleDisplayAgeRatingChange = (checked: boolean) => {
     setConfig(prevConfig => ({ ...prevConfig, displayAgeRating: checked }));
+  };
+
+  const handleContentRatingCountryChange = (value: string) => {
+    setConfig(prevConfig => ({ ...prevConfig, contentRatingCountry: value === 'auto' ? undefined : value }));
   };
 
   const handleMDBListTrackingChange = (checked: boolean) => {
@@ -329,6 +339,25 @@ export function GeneralSettings() {
               </div>
               <Switch id="display-age-rating" checked={config.displayAgeRating} onCheckedChange={handleDisplayAgeRatingChange} />
             </div>
+            {config.displayAgeRating && (
+              <div className="ml-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-r-lg border-l border-border p-3 pl-4 hover:bg-accent/50 transition-colors">
+                <div className="min-w-[12rem] flex-1">
+                  <Label htmlFor="content-rating-country" className="font-medium">Rating Country</Label>
+                  <p className="text-sm text-muted-foreground">Which country's rating the age rating shows.</p>
+                </div>
+                <Select value={config.contentRatingCountry || 'auto'} onValueChange={handleContentRatingCountryChange}>
+                  <SelectTrigger id="content-rating-country" className="w-full sm:w-[240px] shrink-0">
+                    <SelectValue placeholder="Same as display language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Same as display language</SelectItem>
+                    {ratingCountryOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -1,10 +1,10 @@
 require("dotenv").config();
 import * as moviedb from "./getTmdb.js";
-import * as Utils from '../utils/parseProps.js';
 import { getMeta } from './getMeta.js';
 import { cacheWrapMetaSmart } from './getCache.js';
 import { UserConfig } from '../types/index.js';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating } from '../utils/ageRating.js';
+import { applyContentRatingProjection, buildCertificationMap, replaceCertifications } from '../utils/contentRating.js';
 const consola = require('consola');
 
 const logger = consola.withTag('GetTrending'); 
@@ -42,15 +42,11 @@ async function getTrending(type: string, language: string, page: number, genre: 
         const certifications: any = type === 'movie'
             ? await moviedb.getMovieCertifications({ id: item.id }, config)
             : await moviedb.getTvCertifications({ id: item.id }, config);
-        result.meta.app_extras = result.meta.app_extras || {};
-        const cert = type === 'movie'
-            ? Utils.getTmdbMovieCertificationForCountry(certifications)
-            : Utils.getTmdbTvCertificationForCountry(certifications);
-        result.meta.app_extras.certification = cert;
-        const trendCountry = language?.split('-')[1];
-        result.meta.app_extras.certificationLocal = trendCountry && trendCountry !== 'US'
-            ? (type === 'movie' ? Utils.getTmdbMovieCertificationForCountry(certifications, trendCountry) : Utils.getTmdbTvCertificationForCountry(certifications, trendCountry)) || cert
-            : cert;
+        const map = type === 'movie'
+            ? buildCertificationMap({ tmdbMovie: certifications })
+            : buildCertificationMap({ tmdbTv: certifications });
+        replaceCertifications(result.meta, map);
+        applyContentRatingProjection(result.meta, config);
             
         return result.meta;
       }
