@@ -136,7 +136,8 @@ export function MALIntegration({ isOpen, onClose }: MALIntegrationProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userUUID: auth.userUUID
+          userUUID: auth.userUUID,
+          password: auth.password
         }),
       });
 

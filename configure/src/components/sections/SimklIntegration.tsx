@@ -561,7 +561,7 @@ export function SimklIntegration({ isOpen, onClose }: SimklIntegrationProps) {
       const response = await fetch("/api/auth/simkl/disconnect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userUUID: auth.userUUID }),
+        body: JSON.stringify({ userUUID: auth.userUUID, password: auth.password }),
       });
       
       const data = await response.json();

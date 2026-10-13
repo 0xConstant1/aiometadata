@@ -718,7 +718,6 @@ addon.use(requireSigninForApi);
 addon.post("/api/config/save", configApi.saveConfig.bind(configApi));
 addon.post("/api/config/load/:userUUID", configLoadRateLimitMiddleware, configApi.loadConfig.bind(configApi));
 addon.put("/api/config/update/:userUUID", configApi.updateConfig.bind(configApi));
-addon.post("/api/config/migrate", configApi.migrateFromLocalStorage.bind(configApi));
 addon.get('/api/config/is-trusted/:uuid', configApi.isTrusted.bind(configApi));
 addon.post("/api/test-keys", testKeysRateLimitMiddleware, configApi.testApiKeys);
 
@@ -1333,6 +1332,11 @@ addon.post("/api/auth/trakt/disconnect", async (req, res) => {
     if (!userUUID) {
       return res.status(400).json({ error: "userUUID is required" });
     }
+
+    const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+    if (!access || !access.passwordHash) {
+      return res.status(401).json({ error: "Invalid UUID or password" });
+    }
     
     // Load user's config
     const config = await loadConfigFromDatabase(userUUID);
@@ -1532,6 +1536,11 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
     if (!userUUID) {
       return res.status(400).json({ error: "userUUID is required" });
     }
+
+    const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+    if (!access || !access.passwordHash) {
+      return res.status(401).json({ error: "Invalid UUID or password" });
+    }
     
     // Load user's config
     const config = await loadConfigFromDatabase(userUUID);
@@ -1539,7 +1548,7 @@ addon.post("/api/auth/simkl/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (await disconnectCardAccount(req, res, userUUID, 'simkl', config)) return;
+    if (await disconnectCardAccount(req, res, userUUID, 'simkl', config, access)) return;
 
     const released = config.apiKeys?.simklTokenId || null;
     if (released) delete config.apiKeys.simklTokenId;
@@ -3762,6 +3771,11 @@ addon.post("/anilist/disconnect", async (req, res) => {
     if (!userUUID) {
       return res.status(400).json({ error: "userUUID is required" });
     }
+
+    const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+    if (!access || !access.passwordHash) {
+      return res.status(401).json({ error: "Invalid UUID or password" });
+    }
     
     // Load user's config
     const config = await loadConfigFromDatabase(userUUID);
@@ -3769,7 +3783,7 @@ addon.post("/anilist/disconnect", async (req, res) => {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (await disconnectCardAccount(req, res, userUUID, 'anilist', config)) return;
+    if (await disconnectCardAccount(req, res, userUUID, 'anilist', config, access)) return;
 
     // Token ID is stored in apiKeys.anilistTokenId by the frontend
     const released = config.apiKeys?.anilistTokenId || null;
@@ -4022,12 +4036,17 @@ addon.post("/mal/disconnect", async (req, res) => {
       return res.status(400).json({ error: "userUUID is required" });
     }
 
+    const access = await resolveConfigAccess(req, userUUID, req.body?.password);
+    if (!access || !access.passwordHash) {
+      return res.status(401).json({ error: "Invalid UUID or password" });
+    }
+
     const config = await loadConfigFromDatabase(userUUID);
     if (!config) {
       return res.status(404).json({ error: "User config not found" });
     }
 
-    if (await disconnectCardAccount(req, res, userUUID, 'mal', config)) return;
+    if (await disconnectCardAccount(req, res, userUUID, 'mal', config, access)) return;
 
     const released = config.apiKeys?.malTokenId || null;
     if (released) delete config.apiKeys.malTokenId;
@@ -4244,14 +4263,9 @@ addon.get("/api/publicmetadb/picks", async (req, res) => {
 });
 
 /** Handles a disconnect naming a Jellyfin user's card; false when it is for your own account. */
-async function disconnectCardAccount(req, res, userUUID, service, config) {
+async function disconnectCardAccount(req, res, userUUID, service, config, access) {
   const profile = req.body?.profile;
   if (typeof profile !== 'string' || !profile) return false;
-  const access = await resolveConfigAccess(req, userUUID, req.body?.password);
-  if (!access || !access.passwordHash) {
-    res.status(401).json({ error: "Invalid UUID or password" });
-    return true;
-  }
   const { detachCardAccount } = require('./lib/accounts');
   const { releaseTokenIfUnused } = require('./lib/accountLinks');
   const removed = detachCardAccount(config, profile, service);
@@ -7021,7 +7035,7 @@ addon.delete('/api/config/delete-user/:userUUID', async (req, res) => {
 // --- Cache Management Endpoints ---
 
 // Clean bad cache entries
-addon.post('/api/cache/clean-bad', async (req, res) => {
+addon.post('/api/cache/clean-bad', requireDashboardAdmin, async (req, res) => {
   try {
     const cacheValidator = require('./lib/cacheValidator');
     const result = await cacheValidator.cleanAllBadCache();
@@ -7041,7 +7055,7 @@ addon.post('/api/cache/clean-bad', async (req, res) => {
 });
 
 // Test granular caching
-addon.post('/api/cache/test-granular', async (req, res) => {
+addon.post('/api/cache/test-granular', requireDashboardAdmin, async (req, res) => {
   try {
     const { userUUID, metaId, type } = req.body;
     

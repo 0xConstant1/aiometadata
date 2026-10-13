@@ -1044,28 +1044,6 @@ class Database {
     }
   }
 
-  async migrateFromLocalStorage(localStorageData: any, password: string): Promise<string | null> {
-    if (!localStorageData) return null;
-
-    try {
-      const config = typeof localStorageData === 'string'
-        ? JSON.parse(localStorageData)
-        : localStorageData;
-
-      const userUUID = this.generateUserUUID();
-
-      const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-
-      await this.saveUserConfig(userUUID, passwordHash, config);
-      logger.info('[Database] Migrated localStorage config for user:', userUUID);
-
-      return userUUID;
-    } catch (error) {
-      logger.error('Migration failed:', error);
-      return null;
-    }
-  }
-
   async trustUUID(userUUID: string): Promise<void> {
     if (this.type === 'sqlite') {
       await this.runQuery(

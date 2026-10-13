@@ -252,7 +252,7 @@ export function TraktIntegration({ isOpen, onClose }: TraktIntegrationProps) {
       const response = await fetch("/api/auth/trakt/disconnect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userUUID: auth.userUUID }),
+        body: JSON.stringify({ userUUID: auth.userUUID, password: auth.password }),
       });
       
       const data = await response.json();

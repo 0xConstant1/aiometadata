@@ -306,7 +306,7 @@ class ConfigApi {
         return res.status(400).json({ error: 'Invalid request body. Expected JSON.' });
       }
 
-      const { config, password, userUUID: existingUUID, addonPassword } = req.body;
+      const { config, password, addonPassword } = req.body;
       
       if (!config) {
         return res.status(400).json({ error: 'Configuration data is required' });
@@ -314,6 +314,10 @@ class ConfigApi {
 
       if (!password) {
         return res.status(400).json({ error: 'Password is required' });
+      }
+
+      if (req.body.userUUID) {
+        return res.status(400).json({ error: 'Saving creates a new configuration; change an existing one through /api/config/update/:userUUID' });
       }
 
       // Only worth asking on an instance that gates creation at all: with no addon
@@ -382,8 +386,7 @@ class ConfigApi {
       await this.sanitizeSimklToken(config);
       await this.sanitizeCardAccounts(config);
 
-      // Use existing UUID if provided, otherwise generate a new one
-      const userUUID = existingUUID || database.generateUserUUID();
+      const userUUID = database.generateUserUUID();
       
       // Hash the password with bcrypt
       const passwordHash = await database.hashPassword(password);
@@ -631,7 +634,7 @@ class ConfigApi {
         userUUID,
         installUrl,
         configVersion: persistedConfig?.configVersion ?? configWithTimestamp.configVersion,
-        message: existingUUID ? 'Configuration updated successfully' : 'Configuration saved successfully'
+        message: 'Configuration saved successfully'
       });
     } catch (error) {
       if (respondIfSigninRequired(error, res)) return;
@@ -1056,44 +1059,6 @@ class ConfigApi {
       if (respondIfSigninRequired(error, res)) return;
       logger.error('Update config error:', error);
       res.status(500).json({ error: 'Failed to update configuration' });
-    }
-  }
-
-  // Migrate from localStorage (for backward compatibility)
-  async migrateFromLocalStorage(req, res) {
-    try {
-      await this.initialize();
-      
-      const { localStorageData, password } = req.body;
-      
-      if (!localStorageData) {
-        return res.status(400).json({ error: 'localStorage data is required' });
-      }
-
-      if (!password) {
-        return res.status(400).json({ error: 'Password is required' });
-      }
-
-      const userUUID = await database.migrateFromLocalStorage(localStorageData, password);
-      
-      if (!userUUID) {
-        return res.status(400).json({ error: 'Failed to migrate localStorage data' });
-      }
-      // Always trust the UUID after migration
-      await database.trustUUID(userUUID);
-
-      const config = await database.getUserConfig(userUUID);
-
-      res.json({
-        success: true,
-        userUUID,
-        installUrl: buildInstallUrl(process.env.HOST_NAME, req.get('host'), manifestIdentifier(userUUID)),
-        message: 'Migration completed successfully'
-      });
-    } catch (error) {
-      if (respondIfSigninRequired(error, res)) return;
-      logger.error('Migration error:', error);
-      res.status(500).json({ error: 'Failed to migrate data' });
     }
   }
 
@@ -1647,7 +1612,6 @@ module.exports = {
   saveConfig: configApi.saveConfig.bind(configApi),
   loadConfig: configApi.loadConfig.bind(configApi),
   updateConfig: configApi.updateConfig.bind(configApi),
-  migrateFromLocalStorage: configApi.migrateFromLocalStorage.bind(configApi),
   getStats: configApi.getStats.bind(configApi),
   getAddonInfo: configApi.getAddonInfo.bind(configApi),
   isTrusted: configApi.isTrusted.bind(configApi),
