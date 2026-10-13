@@ -67,10 +67,17 @@ export function buildExportPayload(
     return true;
   });
 
+  const keepSource = (entry: any): boolean => {
+    const id = String(entry.catalogId);
+    const source = catalogs.find(c => c.id === id && (!entry.catalogType || c.type === entry.catalogType));
+    if (source && isPrivateList(source)) return false;
+    return includeUserSpecific || !isUserSpecific(id);
+  };
+
   const sanitized = filtered.map(c => {
     // Clone the catalog, sanitize metadata
     const exported: any = { ...c };
-    exported.metadata = sanitizeMetadata(c.metadata);
+    exported.metadata = sanitizeMetadata(c.metadata, keepSource);
     if (!exported.metadata) delete exported.metadata;
     return exported as CatalogConfig;
   });
