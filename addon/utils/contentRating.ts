@@ -144,3 +144,46 @@ export function buildCertificationMap(sources: CertificationSources = {}): Certi
 
   return Object.keys(map).length > 0 ? map : null;
 }
+
+function isCertificationMap(value: unknown): value is CertificationMap {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
+}
+
+// A cached movie from before the map: rebuild it from its release dates, keeping the
+// stored local rating, which was built for the language region and may be TVDB's.
+function legacyMovieMap(extras: any, config: any): CertificationMap | null {
+  const map = buildCertificationMap({ tmdbMovie: extras.releaseDates }) || {};
+  const region = languageRegion(config);
+  const stored = extras.certificationLocal;
+  if (region && map[region] === undefined && typeof stored === 'string' && stored !== '' && stored !== extras.certification) {
+    map[region] = stored;
+  }
+  return Object.keys(map).length > 0 ? map : null;
+}
+
+export function applyContentRatingProjection(meta: any, config: any): any {
+  const extras = meta?.app_extras;
+  if (!extras || typeof extras !== 'object' || Array.isArray(extras)) return meta;
+
+  let map: CertificationMap | null = isCertificationMap(extras.certifications) ? extras.certifications : null;
+  if (!map && extras.releaseDates && typeof extras.certification === 'string' && extras.certification !== '') {
+    map = legacyMovieMap(extras, config);
+    if (map) extras.certifications = map;
+  }
+  if (!map) return meta;
+
+  extras.certificationLocal = map[resolveRatingCountry(config)] ?? extras.certification ?? null;
+  return meta;
+}
+
+export function ratingLinkNames(appExtras: any): Set<string> {
+  const names = new Set<string>();
+  if (!appExtras || typeof appExtras !== 'object') return names;
+  const add = (value: unknown) => {
+    if (typeof value === 'string' && value !== '') names.add(value);
+  };
+  add(appExtras.certification);
+  add(appExtras.certificationLocal);
+  if (isCertificationMap(appExtras.certifications)) Object.values(appExtras.certifications).forEach(add);
+  return names;
+}
