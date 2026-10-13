@@ -2643,7 +2643,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
 
     const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
-    const memoKey = `${userUUID}:${profileKey(config)}:upcoming:${digest}`;
+    const memoKey = `${userUUID}:${profileKey(config)}:upcoming:${upcomingMode(config)}:${digest}`;
     const holdMs = upcomingHoldMs();
     const ordered = await memoNextUp(userUUID, memoKey, () => buildUpcoming(userUUID, config), (items) =>
       items
@@ -2761,6 +2761,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   const upcomingHoldMs = (): number => envInt('JELLYFIN_UPCOMING_HOLD_HOURS', 12, 0) * 60 * 60 * 1000;
 
+  const upcomingMode = (config: any): 'caught-up' | 'airing' => {
+    const mode = String(require('../settingsService').getSetting('JELLYFIN_UPCOMING_MODE') || 'user');
+    if (mode === 'caught-up' || mode === 'airing') return mode;
+    return config?.jellyfinUpcomingMode === 'airing' ? 'airing' : 'caught-up';
+  };
+
   const buildUpcoming = async (userUUID: string, config: any): Promise<any[]> => {
     const now = Date.now();
     const days = envInt('JELLYFIN_UPCOMING_DAYS', 90, 1);
@@ -2771,6 +2777,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const within = (at: number): boolean => Number.isFinite(at) && at > now && at <= horizon;
     const holdMs = upcomingHoldMs();
     const lately = (at: number): boolean => Number.isFinite(at) && at <= now && at > now - holdMs;
+    const airing = upcomingMode(config) === 'airing';
 
     const { snapshot, caughtUp, followed } = await showsInView(userUUID, config, days);
 
@@ -2834,8 +2841,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           premieres.push(episode);
           return;
         }
-        if (!episode || episode.UserData?.Played !== true) return;
+        if (!airing && (!episode || episode.UserData?.Played !== true)) return;
       }
+      const stillDue = async (episode: any): Promise<boolean> => {
+        await applyWatchedState([episode], snapshot, userUUID, profile);
+        return episode.UserData?.Played !== true && !(airing && (await inNextUp(metaId)));
+      };
       // The episode the tracker names, at the time it gives, before the metadata's guess:
       // the metadata often has only a day, or no date yet.
       let next: any;
@@ -2846,10 +2857,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           : episodes.find((e: any) => e.IndexNumber === timedRow.episode && (timedRow.season === null || e.ParentIndexNumber === timedRow.season));
         if (named) named.PremiereDate = new Date(timedRow.airsAt as number).toISOString();
         if (named && within(timedRow.airsAt as number)) next = named;
-        else if (named && lately(timedRow.airsAt as number)) {
-          await applyWatchedState([named], snapshot, userUUID, profile);
-          if (named.UserData?.Played !== true) next = named;
-        }
+        else if (named && lately(timedRow.airsAt as number) && (await stillDue(named))) next = named;
       }
       if (!next) {
         const candidates = episodes
@@ -2860,8 +2868,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
             next = candidate;
             break;
           }
-          await applyWatchedState([candidate], snapshot, userUUID, profile);
-          if (candidate.UserData?.Played !== true) {
+          if (await stillDue(candidate)) {
             next = candidate;
             break;
           }
@@ -2873,7 +2880,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       // Only a show the user is caught up on: an aired episode still unwatched
       // is Next Up's business. The snapshot answers for most; the table is
       // asked only about aired episodes it does not hold.
-      const aired = episodes.filter((episode: any) => {
+      const aired = airing ? [] : episodes.filter((episode: any) => {
         const at = premiereAt(episode);
         return Number.isFinite(at) && at <= now && (!nextAired || (episode !== next && at < nextAt));
       });

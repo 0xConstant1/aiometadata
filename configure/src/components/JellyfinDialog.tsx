@@ -467,6 +467,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const { config, setConfig, auth } = useConfig();
   const { requestSave, isSaving, isDirty, canSave } = useSave();
   const [resolveMode, setResolveMode] = useState<string>('user');
+  const [upcomingMode, setUpcomingMode] = useState<string>('user');
   const [baseUrl, setBaseUrl] = useState<string>(window.location.origin);
   const serverAddress = `${baseUrl.replace(/\/+$/, '')}/jellyfin/${userUUID}`;
   useEffect(() => {
@@ -476,12 +477,14 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
       .then((data) => {
         if (cancelled || !data) return;
         if (data.jellyfinResolveOnOpen) setResolveMode(String(data.jellyfinResolveOnOpen));
+        if (data.jellyfinUpcomingMode) setUpcomingMode(String(data.jellyfinUpcomingMode));
         if (typeof data.jellyfinBaseUrl === 'string' && data.jellyfinBaseUrl.trim()) setBaseUrl(data.jellyfinBaseUrl.trim());
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
   const resolveForced: boolean | null = resolveMode === 'always' ? true : resolveMode === 'never' ? false : null;
+  const upcomingForced = upcomingMode === 'caught-up' || upcomingMode === 'airing' ? upcomingMode : null;
   const mainName = config.jellyfinUserName || config.addonName || userUUID.slice(0, 8);
   const tags = useMemo(() => config.tags ?? [], [config.tags]);
   const users = useMemo(() => config.jellyfinUsers ?? [], [config.jellyfinUsers]);
@@ -683,84 +686,86 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
           </div>
 
           <div className="grid gap-6 border-t pt-4 md:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="jellyfin-quick-connect" className="text-sm font-medium">Quick Connect</Label>
-              <div className="flex flex-col gap-2">
-                {users.length > 0 ? (
-                  <Select value={quickConnectProfile || '__main__'} onValueChange={(v) => setQuickConnectProfile(v === '__main__' ? '' : v)}>
-                    <SelectTrigger className="w-full" aria-label="Sign the device in as">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__main__">{mainName}</SelectItem>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>{u.name || 'Unnamed user'}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-                <div className="flex flex-1 items-center gap-2">
-                <Input
-                  id="jellyfin-quick-connect"
-                  value={quickConnectCode}
-                  inputMode="numeric"
-                  maxLength={7}
-                  placeholder="000000"
-                  className="font-mono text-sm tracking-widest"
-                  onChange={(e) => setQuickConnectCode(e.target.value.replace(/[^\d ]/g, ''))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') approveQuickConnect(); }}
-                  aria-label="Quick Connect code"
-                />
-                <Button size="sm" variant="outline" disabled={approving} onClick={approveQuickConnect}>
-                  {approving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-                  Approve
-                </Button>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Pick Quick Connect on the client's sign-in screen and enter the code it shows here. The client signs in without a password{users.length > 0 ? ', as the user chosen here' : ''}.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="jellyfin-client-password" className="text-sm font-medium">Client password</Label>
-              {config.jellyfinAppPassword ? (
-                <div className="flex items-center gap-2">
+            <div className="space-y-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="jellyfin-quick-connect" className="text-sm font-medium">Quick Connect</Label>
+                <div className="flex flex-col gap-2">
+                  {users.length > 0 ? (
+                    <Select value={quickConnectProfile || '__main__'} onValueChange={(v) => setQuickConnectProfile(v === '__main__' ? '' : v)}>
+                      <SelectTrigger className="w-full" aria-label="Sign the device in as">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__main__">{mainName}</SelectItem>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>{u.name || 'Unnamed user'}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  <div className="flex flex-1 items-center gap-2">
                   <Input
-                    id="jellyfin-client-password"
-                    value={config.jellyfinAppPassword}
-                    readOnly
-                    className="font-mono text-sm"
-                    aria-label="Jellyfin client password"
+                    id="jellyfin-quick-connect"
+                    value={quickConnectCode}
+                    inputMode="numeric"
+                    maxLength={7}
+                    placeholder="000000"
+                    className="font-mono text-sm tracking-widest"
+                    onChange={(e) => setQuickConnectCode(e.target.value.replace(/[^\d ]/g, ''))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') approveQuickConnect(); }}
+                    aria-label="Quick Connect code"
                   />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(config.jellyfinAppPassword ?? '', 'Client password')}
-                  >
-                    <Copy className="h-4 w-4" />
+                  <Button size="sm" variant="outline" disabled={approving} onClick={approveQuickConnect}>
+                    {approving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                    Approve
                   </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pick Quick Connect on the client's sign-in screen and enter the code it shows here. The client signs in without a password{users.length > 0 ? ', as the user chosen here' : ''}.
+                </p>
+              </div>
+  
+              <div className="space-y-1.5">
+                <Label htmlFor="jellyfin-client-password" className="text-sm font-medium">Client password</Label>
+                {config.jellyfinAppPassword ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="jellyfin-client-password"
+                      value={config.jellyfinAppPassword}
+                      readOnly
+                      className="font-mono text-sm"
+                      aria-label="Jellyfin client password"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(config.jellyfinAppPassword ?? '', 'Client password')}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfig(prev => ({ ...prev, jellyfinAppPassword: newClientPassword() }))}
+                    >
+                      Replace
+                    </Button>
+                  </div>
+                ) : (
                   <Button
                     variant="outline"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => setConfig(prev => ({ ...prev, jellyfinAppPassword: newClientPassword() }))}
                   >
-                    Replace
+                    Generate
                   </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  onClick={() => setConfig(prev => ({ ...prev, jellyfinAppPassword: newClientPassword() }))}
-                >
-                  Generate
-                </Button>
-              )}
-              <p className="text-xs text-muted-foreground">
-                For clients without Quick Connect. Sign in with this instead of the configuration password, which an account created through a sign-in provider never set. It works only on this address, and replacing it signs the clients out.
-              </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  For clients without Quick Connect. Sign in with this instead of the configuration password, which an account created through a sign-in provider never set. It works only on this address, and replacing it signs the clients out.
+                </p>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -801,6 +806,10 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                   aria-label="Wait for the streams when a title opens"
                 />
               </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Browsing</Label>
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-medium">Show a Latest row per catalog</Label>
@@ -826,6 +835,27 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                   onCheckedChange={(next) => setConfig(prev => ({ ...prev, jellyfinMarkUnaired: next ? undefined : false }))}
                   aria-label="Mark unaired episodes"
                 />
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-medium">Upcoming row</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    {upcomingForced
+                      ? 'Set by this server.'
+                      : 'Caught up lists the next episode of the shows you have watched every aired episode of, so a show is in Upcoming or Next Up, never both. Everything airing lists the next episode of every show you follow, behind or not, so a show you are behind on can be in both. Watchlisted films that are not out yet are in it either way.'}
+                  </p>
+                </div>
+                <Select
+                  value={upcomingForced ?? config.jellyfinUpcomingMode ?? 'caught-up'}
+                  disabled={upcomingForced !== null}
+                  onValueChange={(v) => setConfig(prev => ({ ...prev, jellyfinUpcomingMode: v === 'airing' ? 'airing' : undefined }))}
+                >
+                  <SelectTrigger className="h-8 w-40 shrink-0 text-xs" aria-label="Upcoming row"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="caught-up">Caught up</SelectItem>
+                    <SelectItem value="airing">Everything airing</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>

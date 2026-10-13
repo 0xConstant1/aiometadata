@@ -678,6 +678,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_UPCOMING_MODE',
+    envVar: 'JELLYFIN_UPCOMING_MODE',
+    label: 'Jellyfin Upcoming Row',
+    description: 'What the Upcoming row lists. "caught-up" is the next episode of each followed show you are caught up on; "airing" is the next episode of every followed show, behind or not. "user" leaves it to each configuration\'s own choice in the Jellyfin dialog, caught up unless changed.',
+    category: 'Features',
+    type: 'select',
+    default: 'user',
+    options: ['user', 'caught-up', 'airing'],
+  },
+  {
     key: 'JELLYFIN_UPCOMING_HOLD_HOURS',
     envVar: 'JELLYFIN_UPCOMING_HOLD_HOURS',
     label: 'Jellyfin Upcoming Hold (hours)',

@@ -437,6 +437,7 @@ export interface AppConfig {
   /** Install URL of a stream addon the Jellyfin server delegates playback to. */
   jellyfinStreamUrl?: string;
   jellyfinResolveOnOpen?: boolean;
+  jellyfinUpcomingMode?: 'airing';
   jellyfinLatestRows?: boolean;
   jellyfinMarkUnaired?: boolean;
   /** Playback is reported by the client, so the subtitle trigger is not used. */
