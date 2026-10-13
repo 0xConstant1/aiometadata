@@ -2874,7 +2874,7 @@ async function getMovieBackground({ tmdbId, tvdbId, imdbId, metaProvider, fallba
     try {
       if(tvdbId) {
         // logger.debug(`[getMovieBackground] Fetching TVDB background for movie (TVDB ID: ${tvdbId})`);
-        const tvdbBackground = await tvdb.getMovieBackground(tvdbId, config);
+        const tvdbBackground = await tvdb.getMovieBackground(tvdbId, config, isLandscape);
         if (tvdbBackground) {
           // logger.debug(`[getMovieBackground] Found TVDB background for movie (TVDB ID: ${tvdbId}): ${tvdbBackground.substring(0, 50)}...`);
           return tvdbBackground;
@@ -2884,7 +2884,7 @@ async function getMovieBackground({ tmdbId, tvdbId, imdbId, metaProvider, fallba
         if(!tmdbId) return fallbackBackgroundUrl;
         const mappedIds = await resolveAllIds(`tmdb:${tmdbId}`, 'movie', config);
         if(mappedIds.tvdbId) {
-          const tvdbBackground = await tvdb.getMovieBackground(mappedIds.tvdbId, config);
+          const tvdbBackground = await tvdb.getMovieBackground(mappedIds.tvdbId, config, isLandscape);
           // logger.debug(`[getMovieBackground] Found TVDB background via ID mapping for movie (TMDB ID: ${tmdbId} → TVDB ID: ${mappedIds.tvdbId})`);
           return tvdbBackground;
         }

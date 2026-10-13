@@ -1268,6 +1268,8 @@ async function getMovieBackground(movieId: string, config: UserConfig, isLandsca
         return backgroundArtwork;
       }
       
+      if (isLandscape) return null;
+
       // Fallback to type 3 if type 15 not found
       const fallbackBackground = findArtwork(movieData.artworks, 3, null, config);
       if (fallbackBackground) {

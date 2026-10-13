@@ -2431,7 +2431,7 @@ async function fillArtComponents(config: any, metaId: string, basic: any, wanted
 
   let art: any;
   try {
-    art = await resolveArtworkForProfile({ type: basic.type, ids, metaProvider: basic._metaProvider, providerArt: basic._providerArt }, config);
+    art = await resolveArtworkForProfile({ type: basic.type, ids, metaProvider: basic._metaProvider, providerArt: basic._providerArt, wanted }, config);
   } catch (error: any) {
     cacheLogger.warn(`[Reconstruct] Art lookup failed for ${metaId}: ${error?.message || error}`);
     return [];
