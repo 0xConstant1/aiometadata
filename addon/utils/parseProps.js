@@ -17,6 +17,7 @@ const { cacheWrapMetaSmart, cacheWrapGlobal } = require('../lib/getCache');
 const { getReleaseAvailability } = require('./releaseAvailability');
 const { classifyTmdbLocalization } = require('./tmdbLocalization');
 const { malRatingToCertification, isUnratedCertification } = require('./ageRating');
+const { getTmdbMovieCertificationForCountry, getTmdbTvCertificationForCountry, getTvdbCertification } = require('./contentRating');
 const idMappings = require('../lib/id-mappings.js');
 function CATALOG_TTL() { return parseInt(process.env.CATALOG_TTL || 1 * 24 * 60 * 60, 10); }
 const buildInfo = require('../lib/buildInfo');
@@ -895,31 +896,6 @@ function sortTvdbSearchResults(results, query) {
   return filteredResults.map(p => p.originalItem);
 }
 
-function getTvdbCertification(contentRatings, countryCode, contentType, fallbackToUsa = true) {
-  if (!contentRatings || !Array.isArray(contentRatings)) {
-    return null;
-  }
-
-  let code = countryCode?.toLowerCase();
-  if (code && code.length === 2) {
-    try { code = require('country-iso-2-to-3')(code.toUpperCase())?.toLowerCase(); } catch {}
-  }
-
-  let certification = code ? contentRatings.find(rating =>
-    rating.country?.toLowerCase() === code &&
-    (!contentType || rating.contentType === contentType || rating.contentType === '')
-  ) : null;
-
-  if (!certification && fallbackToUsa) {
-    certification = contentRatings.find(rating =>
-      rating.country?.toLowerCase() === 'usa' &&
-      (!contentType || rating.contentType === contentType || rating.contentType === '')
-    );
-  }
-
-  return certification?.name || null;
-}
-
 function processOverviewTranslations(translations, language, overview) {
   // Try the other Portuguese variant before falling back to English.
   if(language === 'pt-PT' || language === 'pt-BR'){
@@ -1276,58 +1252,6 @@ function parseAnimeCreditsLink(characterData, userUUID, castCount) {
   }).filter(Boolean);
 
   return [...voiceActorLinks];
-}
-
-function newestCertification(releaseDates, matches) {
-  const candidates = releaseDates
-    .filter(matches)
-    .sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
-  return candidates.length > 0 ? candidates[0].certification : null;
-}
-
-/**
- * A restoration or reissue is not resubmitted to the ratings board, so it comes back
- * unrated with a release date decades newer than the original. Taking the newest
- * release outright would let that erase the rating the film actually carries, so a
- * real rating is preferred at every step and an unrated one is only the last word.
- */
-function getTmdbMovieCertificationForCountry(certificationsData, country = 'US') {
-  if (!certificationsData) {
-    return null;
-  }
-
-  const countryData = certificationsData.results?.find(r => r.iso_3166_1 === country);
-  if (!countryData?.release_dates) return null;
-
-  const theatrical = newestCertification(
-    countryData.release_dates,
-    rd => rd.type === 3 && !isUnratedCertification(rd.certification)
-  );
-  if (theatrical) return theatrical;
-
-  const anyRelease = newestCertification(
-    countryData.release_dates,
-    rd => !isUnratedCertification(rd.certification)
-  );
-  if (anyRelease) return anyRelease;
-
-  // Nothing here is rated. Answer with the unrated value rather than null, because a
-  // caller reading a second country falls back to the first only when this is null.
-  return newestCertification(
-    countryData.release_dates,
-    rd => typeof rd.certification === 'string' && rd.certification.trim() !== ''
-  );
-}
-
-function getTmdbTvCertificationForCountry(certificationsData, country = 'US') {
-  if (!certificationsData) {
-    return null;
-  }
-
-  const countryData = certificationsData.results?.find(r => r.iso_3166_1 === country);
-  if (!countryData?.rating) return null;
-
-  return countryData.rating;
 }
 
 
