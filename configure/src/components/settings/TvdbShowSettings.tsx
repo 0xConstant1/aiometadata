@@ -497,6 +497,8 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
           />
           <Button
             type="button"
+            variant="outline"
+            className="shrink-0"
             onClick={() => void lookUp()}
             disabled={disabled || loadingSeries || !tvdbInput.trim() || atLimit}
           >
