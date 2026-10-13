@@ -39,6 +39,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ['18+', 'certification', 'pg', 'mature'],
   },
   {
+    id: 'general.contentRatingCountry', section: 'general', anchor: 'content-rating-country',
+    label: 'Content Rating Country',
+    description: 'Country whose age rating is shown.',
+    keywords: ['certification', 'classification', 'age', 'country', 'region'],
+  },
+  {
     id: 'general.includeAdult', section: 'general', anchor: 'adult-content',
     label: 'Include Adult Content',
     description: 'Show NSFW content in catalogs and search.',
