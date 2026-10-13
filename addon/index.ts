@@ -5560,13 +5560,14 @@ const catalogRoute = async function (req, res) {
     const posterPattern = posterPatternsEnabled ? require('./utils/parseProps').resolvePosterPattern(config) : null;
     const backgroundPattern = upstreamArt ? null : config.customBackgroundUrlPattern;
     const logoPattern = upstreamArt ? null : config.customLogoUrlPattern;
-    if ((posterPattern || backgroundPattern || config.customLandscapeUrlPattern || logoPattern) && responseData?.metas && Array.isArray(responseData.metas)) {
+    const landscapeUrlPattern = upstreamArt ? null : config.customLandscapeUrlPattern;
+    if ((posterPattern || backgroundPattern || landscapeUrlPattern || logoPattern) && responseData?.metas && Array.isArray(responseData.metas)) {
       const isUpNextCatalog = cleanId.includes('up_next') || cleanId.includes('upnext');
       const upNextUsesShowPoster = isUpNextCatalog && catalogConfig?.metadata?.useShowPosterForUpNext === true;
       const { resolveCustomArtUrl, getPosterRatingApiKey, resolveLandscapePattern, posterShapeOf } = require('./utils/parseProps');
       const proxyApiKey = config.usePosterProxy ? getPosterRatingApiKey(config) : null;
       const posterApplies = !!posterPattern && (!isUpNextCatalog || upNextUsesShowPoster);
-      const landscapePattern = resolveLandscapePattern(config, posterApplies ? posterPattern : null);
+      const landscapePattern = upstreamArt ? null : resolveLandscapePattern(config, posterApplies ? posterPattern : null);
       for (const meta of responseData.metas) {
         const ids = extractIdsFromMeta(meta);
         const type = meta.type || actualType;

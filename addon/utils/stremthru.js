@@ -206,8 +206,12 @@ async function getGenresFromStremThruCatalog(items) {
 
 function _withUpstreamArt(meta, item) {
   const art = {};
-  for (const field of ['poster', 'background', 'logo']) {
+  for (const field of ['poster', 'background', 'logo', 'landscapePoster']) {
     if (typeof item?.[field] === 'string' && item[field]) art[field] = item[field];
+  }
+  if (!art.landscapePoster) {
+    const landscape = item?.posterShape === 'landscape' ? art.poster : art.background;
+    if (landscape) art.landscapePoster = landscape;
   }
   return Object.keys(art).length ? { ...meta, ...art } : meta;
 }
