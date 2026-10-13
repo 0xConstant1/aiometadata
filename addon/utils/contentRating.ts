@@ -78,3 +78,69 @@ export function getTvdbCertification(contentRatings: any, countryCode: string | 
 
   return certification?.name || null;
 }
+
+export type CertificationMap = Record<string, string>;
+
+export type CertificationSources = {
+  tmdbMovie?: any;
+  tmdbTv?: any;
+  tvdbRatings?: any;
+  tvdbContentType?: string;
+};
+
+// The package only looks up ISO2 to ISO3, and TVDB names countries in ISO3.
+const ISO3_TO_ISO2: Record<string, string> = (() => {
+  const table: Record<string, string> = {};
+  for (let first = 65; first <= 90; first++) {
+    for (let second = 65; second <= 90; second++) {
+      const iso2 = String.fromCharCode(first, second);
+      const iso3 = getCountryISO3(iso2);
+      if (iso3) table[iso3.toLowerCase()] = iso2;
+    }
+  }
+  return table;
+})();
+
+function asCountry(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const code = value.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : null;
+}
+
+function languageRegion(config: { language?: unknown } | null | undefined): string | null {
+  return asCountry(typeof config?.language === 'string' ? config.language.split('-')[1] : null);
+}
+
+export function resolveRatingCountry(config: { contentRatingCountry?: unknown; language?: unknown } | null | undefined): string {
+  return asCountry(config?.contentRatingCountry) || languageRegion(config) || 'US';
+}
+
+export function buildCertificationMap(sources: CertificationSources = {}): CertificationMap | null {
+  const map: CertificationMap = {};
+
+  const tmdb = sources.tmdbMovie || sources.tmdbTv;
+  const readTmdb = sources.tmdbMovie ? getTmdbMovieCertificationForCountry : getTmdbTvCertificationForCountry;
+  if (tmdb && Array.isArray(tmdb.results)) {
+    for (const result of tmdb.results) {
+      const country = result?.iso_3166_1;
+      if (typeof country !== 'string' || map[country] !== undefined) continue;
+      const value = readTmdb(tmdb, country);
+      if (typeof value === 'string' && value !== '') map[country] = value;
+    }
+  }
+
+  if (Array.isArray(sources.tvdbRatings)) {
+    const contentType = sources.tvdbContentType;
+    const seen = new Set<string>();
+    for (const tvdbRating of sources.tvdbRatings) {
+      if (contentType && tvdbRating?.contentType !== contentType && tvdbRating?.contentType !== '') continue;
+      const country = ISO3_TO_ISO2[String(tvdbRating?.country || '').toLowerCase()];
+      if (!country || seen.has(country)) continue;
+      seen.add(country);
+      const name = tvdbRating.name;
+      if (map[country] === undefined && typeof name === 'string' && name !== '') map[country] = name;
+    }
+  }
+
+  return Object.keys(map).length > 0 ? map : null;
+}
