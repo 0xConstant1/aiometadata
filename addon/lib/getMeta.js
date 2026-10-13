@@ -1142,7 +1142,7 @@ async function getAnimeMeta(preferredProvider, stremioId, language, config, user
     try {
       logger.debug(`[AnimeMeta] Using provider 'mal' for ${stremioId}`);
       const [details, characters, episodes] = await Promise.all([
-        cacheWrapJikanApi(`anime-details-${allIds.malId}`, () => jikan.getAnimeDetails(allIds.malId), null),
+        jikan.getAnimeDetailsCached(allIds.malId),
         includeVideos ? cacheWrapJikanApi(`anime-characters-${allIds.malId}`, () => jikan.getAnimeCharacters(allIds.malId), null) : null,
         includeVideos ? jikan.getAnimeEpisodes(allIds.malId) : null,
       ]);
@@ -2970,7 +2970,8 @@ async function buildAnimeResponse(stremioId, malData, language, characterData, e
     }
 
     // Process episodes while API calls are running
-    if (stremioType === 'series' && malData.status !== 'Not yet aired' && episodeData && episodeData.length > 0) {      // Filter episodes once
+    const premiered = Date.parse(malData.aired?.from || '') <= Date.now();
+    if (stremioType === 'series' && (malData.status !== 'Not yet aired' || premiered) && episodeData && episodeData.length > 0) {      // Filter episodes once
       
 
       let tmdbThumbnailMap = new Map(); // Map of "season:episode" -> thumbnail URL
@@ -3358,7 +3359,7 @@ async function buildKitsuAnimeResponse(stremioId, kitsuData, genres, includeObje
     const certMalId = malId || (String(stremioId).startsWith('mal:') ? String(stremioId).slice(4) : null);
     if (!kitsuCertification && certMalId) {
       try {
-        const malDetails = await cacheWrapJikanApi(`anime-details-${certMalId}`, () => jikan.getAnimeDetails(certMalId), null);
+        const malDetails = await jikan.getAnimeDetailsCached(certMalId);
         kitsuCertification = Utils.malRatingToCertification(malDetails?.rating) || null;
       } catch (error) {
         logger.debug(`Could not read a MAL rating for kitsu:${kitsuData.id}: ${error.message}`);

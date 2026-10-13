@@ -371,6 +371,21 @@ async function getAnimeDetails(malId: string | number): Promise<any> {
     .catch(() => null);
 }
 
+function detailsTtl(details: any): number {
+  const status = String(details?.status || '');
+  if (status === 'Not yet aired') return envInt('JIKAN_DETAILS_UPCOMING_TTL', 6 * 60 * 60, 0);
+  if (status === 'Currently Airing') return envInt('JIKAN_DETAILS_AIRING_TTL', 24 * 60 * 60, 0);
+  return envInt('JIKAN_DETAILS_TTL', 30 * 24 * 60 * 60, 0);
+}
+
+async function getAnimeDetailsCached(malId: string | number): Promise<any> {
+  const { cacheWrapJikanApi, classifyResult }: any = require('./getCache');
+  return cacheWrapJikanApi(`anime-details-${malId}`, () => getAnimeDetails(malId), null, {
+    resultClassifier: (result: any, error: any = null, cacheKey: string | null = null) =>
+      result && !error ? { type: 'SUCCESS', ttl: detailsTtl(result) } : classifyResult(result, error, cacheKey),
+  });
+}
+
 function episodePageTtl(): number {
   return envInt('JIKAN_EPISODE_PAGE_TTL', 7 * 24 * 60 * 60, 0);
 }
@@ -895,6 +910,7 @@ export {
   malPageSize,
   searchAnime,
   getAnimeDetails,
+  getAnimeDetailsCached,
   getAnimeEpisodes,
   getAnimeEpisodeVideos,
   getAnimeCharacters,
@@ -919,6 +935,7 @@ module.exports = {
   malPageSize,
   searchAnime,
   getAnimeDetails,
+  getAnimeDetailsCached,
   getAnimeEpisodes,
   getAnimeEpisodeVideos,
   getAnimeCharacters,

@@ -2,7 +2,7 @@ import { httpGet, httpPost, httpRequest } from "./httpClient.js";
 import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { noteTrackerCall } from "./trackerCalls";
 import { getMeta } from "../lib/getMeta.js";
-import { cacheWrapMetaSmart, cacheWrapGlobal, cacheWrapJikanApi, classifyResultAllowEmpty } from "../lib/getCache.js";
+import { cacheWrapMetaSmart, cacheWrapGlobal, classifyResultAllowEmpty } from "../lib/getCache.js";
 import { mapWithLimit } from "./concurrency";
 import { envInt } from "./envNumber";
 import { UserConfig } from "../types/index.js";
@@ -1414,10 +1414,10 @@ async function parseSimklItems(
         const imdbId = stub.type === 'movie' ? idMapper.getTraktAnimeMovieByMalId(malId)?.externals?.imdb : mapping?.imdb_id;
         return !imdbId;
       };
-      const { getAnimeDetails } = require('../lib/mal');
+      const { getAnimeDetailsCached } = require('../lib/mal');
       const records = await mapWithLimit(animeItems, async (entry) => {
         if (!needsRecord(entry)) return entry.stub;
-        const details = await cacheWrapJikanApi(`anime-details-${entry.malId}`, () => getAnimeDetails(entry.malId), null).catch(() => null);
+        const details = await getAnimeDetailsCached(entry.malId).catch(() => null);
         return details?.mal_id ? { ...details, mal_id: entry.malId } : entry.stub;
       });
       const batchMetas = await Utils.parseAnimeCatalogMetaBatch(records, config, config.language, includeVideos);
