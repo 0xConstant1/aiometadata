@@ -42,8 +42,10 @@ const ORDER_LABELS: Record<string, string> = {
 };
 
 const GLOBAL = "global";
-const GLOBAL_ORDER_LABEL = "Season Order (global)";
-const GLOBAL_NUMBERING_LABEL = "Global";
+
+const DefaultTag = () => (
+  <span className="ml-2 text-xs text-muted-foreground">default</span>
+);
 
 const isOrder = (value: string) =>
   Object.prototype.hasOwnProperty.call(ORDER_LABELS, value);
@@ -79,6 +81,22 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+
+  const globalOrder = config.tvdbSeasonType || "default";
+  const globalOrderLabel = (
+    <>
+      {globalOrder === "default" ? "Aired Order" : (ORDER_LABELS[globalOrder] ?? globalOrder)}
+      <DefaultTag />
+    </>
+  );
+  const globalNumberingLabel = (
+    <>
+      {config.tvdbNormalizeYearSeasons === false
+        ? SEASON_NUMBERING_LABELS.years
+        : SEASON_NUMBERING_LABELS.sequential}
+      <DefaultTag />
+    </>
+  );
 
   const tvdbKey = config.apiKeys?.tvdb?.trim();
   const userUUID = auth.userUUID;
@@ -368,14 +386,14 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
                       disabled={disabled}
                     >
                       <SelectTrigger
-                        className="h-8 w-[190px]"
+                        className="h-8 w-[220px]"
                         aria-label={`Episode order for ${name}`}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={GLOBAL} disabled={showSeasons === GLOBAL}>
-                          {GLOBAL_ORDER_LABEL}
+                          {globalOrderLabel}
                         </SelectItem>
                         {series.orders.map((o) => (
                           <SelectItem key={o.type} value={o.type}>
@@ -387,7 +405,7 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
                   ) : (
                     <span className="text-muted-foreground">
                       {showOrder === GLOBAL
-                        ? GLOBAL_ORDER_LABEL
+                        ? globalOrderLabel
                         : (ORDER_LABELS[showOrder] ?? showOrder)}
                     </span>
                   )}
@@ -398,23 +416,23 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
                       disabled={disabled}
                     >
                       <SelectTrigger
-                        className="h-8 w-[150px]"
+                        className="h-8 w-[180px]"
                         aria-label={`Season numbering for ${name}`}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={GLOBAL} disabled={showOrder === GLOBAL}>
-                          {GLOBAL_NUMBERING_LABEL}
+                          {globalNumberingLabel}
                         </SelectItem>
                         <SelectItem value="years">{SEASON_NUMBERING_LABELS.years}</SelectItem>
                         <SelectItem value="sequential">{SEASON_NUMBERING_LABELS.sequential}</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : (
-                    <span className="w-[150px] text-muted-foreground">
+                    <span className="w-[180px] text-muted-foreground">
                       {showSeasons === GLOBAL
-                        ? "—"
+                        ? null
                         : SEASON_NUMBERING_LABELS[showSeasons as SeasonNumbering]}
                     </span>
                   )}
@@ -443,11 +461,11 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
           </span>
           {picked.orders.length ? (
             <Select value={order} onValueChange={setOrder}>
-              <SelectTrigger className="w-full sm:w-[200px]" aria-label="Episode order">
+              <SelectTrigger className="w-full sm:w-[220px]" aria-label="Episode order">
                 <SelectValue placeholder="Episode order" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={GLOBAL}>{GLOBAL_ORDER_LABEL}</SelectItem>
+                <SelectItem value={GLOBAL}>{globalOrderLabel}</SelectItem>
                 {picked.orders.map((o) => (
                   <SelectItem key={o.type} value={o.type}>
                     {ORDER_LABELS[o.type] ?? o.name}
@@ -462,11 +480,11 @@ export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
           )}
           {picked.yearSeasons && (
             <Select value={seasons} onValueChange={setSeasons}>
-              <SelectTrigger className="w-full sm:w-[160px]" aria-label="Season numbering">
+              <SelectTrigger className="w-full sm:w-[180px]" aria-label="Season numbering">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={GLOBAL}>{GLOBAL_NUMBERING_LABEL}</SelectItem>
+                <SelectItem value={GLOBAL}>{globalNumberingLabel}</SelectItem>
                 <SelectItem value="years">{SEASON_NUMBERING_LABELS.years}</SelectItem>
                 <SelectItem value="sequential">{SEASON_NUMBERING_LABELS.sequential}</SelectItem>
               </SelectContent>
