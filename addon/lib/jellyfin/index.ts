@@ -1762,6 +1762,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     BackdropImageItemId: item.Id,
     PrimaryImageAspectRatio: item.PrimaryImageAspectRatio,
     RunTimeTicks: item.RunTimeTicks,
+    Artists: [],
   });
 
   // LumiereDB's typeahead, for a search bar asking on each key press. Nothing else is
