@@ -799,7 +799,7 @@ export function Dashboard() {
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="relative z-10 inline-flex items-center justify-center whitespace-nowrap px-3 py-1 text-[13px] rounded-full bg-transparent transition-all duration-200 text-muted-foreground/70 hover:text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:font-semibold data-[state=active]:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="relative z-10 inline-flex items-center justify-center whitespace-nowrap px-3 py-1 text-[13px] rounded-full bg-transparent transition-all duration-200 text-muted-foreground/70 hover:text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:font-semibold data-[state=active]:shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20 focus-visible:ring-offset-0"
                 >
                   {activeTab === tab.value && (
                     <motion.div
