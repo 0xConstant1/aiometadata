@@ -64,16 +64,19 @@ export function accountsFor(config: Pick<AppConfig, 'managerAccounts'>, managerI
   return (config.managerAccounts || []).filter(a => a.managerId === managerId);
 }
 
-/**
- * The install URL this account receives. One tag per param, matching how the
- * install card builds it, because a tag name can hold any separator character.
- */
+export function taggedManifestUrl(installUrl: string, tags: string[]): string {
+  const base = installUrl.split('?')[0];
+  if (tags.length === 0) return base;
+  if (/\/manifest\.json$/.test(base)) {
+    const segments = tags.map(name => `/t/${encodeURIComponent(name)}`).join('');
+    return base.replace(/\/manifest\.json$/, `${segments}/manifest.json`);
+  }
+  return `${base}?${tags.map(name => `tag=${encodeURIComponent(name)}`).join('&')}`;
+}
+
 export function profileUrlFor(baseInstallUrl: string, account: Pick<ManagerAccount, 'profileTags'>): string {
   if (!baseInstallUrl) return '';
-  const base = baseInstallUrl.split('?')[0];
-  const tags = account.profileTags || [];
-  if (tags.length === 0) return base;
-  return `${base}?${tags.map(name => `tag=${encodeURIComponent(name)}`).join('&')}`;
+  return taggedManifestUrl(baseInstallUrl, account.profileTags || []);
 }
 
 export function describeProfile(account: Pick<ManagerAccount, 'profileTags'>): string {

@@ -21,6 +21,7 @@ import { keyStatuses } from "@/lib/configStatus";
 import { Callout } from "@/components/settings/Callout";
 import { ConfigStatusPanel, CONFIG_STATUS_SUMMARY_ID } from "@/components/settings/ConfigStatusPanel";
 import { SettingRow } from "@/components/settings/SettingRow";
+import { taggedManifestUrl } from "@/lib/managerAccounts";
 
 interface SavedConfig {
   userUUID: string;
@@ -290,13 +291,10 @@ export function ConfigurationManager() {
     };
   }, [selectedTags, profileTags]);
 
-  // One tag per param. A tag name can hold any character, so a separator would be
-  // ambiguous for the addon to split back apart.
   const taggedInstallUrl = useMemo(() => {
     if (!identity) return "";
-    const params = selectedTags.map(name => `tag=${encodeURIComponent(name)}`);
-    if (params.length === 0) return identity.installUrl;
-    return `${identity.installUrl}?${params.join('&')}`;
+    if (selectedTags.length === 0) return identity.installUrl;
+    return taggedManifestUrl(identity.installUrl, selectedTags);
   }, [identity, selectedTags]);
 
   const [jellyfinEnabled, setJellyfinEnabled] = useState(false);

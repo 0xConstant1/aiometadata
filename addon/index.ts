@@ -221,6 +221,9 @@ addon.use(createAliasResolutionMiddleware({
   isEnabled: isAliasFeatureEnabled,
 }));
 
+const { createTagPathMiddleware } = require('./lib/tagPathMiddleware');
+addon.use(createTagPathMiddleware());
+
 // Add request tracking middleware
 addon.use(requestTracker.middleware());
 
