@@ -41,7 +41,7 @@ const STATUS_ICONS: Record<OAuthPageStatus, string> = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 10v6m0-9h.01"/>',
 };
 
-function escapeHtml(value: unknown): string {
+export function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

@@ -774,6 +774,9 @@ async function fetchMDBListExternalItems(
   const pageSize = parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20;
 
   const normalizedUrl = new URL(url);
+  if (normalizedUrl.protocol !== 'https:' || normalizedUrl.hostname !== 'api.mdblist.com') {
+    throw new Error(`Not an MDBList list URL: ${normalizedUrl.origin}`);
+  }
   for (const param of ['apikey', 'limit', 'offset', 'cursor', 'language', 'append_to_response', 'unified', 'sort', 'order', 'filter_genre', 'filter_score_min', 'filter_score_max', 'mediatype']) {
     normalizedUrl.searchParams.delete(param);
   }

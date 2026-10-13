@@ -46,6 +46,7 @@ import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watch
 import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { SIZED_WIDTH, resizeToWidth, widthStep } from '../posterCache/resize';
+import { IMAGE_CSP } from '../posterCache/proxyResponse';
 import { registerStubs } from './stubs';
 import { recordPlayed, recordPlayedUpTo, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
 
@@ -2156,6 +2157,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return narrowed(reshape ? await shapePoster(source.body, source.contentType) : source, maxWidth);
       });
       res.set('Content-Type', image.contentType);
+      res.set('Content-Security-Policy', IMAGE_CSP);
       res.set('Cache-Control', 'public, max-age=86400');
       res.end(image.body);
     } catch (error: any) {
@@ -2186,6 +2188,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return;
       }
       res.set('Content-Type', upstream.contentType);
+      res.set('Content-Security-Policy', IMAGE_CSP);
       res.set('Cache-Control', 'public, max-age=86400');
       upstream.response.data.on('error', () => res.end());
       upstream.response.data.pipe(res);

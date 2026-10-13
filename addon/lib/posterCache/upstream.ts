@@ -38,15 +38,44 @@ function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
+function expandIPv6(ip: string): number[] | null {
+  let text = ip;
+  const dotted = /(\d+\.\d+\.\d+\.\d+)$/.exec(text);
+  if (dotted) {
+    const parts = dotted[1].split('.').map(Number);
+    if (parts.some((part) => part > 255)) return null;
+    text = text.slice(0, -dotted[1].length)
+      + `${((parts[0] << 8) | parts[1]).toString(16)}:${((parts[2] << 8) | parts[3]).toString(16)}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  const groups = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...tail];
+  if (groups.length !== 8) return null;
+  const values = groups.map((group) => parseInt(group, 16));
+  return values.some((value) => !Number.isInteger(value) || value < 0 || value > 0xffff) ? null : values;
+}
+
+function embeddedIPv4(high: number, low: number): string {
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
 function isPrivateIPv6(ip: string): boolean {
-  const normalized = ip.toLowerCase().split('%')[0];
-  if (normalized === '::' || normalized === '::1') return true;
-  // IPv4-mapped (::ffff:10.0.0.1) must be judged on the embedded address.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
-  if (mapped) return isPrivateIPv4(mapped[1]);
-  if (/^f[cd]/.test(normalized)) return true; // fc00::/7 unique local
-  if (/^fe[89ab]/.test(normalized)) return true; // fe80::/10 link-local
-  if (/^ff/.test(normalized)) return true; // multicast
+  const groups = expandIPv6(ip.toLowerCase().split('%')[0]);
+  if (!groups) return true; // Unparseable is not provably public.
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
+  const upperZero = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0;
+  if (upperZero && (g5 === 0 || g5 === 0xffff)) {
+    if (g5 === 0 && g6 === 0 && (g7 === 0 || g7 === 1)) return true; // :: and ::1
+    return isPrivateIPv4(embeddedIPv4(g6, g7)); // IPv4-mapped and IPv4-compatible
+  }
+  if (g0 === 0x64 && g1 === 0xff9b) return isPrivateIPv4(embeddedIPv4(g6, g7)); // NAT64
+  if (g0 === 0x2002) return isPrivateIPv4(embeddedIPv4(g1, g2)); // 6to4
+  if ((g0 & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
+  if ((g0 & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((g0 & 0xff00) === 0xff00) return true; // multicast
   return false;
 }
 

@@ -165,7 +165,10 @@ export function proxyResponseHeaders(input: ProxyResponseInput = {}): ProxyRespo
 
 export type ProxyResponseTarget = Pick<ServerResponse, 'setHeader'>;
 
+export const IMAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
 export function applyProxyResponseHeaders(res: ProxyResponseTarget, input: ProxyResponseInput = {}): string | undefined {
+  res.setHeader('Content-Security-Policy', IMAGE_CSP);
   const headers = proxyResponseHeaders(input);
   for (const [name, value] of Object.entries(headers)) {
     if (value !== undefined) res.setHeader(name, value);

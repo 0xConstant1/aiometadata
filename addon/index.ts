@@ -67,7 +67,7 @@ const {
   verifySimklV2OAuthState,
   verifyTraktOAuthState,
 } = require('./lib/oauthState');
-const { renderOAuthPage } = require('./lib/oauthPage');
+const { renderOAuthPage, escapeHtml } = require('./lib/oauthPage');
 const { hasAnyWatchTrackingEnabled } = require('./lib/watchTracking');
 const simklAuth = require('./lib/simkl');
 const { SimklClient } = simklAuth;
@@ -165,6 +165,7 @@ addon.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   // Reply to preflight immediately
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -6283,16 +6284,29 @@ addon.get("/api/proxy-manifest", async function (req, res) {
     return res.status(400).json({ error: 'Missing url parameter' });
   }
 
+  if (typeof url !== 'string') {
+    return res.status(400).json({ error: 'Invalid url parameter' });
+  }
+
   try {
     const { httpGet } = require('./utils/httpClient');
     const manifestData = await httpGet(url, {
       timeout: 10000
     });
+
+    let data = manifestData.data;
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        return res.status(502).json({ error: 'That URL did not return JSON' });
+      }
+    }
     
     // Set CORS headers to allow frontend access
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'application/json');
-    res.json(manifestData.data);
+    res.json(data);
   } catch (error) {
     consola.error(`[Proxy Manifest] Failed to fetch manifest from ${url}:`, error.message);
     res.status(error.response?.status || 500).json({ 
@@ -6578,6 +6592,15 @@ addon.get("/api/image/banner-to-background", async function (req, res) {
     res.sendFile(clientIndexPath);
   });
 
+function scriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 // Rating Page Route - MUST be before static middleware
 // Access via: /stremio/:userUUID/rating?id=stremioId&type=Series&title=Title
 // Or: /rating?user=userUUID&id=stremioId&type=Series&title=Title
@@ -6675,26 +6698,26 @@ addon.get("/stremio/:userUUID/rating", async function (req, res) {
     const pageTitle = metaTitle ? `Rate ${metaTitle} - AIO Metadata` : 'Rate This Title - AIO Metadata';
     html = html.replace(
       /<title>.*?<\/title>/,
-      `<title>${pageTitle}</title>`
+      () => `<title>${escapeHtml(pageTitle)}</title>`
     );
     
     const ratingScript = `
       <script>
         window.RATING_MODE = true;
-        window.RATING_USER = ${JSON.stringify(userUUID)};
-        window.RATING_ID = ${JSON.stringify(id || '')};
-        window.RATING_TYPE = ${JSON.stringify(metaType)};
-        window.RATING_TITLE = ${JSON.stringify(metaTitle || req.query.title || '')};
-        window.RATING_POSTER = ${JSON.stringify(metaPoster)};
-        window.RATING_DESCRIPTION = ${JSON.stringify(metaDescription)};
-        window.RATING_AVAILABLE_SERVICES = ${JSON.stringify(availableServices)};
+        window.RATING_USER = ${scriptJson(userUUID)};
+        window.RATING_ID = ${scriptJson(typeof id === 'string' ? id : '')};
+        window.RATING_TYPE = ${scriptJson(metaType)};
+        window.RATING_TITLE = ${scriptJson(metaTitle || (typeof req.query.title === 'string' ? req.query.title : ''))};
+        window.RATING_POSTER = ${scriptJson(metaPoster)};
+        window.RATING_DESCRIPTION = ${scriptJson(metaDescription)};
+        window.RATING_AVAILABLE_SERVICES = ${scriptJson(availableServices)};
       </script>
     `;
     
     // Add rating-specific script
     html = html.replace(
       '</head>',
-      ratingScript + '</head>'
+      () => ratingScript + '</head>'
     );
     
     res.send(html);
