@@ -29,6 +29,7 @@ const { getSetting }: any = require('./settingsService');
 import { resolveDynamicTmdbDiscoverParams } from './tmdbDiscoverDateTokens.js';
 import { roundRobinInterleaveTagged, mergedDedupKey, filterMetasByGenre, normalizeGenreKey } from '../utils/mergedCatalog.js';
 const { getTvmazeScheduleCatalog } = require('./tvmazeScheduleCatalog');
+const { getServerWatchlistCatalog, isServerWatchlistCatalog } = require('./serverWatchlist');
 const movielens = require('./movielens');
 
 const consola = require('consola');
@@ -159,6 +160,9 @@ async function getCatalog(type: string, language: string, page: number, id: stri
       logger.debug(`Routing to PublicMetaDB catalog handler for id: ${id}`);
       const pmdbResults = await getPublicMetaDBCatalog(type, id, page, language, config, userUUID);
       return { metas: pmdbResults };
+    }
+    else if (isServerWatchlistCatalog(id)) {
+      return { metas: await getServerWatchlistCatalog(id, type, page, config, userUUID) };
     }
     else if (id.startsWith('merged.')) {
       logger.debug(`Routing to Merged catalog handler for id: ${id}`);

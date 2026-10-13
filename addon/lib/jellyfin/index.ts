@@ -684,6 +684,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         res.json(itemList([], 0, startIndex));
         return;
       }
+      const shelved = await serverWatchlistItems(userUUID, config, serverId, wanted, ownWatchlist ? 'Likes' : 'IsFavorite');
+      if (shelved) {
+        await applyWatchedState(shelved, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+        res.json(itemList(shelved.slice(startIndex, startIndex + limit), shelved.length, startIndex));
+        return;
+      }
       const read = await watchlistEntries(userUUID, config);
       const entries = read.entries.filter((entry) =>
         !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
@@ -2678,6 +2684,31 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     const followed = [...shows.entries()].filter(([metaId]) => !keepsAnimeOnly(config) || isAnimeTitle(metaId, 'series'));
     return { snapshot, caughtUp, followed };
+  };
+
+  const serverWatchlistItems = async (userUUID: string, config: any, serverId: string, wanted: Set<string> | null, mark: 'IsFavorite' | 'Likes'): Promise<any[] | null> => {
+    if (require('./watchlistSources').watchlistPicks(config).size) return null;
+    const { isServerWatchlistCatalog, serverWatchlistMediaType } = require('../serverWatchlist');
+    const shelves = (await getCatalogs(userUUID, config)).filter((catalog: any) => {
+      const mediaType = isServerWatchlistCatalog(catalog.id) ? serverWatchlistMediaType(catalog.id) : undefined;
+      if (!mediaType || !wanted) return Boolean(mediaType);
+      return mediaType === 'all' ? wanted.has('Movie') || wanted.has('Series') : wanted.has(mediaType === 'movie' ? 'Movie' : 'Series');
+    });
+    if (!shelves.length) return null;
+    const cap = envInt('SERVER_WATCHLIST_MAX_ITEMS', 500, 1);
+    const items: any[] = [];
+    const seen = new Set<string>();
+    for (const catalog of shelves) {
+      const window = await fetchWindow(userUUID, catalog, 0, cap, {}, undefined, profileTags(config)).catch(() => ({ items: [] as any[] }));
+      for (const meta of window.items) {
+        const item = metaToBaseItem(meta, serverWatchlistMediaType(catalog.id), serverId, null);
+        if (seen.has(String(meta.id)) || (wanted && !wanted.has(item.Type))) continue;
+        seen.add(String(meta.id));
+        item.UserData = { ...item.UserData, [mark]: true };
+        items.push(item);
+      }
+    }
+    return items.filter(keepsUnderProfileCap(config));
   };
 
   /** Watchlisted films, from every watchlist, whose release date passes `keep`. */

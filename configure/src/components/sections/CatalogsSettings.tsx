@@ -2492,6 +2492,8 @@ const GenericSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
   const [hideUnreleasedDigital, setHideUnreleasedDigital] = useState<string>(catalog.metadata?.hideUnreleasedDigital === true ? 'on' : catalog.metadata?.hideUnreleasedDigital === false ? 'off' : 'global');
   const [hideUnreleasedShows, setHideUnreleasedShows] = useState<string>(catalog.metadata?.hideUnreleasedShows === true ? 'on' : catalog.metadata?.hideUnreleasedShows === false ? 'off' : 'global');
   const isRecommendations = (catalog as CatalogConfig & { source?: string }).source === 'recommendations';
+  const isServerWatchlist = catalog.id.startsWith('aiom.watchlist.');
+  const [serverSort, setServerSort] = useState<string>(catalog.sort || 'added');
   const [pickOrder, setPickOrder] = useState<string>(catalog.metadata?.pickOrder || 'global');
   const [pickMinVotes, setPickMinVotes] = useState<string>(
     catalog.metadata?.pickMinVotes === undefined || catalog.metadata?.pickMinVotes === null
@@ -2514,6 +2516,7 @@ const GenericSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
         c.id === catalog.id && c.type === catalog.type
           ? {
             ...c,
+            ...(isServerWatchlist ? { sort: serverSort as CatalogConfig['sort'] } : {}),
             metadata: {
               ...c.metadata, posterShape: posterShape === 'landscape' ? 'landscape' : undefined,
               hideWatchedTrakt: hideTraktValue,
@@ -2545,6 +2548,20 @@ const GenericSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogC
           <DialogTitle>{catalog.name} Settings</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
+          {isServerWatchlist && (
+            <div className="space-y-2">
+              <Label>Sort</Label>
+              <Select value={serverSort} onValueChange={setServerSort}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="added">Date added, newest first</SelectItem>
+                  <SelectItem value="released">Release date, newest first</SelectItem>
+                  <SelectItem value="title">Title, A to Z</SelectItem>
+                  <SelectItem value="imdbrating">Rating, highest first</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {isRecommendations && (
             <>
               <div className="space-y-2">

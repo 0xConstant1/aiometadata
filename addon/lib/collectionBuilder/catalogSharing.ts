@@ -48,6 +48,7 @@ const USER_SPECIFIC_PATTERNS = [
   'stremthru.',
   'recommendations.',
   'movielens.',
+  'aiom.watchlist.',
 ];
 
 export function isUserSpecific(catalogId: string): boolean {

@@ -1,9 +1,9 @@
 import consola from 'consola';
 import { readTokenSession, revokeToken } from './tokens';
-import { listProfiles, scopeConfigToProfile } from './profiles';
+import { listProfiles, profileKey, scopeConfigToProfile } from './profiles';
 import { normaliseJellyfinId } from './idsCodec';
 import { LRUCache } from 'lru-cache';
-import { noteAccountOwner, noteMarksUnaired, runInViewerScope, viewerOwnsWatchlist } from './viewer';
+import { noteAccountOwner, noteMarksUnaired, noteProfile, runInViewerScope, viewerOwnsWatchlist } from './viewer';
 import { accountOwner } from '../accounts';
 
 const redis: any = require('../redisClient');
@@ -199,6 +199,7 @@ export async function loadConfig(req: any): Promise<any> {
   config.userUUID = req.jellyfin.userUUID;
   req.jellyfin.config = config;
   noteAccountOwner(accountOwner(config));
+  noteProfile(profileKey(config));
   noteMarksUnaired(config.jellyfinMarkUnaired !== false);
   return config;
 }

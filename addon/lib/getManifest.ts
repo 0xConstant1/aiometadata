@@ -688,6 +688,21 @@ function createPublicMetaDBCatalog(userCatalog: any, showPrefix: boolean = false
   }
 }
 
+function createServerWatchlistCatalog(userCatalog: any, showPrefix: boolean = false, prefixName: string = "AIOMetadata"): any {
+  const extra: any[] = [{ name: "skip" }];
+  if (!userCatalog.showInHome) {
+    extra.unshift({ name: "genre", options: ["None"], isRequired: true });
+  }
+  return {
+    id: userCatalog.id,
+    type: userCatalog.displayType || userCatalog.type,
+    name: `${showPrefix ? `${prefixName} - ` : ""}${userCatalog.name || 'Watchlist'}`,
+    pageSize: parseInt(process.env.CATALOG_LIST_ITEMS_SIZE as string) || 20,
+    extra,
+    showInHome: userCatalog.showInHome ?? false
+  };
+}
+
 function createMergedCatalog(
   userCatalog: any,
   allBuiltCatalogs: any[],
@@ -1163,6 +1178,9 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
       if (isPublicMetaDB(userCatalog.id)) {
         return true;
       }
+      if (userCatalog.id.startsWith('aiom.watchlist.')) {
+        return true;
+      }
       if (!catalogDef) {
         logger.debug(`Catalog ${userCatalog.id} failed filter: no catalog definition`);
         return false;
@@ -1243,6 +1261,9 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
           logger.debug(`Processing PublicMetaDB catalog: ${userCatalog.id}`);
           const result = createPublicMetaDBCatalog(userCatalog, showPrefix, prefixName);
           return result;
+      }
+      if (userCatalog.id.startsWith('aiom.watchlist.')) {
+          return createServerWatchlistCatalog(userCatalog, showPrefix, prefixName);
       }
       if (userCatalog.id.startsWith('tmdb.list.')) {
           logger.debug(`Processing TMDB List catalog: ${userCatalog.id}`);

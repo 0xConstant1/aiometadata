@@ -8,7 +8,8 @@ import { EMPTY_USER_DATA } from './dto';
 import { placeholderSources } from './streams';
 import redis from '../redisClient';
 import type { CatalogRef } from './views';
-import { viewerAccountOwner, viewerMarksUnaired, viewerReadsExtensions } from './viewer';
+import { viewerAccountOwner, viewerMarksUnaired, viewerProfile, viewerReadsExtensions } from './viewer';
+import { SERVER_WATCHLIST_PREFIX } from '../serverWatchlist';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -274,7 +275,8 @@ const catalogLengths = new LRUCache<string, number>({
 
 function lengthKeyFor(userUUID: string, catalog: CatalogRef, extras: Record<string, string>, tags: string[], keepKey = ''): string {
   const owner = viewerAccountOwner();
-  return `${userUUID}|${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}|${keepKey}${owner ? `|@${owner}` : ''}`;
+  const viewer = catalog.id.startsWith(SERVER_WATCHLIST_PREFIX) ? viewerProfile() : '';
+  return `${userUUID}|${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}|${keepKey}${owner ? `|@${owner}` : ''}${viewer ? `|#${viewer}` : ''}`;
 }
 
 export function knownCatalogLength(userUUID: string, catalog: CatalogRef, extras: Record<string, string> = {}, tags: string[] = [], keepKey = ''): number | undefined {

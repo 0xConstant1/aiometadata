@@ -1604,6 +1604,11 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     }
   }
 
+  if (idOnly.startsWith('aiom.watchlist.')) {
+    cacheTTL = 0;
+    cachingDisabled = true;
+  }
+
   if (isMergedCatalog) {
     cacheTTL = 0;
     cacheLogger.debug(`[Catalog] Skipping outer cache for merged catalog ${idOnly} (sources cache internally)`);
