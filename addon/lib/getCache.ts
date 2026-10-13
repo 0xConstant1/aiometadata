@@ -33,6 +33,7 @@ const {
 
 // The same few profiles are hashed for every component of every meta.
 const hashedProfiles = new LRUCache<string, string>({ max: 2000 });
+const ARTWORK_CACHE_REVISION = 2;
 
 function hashConfig(configObj: any): string {
   const str = typeof configObj === 'string' ? configObj : stableStringify(configObj);
@@ -903,6 +904,7 @@ function getMetaCacheContext(config: any, metaId: string, type: string | null, u
   };
 
   const artLanguagePolicy = {
+    reconstructionRevision: ARTWORK_CACHE_REVISION,
     englishArtOnly: config.artProviders?.englishArtOnly || false,
     originalLangFallback: config.artProviders?.originalLangFallback || false,
   };
@@ -1436,6 +1438,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
   const scopedProviders = buildScopedProviderConfig(config, contentScope);
 
   const catalogConfig: any = {
+    artworkReconstructionRevision: ARTWORK_CACHE_REVISION,
     ...(shouldExcludeLanguageForMAL ? {} : { language: config.language || 'en-US' }),
     ...scopedProviders,
     sfw: config.sfw || false,
@@ -1705,6 +1708,7 @@ async function cacheWrapSearch(userUUID: string, searchKey: string, method: () =
   const searchOrder = Array.from(new Set([...rawSearchOrder, ...defaultSearchOrder]));
 
   const searchConfig = {
+    artworkReconstructionRevision: ARTWORK_CACHE_REVISION,
     language: config.language || 'en-US',
     searchProviders: config.search?.providers || {},
     searchNames: config.search?.searchNames || {},
@@ -2422,7 +2426,7 @@ async function fillArtComponents(config: any, metaId: string, basic: any, wanted
 
   let art: any;
   try {
-    art = await resolveArtworkForProfile({ type: basic.type, ids, metaProvider: basic._metaProvider, providerArt: basic._providerArt }, config);
+    art = await resolveArtworkForProfile({ type: basic.type, ids, providerArt: basic._providerArt }, config);
   } catch (error: any) {
     cacheLogger.warn(`[Reconstruct] Art lookup failed for ${metaId}: ${error?.message || error}`);
     return [];

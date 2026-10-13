@@ -312,14 +312,15 @@ const host = process.env.HOST_NAME.startsWith('http')
 
 // --- Main Orchestrator ---
 // The art a builder would have chosen for this configuration. Mirrors the builders' dispatch.
-async function resolveArtworkForProfile({ type, ids, metaProvider, providerArt }, config) {
+async function resolveArtworkForProfile({ type, ids, providerArt }, config) {
   const mediaType = type === 'movie' ? 'movie' : 'series';
   if (providerArt.anime) {
     const art = await getAnimeArtwork(ids, config, providerArt.poster, providerArt.background, mediaType);
     return { poster: art.poster, background: art.background, logo: art.logo, landscapePosterUrl: art.landscapePosterUrl };
   }
 
-  const base = { tmdbId: ids.tmdbId, tvdbId: ids.tvdbId, imdbId: ids.imdbId, metaProvider, originalLanguage: providerArt.originalLanguage };
+  // Shared providerArt URLs may belong to another artwork profile and must be reselected.
+  const base = { tmdbId: ids.tmdbId, tvdbId: ids.tvdbId, imdbId: ids.imdbId, metaProvider: null, originalLanguage: providerArt.originalLanguage };
   const get = mediaType === 'movie'
     ? { poster: Utils.getMoviePoster, background: Utils.getMovieBackground, logo: Utils.getMovieLogo }
     : { poster: Utils.getSeriesPoster, background: Utils.getSeriesBackground, logo: Utils.getSeriesLogo };
