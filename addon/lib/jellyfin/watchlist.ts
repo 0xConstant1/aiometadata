@@ -1,7 +1,7 @@
 import { fetchMeta, metaToBaseItem } from './items';
 import { clientHasOwnWatchlist } from './context';
 import { profileKey, writesTrackers } from './profiles';
-import { dedupeWatchlist, shelfCacheWindowMs, trackerWatchlist, watchlistPicks, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
+import { dedupeWatchlist, keepsServerWatchlist, shelfCacheWindowMs, trackerWatchlist, watchlistPicks, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
@@ -61,7 +61,8 @@ export async function watchlistEntries(userUUID: string, config: any, need = Num
   const tracker = held.rows;
 
   const since = watchlistPicks(config).size ? Date.now() - (await shelfCacheWindowMs(config)) : -Infinity;
-  const local = rows.filter((row) => (Number(row.updated_at) || 0) >= since);
+  const keepsServer = keepsServerWatchlist(config);
+  const local = rows.filter((row) => (Number(row.updated_at) || 0) >= since || (keepsServer && Number(row.listed)));
 
   const out = new Map<string, WatchlistEntry>();
   for (const row of tracker) out.set(row.metaId, row);

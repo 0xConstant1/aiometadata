@@ -148,7 +148,7 @@ function heldTrackerSource(held: any, trackerSource: string): string {
 /** A holder's watchlist picks, dropping any whose service it doesn't hold; undefined once none are left. */
 function heldWatchlistServices(held: any, watchlistServices: string[]): string[] | undefined {
   if (watchlistServices.includes('none')) return watchlistServices;
-  const kept = watchlistServices.filter((token) => isHeldForWatchlist(held, token.split(':')[0] as AccountService));
+  const kept = watchlistServices.filter((token) => token === 'server' || isHeldForWatchlist(held, token.split(':')[0] as AccountService));
   return kept.length ? kept : undefined;
 }
 

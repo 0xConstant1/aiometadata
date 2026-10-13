@@ -21,6 +21,7 @@ export type WatchlistIds = { imdb?: string; tmdb?: number | string; tvdb?: numbe
 export type WatchlistService = 'mdblist' | 'simkl' | 'anilist' | 'mal' | 'publicmetadb';
 /** The pick that says a client's favourites are the hearts set here, and nothing else. */
 export const WATCHLIST_NONE = 'none';
+export const WATCHLIST_SERVER = 'server';
 export const WATCHLIST_SERVICES: WatchlistService[] = ['mdblist', 'simkl', 'anilist', 'mal', 'publicmetadb'];
 export const SERVICE_KINDS: Record<WatchlistService, WatchlistKind[]> = {
   mdblist: ['movies', 'series'],
@@ -62,6 +63,11 @@ export function watchlistPicks(config: any): Map<WatchlistService, Set<Watchlist
     if (kinds.size) out.set(service, kinds);
   }
   return out;
+}
+
+export function keepsServerWatchlist(config: any): boolean {
+  const picked: string[] = Array.isArray(config?.jellyfinWatchlistServices) ? config.jellyfinWatchlistServices.map(String) : [];
+  return picked.includes(WATCHLIST_NONE) || picked.includes(WATCHLIST_SERVER);
 }
 
 export function watchlistServices(config: any): WatchlistService[] {

@@ -280,7 +280,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             <Label className="text-xs font-medium">Watchlist</Label>
             <WatchlistPicker value={user?.watchlistServices} options={watchlistOptions} onChange={(next) => onChange({ watchlistServices: next })} inheritLabel={main || holder ? 'Every connected' : 'Same as you'} />
             <p className="text-[11px] text-muted-foreground">
-              A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. This server only leaves favourites to the hearts set here. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
+              A client's favourites are the watchlist: the picked shelves merged, and a heart on a title in a client writes to the shelves that take it. This server keeps the hearts set here as a list of its own, alone or alongside the picked shelves. MDBList and Trakt file anime under movies and series; Simkl, AniList and MyAnimeList keep an anime shelf.
             </p>
           </div>
         )}
@@ -321,25 +321,27 @@ type WatchlistOption = { value: string; label: string; shelves: WatchlistShelf[]
 const SHELF_LABELS: Record<WatchlistShelf, string> = { movies: 'Movies', series: 'Series', anime: 'Anime' };
 
 const WATCHLIST_NONE = 'none';
+const WATCHLIST_SERVER = 'server';
 
-/** A pick is `service:shelf`; none picked means every shelf of every connected service. */
+/** A pick is `service:shelf` or `server`; none picked means every shelf of every connected service. */
 function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: string[]; options: WatchlistOption[]; onChange: (next: string[] | undefined) => void; inheritLabel: string }) {
-  const serverOnly = (value ?? []).includes(WATCHLIST_NONE);
-  const picked = serverOnly ? [] : (value ?? []).flatMap((token) => {
+  const server = (value ?? []).some((token) => token === WATCHLIST_NONE || token === WATCHLIST_SERVER);
+  const picked = (value ?? []).flatMap((token) => {
     const [service, shelf] = token.split(':');
     const option = options.find((o) => o.value === service);
     if (!option) return [];
     return shelf ? [token] : option.shelves.map((s) => `${service}:${s}`);
   });
-  const toggle = (token: string) => {
-    const next = picked.includes(token) ? picked.filter((t) => t !== token) : [...picked, token];
+  const save = (withServer: boolean, shelves: string[]) => {
+    const next = withServer ? [WATCHLIST_SERVER, ...shelves] : shelves;
     onChange(next.length ? next : undefined);
   };
+  const toggle = (token: string) => save(server, picked.includes(token) ? picked.filter((t) => t !== token) : [...picked, token]);
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-1.5">
-        <TagChip name={inheritLabel} onClick={() => onChange(undefined)} pressed={!serverOnly && picked.length === 0} dimmed={serverOnly || picked.length > 0} />
-        <TagChip name="This server only" onClick={() => onChange(serverOnly ? undefined : [WATCHLIST_NONE])} pressed={serverOnly} dimmed={!serverOnly} />
+        <TagChip name={inheritLabel} onClick={() => onChange(undefined)} pressed={!server && picked.length === 0} dimmed={server || picked.length > 0} />
+        <TagChip name="This server" onClick={() => save(!server, picked)} pressed={server} dimmed={!server} />
       </div>
       {options.map((opt) => (
         <div key={opt.value} className="flex flex-wrap items-center gap-1.5">
@@ -356,7 +358,7 @@ function WatchlistPicker({ value, options, onChange, inheritLabel }: { value?: s
 
 function resumeSourceCaption(value: string, options: Array<{ value: string; label: string; animeOnly?: boolean }>): string {
   if (value === 'off') {
-    return 'This server only: Continue Watching, Next Up and the watched ticks come from what you play through this server, on this configuration. Nothing watched elsewhere appears, and nothing is read from your trackers; plays are still reported to them. Favourites follow the watchlist picks below, which have their own "This server only".';
+    return 'This server only: Continue Watching, Next Up and the watched ticks come from what you play through this server, on this configuration. Nothing watched elsewhere appears, and nothing is read from your trackers; plays are still reported to them. Favourites follow the watchlist picks below, which have their own "This server".';
   }
   if (value === 'auto') {
     const names = options.filter((o) => !o.animeOnly).map((o) => o.label);
