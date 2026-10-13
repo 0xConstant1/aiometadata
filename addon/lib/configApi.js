@@ -186,15 +186,15 @@ class ConfigApi {
   }
 
   validateEpisodeOrders(config) {
-    const { countEpisodeOrders } = require('../utils/episodeOrder');
+    const { countShowSettings } = require('../utils/episodeOrder');
     const max = Math.max(1, parseInt(require('./settingsService').getSetting('TVDB_EPISODE_ORDER_MAX') || '', 10) || 100);
-    const count = countEpisodeOrders(config);
+    const count = countShowSettings(config);
     if (count <= max) return { valid: true };
     return {
       valid: false,
       count,
       max,
-      message: `Too many shows with their own episode order (${count}); the maximum on this instance is ${max}. Remove some and try again.`,
+      message: `Too many shows with their own TVDB settings (${count}); the maximum on this instance is ${max}. Remove some and try again.`,
     };
   }
 

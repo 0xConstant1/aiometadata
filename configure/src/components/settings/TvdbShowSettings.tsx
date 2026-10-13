@@ -10,12 +10,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useConfig } from "@/contexts/ConfigContext";
+import {
+  type ImportEntry,
+  type SeasonNumbering,
+  SEASON_NUMBERING_LABELS,
+  isSeasonNumbering,
+  mergeImport,
+  pickerStart,
+  readImportEntry,
+  showSettingKeys,
+  withShowValue,
+} from "@/lib/tvdbShowSettings";
 
 interface SeriesOrders {
   tvdbId: string;
   name: string;
   year?: string;
   orders: { type: string; name: string }[];
+  yearSeasons?: boolean;
 }
 
 const ORDER_LABELS: Record<string, string> = {
@@ -29,53 +41,39 @@ const ORDER_LABELS: Record<string, string> = {
   altdvd: "Alternate DVD Order",
 };
 
+const GLOBAL = "global";
+const GLOBAL_ORDER_LABEL = "Season Order (global)";
+const GLOBAL_NUMBERING_LABEL = "Global";
+
+const isOrder = (value: string) =>
+  Object.prototype.hasOwnProperty.call(ORDER_LABELS, value);
+
 const seriesCache = new Map<string, Promise<SeriesOrders | null>>();
 const IMPORT_LANES = 4;
 const IMPORT_EXAMPLE = JSON.stringify(
   [
     { tvdbId: "81797", name: "One Piece", order: "absolute" },
     { tvdbId: "73871", name: "Futurama", order: "dvd" },
+    { tvdbId: "77075", name: "Jeopardy!", seasons: "years" },
   ],
   null,
   2,
 );
 
-function withoutShow(
-  map: Record<string, string>,
-  showKey: string,
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(map).filter(
-      ([key]) => key !== showKey && key.startsWith("tvdb:"),
-    ),
-  );
-}
-
-function withShow(
-  map: Record<string, string>,
-  series: SeriesOrders,
-  order: string,
-): Record<string, string> {
-  return {
-    ...withoutShow(map, `tvdb:${series.tvdbId}`),
-    [`tvdb:${series.tvdbId}`]: order,
-  };
-}
-
 const displayName = (series: SeriesOrders) =>
   series.year ? `${series.name} (${series.year})` : series.name;
 
-export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
+export function TvdbShowSettings({ disabled }: { disabled?: boolean }) {
   const { config, setConfig, auth, maxEpisodeOrders } = useConfig();
   const orders = config.tvdbEpisodeOrders ?? {};
-  const shows = Object.entries(orders).filter(
-    ([key, value]) => key.startsWith("tvdb:") && value in ORDER_LABELS,
-  );
-  const atLimit = shows.length >= maxEpisodeOrders;
+  const numbering = config.tvdbShowSeasonNumbering ?? {};
+  const showKeys = showSettingKeys(orders, numbering, isOrder);
+  const atLimit = showKeys.length >= maxEpisodeOrders;
   const [known, setKnown] = useState<Record<string, SeriesOrders>>({});
   const [tvdbInput, setTvdbInput] = useState("");
   const [picked, setPicked] = useState<SeriesOrders | null>(null);
-  const [order, setOrder] = useState("");
+  const [order, setOrder] = useState(GLOBAL);
+  const [seasons, setSeasons] = useState(GLOBAL);
   const [loadingSeries, setLoadingSeries] = useState(false);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
@@ -84,6 +82,11 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
 
   const tvdbKey = config.apiKeys?.tvdb?.trim();
   const userUUID = auth.userUUID;
+
+  const orderOf = (showKey: string) =>
+    isOrder(orders[showKey] ?? "") ? orders[showKey] : GLOBAL;
+  const numberingOf = (showKey: string): string =>
+    isSeasonNumbering(numbering[showKey]) ? numbering[showKey] : GLOBAL;
 
   const readSeries = useCallback(
     (tvdbId: string): Promise<SeriesOrders | null> => {
@@ -113,7 +116,7 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
     [tvdbKey, userUUID],
   );
 
-  const showIds = shows.map(([key]) => key.slice("tvdb:".length)).join(",");
+  const showIds = showKeys.map((key) => key.slice("tvdb:".length)).join(",");
   useEffect(() => {
     let cancelled = false;
     for (const tvdbId of showIds ? showIds.split(",") : []) {
@@ -144,11 +147,19 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
       if (!series) return;
       setTvdbInput("");
       setPicked(series);
-      setOrder(
-        series.orders?.find((o) => o.type !== "official")?.type ??
-          series.orders?.[0]?.type ??
-          "",
+      const showKey = `tvdb:${series.tvdbId}`;
+      const start = pickerStart(
+        series,
+        showKeys.includes(showKey)
+          ? {
+              order: isOrder(orders[showKey] ?? "") ? orders[showKey] : null,
+              seasons: isSeasonNumbering(numbering[showKey]) ? numbering[showKey] : null,
+            }
+          : null,
+        config.tvdbNormalizeYearSeasons === false,
       );
+      setOrder(start.order ?? GLOBAL);
+      setSeasons(start.seasons ?? GLOBAL);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not read the series",
@@ -158,43 +169,73 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
     }
   };
 
+  const pickedOrder = order !== GLOBAL ? order : null;
+  const pickedSeasons: SeasonNumbering | null =
+    picked?.yearSeasons && isSeasonNumbering(seasons) ? seasons : null;
+  const canAdd = !!picked && (!!pickedOrder || !!pickedSeasons);
+
+  const closePicker = () => {
+    setPicked(null);
+    setOrder(GLOBAL);
+    setSeasons(GLOBAL);
+  };
+
   const add = () => {
-    if (!picked || !order) return;
-    if (atLimit && !(`tvdb:${picked.tvdbId}` in orders)) {
+    if (!picked || !canAdd) return;
+    const showKey = `tvdb:${picked.tvdbId}`;
+    if (atLimit && !showKeys.includes(showKey)) {
       setError(
-        `This instance allows ${maxEpisodeOrders} shows with their own episode order. Remove one to add another.`,
+        `This instance allows ${maxEpisodeOrders} shows with their own TVDB settings. Remove one to add another.`,
       );
       return;
     }
     setConfig((prev) => ({
       ...prev,
-      tvdbEpisodeOrders: withShow(prev.tvdbEpisodeOrders ?? {}, picked, order),
+      tvdbEpisodeOrders: withShowValue(prev.tvdbEpisodeOrders ?? {}, showKey, pickedOrder),
+      tvdbShowSeasonNumbering: withShowValue(prev.tvdbShowSeasonNumbering ?? {}, showKey, pickedSeasons),
     }));
     setKnown((prev) => ({ ...prev, [picked.tvdbId]: picked }));
-    setPicked(null);
-    setOrder("");
+    closePicker();
   };
 
   const changeOrder = (showKey: string, next: string) =>
     setConfig((prev) => ({
       ...prev,
-      tvdbEpisodeOrders: { ...(prev.tvdbEpisodeOrders ?? {}), [showKey]: next },
+      tvdbEpisodeOrders: withShowValue(
+        prev.tvdbEpisodeOrders ?? {},
+        showKey,
+        next === GLOBAL ? null : next,
+      ),
+    }));
+
+  const changeNumbering = (showKey: string, next: string) =>
+    setConfig((prev) => ({
+      ...prev,
+      tvdbShowSeasonNumbering: withShowValue(
+        prev.tvdbShowSeasonNumbering ?? {},
+        showKey,
+        isSeasonNumbering(next) ? next : null,
+      ),
     }));
 
   const remove = (showKey: string) =>
     setConfig((prev) => ({
       ...prev,
-      tvdbEpisodeOrders: withoutShow(prev.tvdbEpisodeOrders ?? {}, showKey),
+      tvdbEpisodeOrders: withShowValue(prev.tvdbEpisodeOrders ?? {}, showKey, null),
+      tvdbShowSeasonNumbering: withShowValue(prev.tvdbShowSeasonNumbering ?? {}, showKey, null),
     }));
 
   const exportList = () => {
-    const list = shows.map(([showKey, showOrder]) => {
+    const list = showKeys.map((showKey) => {
       const tvdbId = showKey.slice("tvdb:".length);
       const series = known[tvdbId];
+      const showOrder = orderOf(showKey);
+      const showSeasons = numberingOf(showKey);
       return {
         tvdbId,
         ...(series ? { name: displayName(series) } : {}),
-        order: showOrder,
+        ...(showOrder !== GLOBAL ? { order: showOrder } : {}),
+        ...(showSeasons !== GLOBAL ? { seasons: showSeasons } : {}),
       };
     });
     const url = URL.createObjectURL(
@@ -214,45 +255,43 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
     try {
       const parsed = JSON.parse(await file.text());
       if (!Array.isArray(parsed))
-        throw new Error('expected a list of { "tvdbId", "order" } entries');
+        throw new Error(
+          'expected a list of { "tvdbId", "order" or "seasons" } entries',
+        );
       const queue = parsed.map((entry, index) => ({ entry, index }));
-      const found: { series: SeriesOrders; order: string; index: number }[] =
-        [];
+      const found: { series: SeriesOrders; entry: ImportEntry; index: number }[] = [];
       const skipped: string[] = [];
       const lane = async () => {
         while (queue.length) {
-          const { entry, index } = queue.shift()!;
-          const tvdbId = String(entry?.tvdbId ?? "")
-            .trim()
-            .replace(/^tvdb:/i, "");
-          const wanted = String(entry?.order ?? "").trim();
-          if (!/^\d+$/.test(tvdbId) || !wanted) {
-            skipped.push(
-              `${entry?.tvdbId ?? "?"} (needs a tvdbId and an order)`,
-            );
+          const { entry: raw, index } = queue.shift()!;
+          const entry = readImportEntry(raw);
+          if ("skip" in entry) {
+            skipped.push(entry.skip);
             continue;
           }
           try {
-            const series = await readSeries(tvdbId);
+            const series = await readSeries(entry.tvdbId);
             if (!series) {
-              skipped.push(`${tvdbId} (not found on TVDB)`);
-            } else if (!series.orders.some((o) => o.type === wanted)) {
+              skipped.push(`${entry.tvdbId} (not found on TVDB)`);
+            } else if (entry.order && !series.orders.some((o) => o.type === entry.order)) {
               skipped.push(
-                `${displayName(series)} (no ${ORDER_LABELS[wanted] ?? wanted})`,
+                `${displayName(series)} (no ${ORDER_LABELS[entry.order] ?? entry.order})`,
               );
+            } else if (entry.seasons && !series.yearSeasons) {
+              skipped.push(`${displayName(series)} (no year seasons)`);
             } else {
-              found.push({ series, order: wanted, index });
+              found.push({ series, entry, index });
             }
           } catch {
-            skipped.push(`${tvdbId} (not found on TVDB)`);
+            skipped.push(`${entry.tvdbId} (not found on TVDB)`);
           }
         }
       };
       await Promise.all(Array.from({ length: IMPORT_LANES }, lane));
       found.sort((a, b) => a.index - b.index);
-      const present = new Set(shows.map(([key]) => key));
-      let slots = Math.max(0, maxEpisodeOrders - shows.length);
-      const accepted: { series: SeriesOrders; order: string }[] = [];
+      const present = new Set(showKeys);
+      let slots = Math.max(0, maxEpisodeOrders - showKeys.length);
+      const accepted: typeof found = [];
       let overLimit = 0;
       for (const item of found) {
         const key = `tvdb:${item.series.tvdbId}`;
@@ -267,13 +306,18 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
         }
       }
       if (accepted.length) {
-        setConfig((prev) => ({
-          ...prev,
-          tvdbEpisodeOrders: accepted.reduce(
-            (map, { series, order: chosen }) => withShow(map, series, chosen),
+        setConfig((prev) => {
+          const merged = mergeImport(
             prev.tvdbEpisodeOrders ?? {},
-          ),
-        }));
+            prev.tvdbShowSeasonNumbering ?? {},
+            accepted.map(({ series, entry }) => ({ ...entry, tvdbId: series.tvdbId })),
+          );
+          return {
+            ...prev,
+            tvdbEpisodeOrders: merged.orders,
+            tvdbShowSeasonNumbering: merged.numbering,
+          };
+        });
         setKnown((prev) => ({
           ...prev,
           ...Object.fromEntries(
@@ -302,19 +346,21 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
 
   return (
     <div className="space-y-3">
-      {shows.length > 0 && (
+      {showKeys.length > 0 && (
         <ul className="divide-y rounded-md border">
-          {shows.map(([showKey, showOrder]) => {
+          {showKeys.map((showKey) => {
             const tvdbId = showKey.slice("tvdb:".length);
             const series = known[tvdbId];
             const name = series ? displayName(series) : `TVDB ${tvdbId}`;
+            const showOrder = orderOf(showKey);
+            const showSeasons = numberingOf(showKey);
             return (
               <li
                 key={showKey}
-                className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm"
               >
                 <span className="min-w-0 truncate">{name}</span>
-                <span className="flex shrink-0 items-center gap-2">
+                <span className="flex shrink-0 flex-wrap items-center gap-2">
                   {series?.orders.length ? (
                     <Select
                       value={showOrder}
@@ -322,12 +368,15 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
                       disabled={disabled}
                     >
                       <SelectTrigger
-                        className="h-8 w-[170px]"
+                        className="h-8 w-[190px]"
                         aria-label={`Episode order for ${name}`}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={GLOBAL} disabled={showSeasons === GLOBAL}>
+                          {GLOBAL_ORDER_LABEL}
+                        </SelectItem>
                         {series.orders.map((o) => (
                           <SelectItem key={o.type} value={o.type}>
                             {ORDER_LABELS[o.type] ?? o.name}
@@ -337,7 +386,36 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
                     </Select>
                   ) : (
                     <span className="text-muted-foreground">
-                      {ORDER_LABELS[showOrder] ?? showOrder}
+                      {showOrder === GLOBAL
+                        ? GLOBAL_ORDER_LABEL
+                        : (ORDER_LABELS[showOrder] ?? showOrder)}
+                    </span>
+                  )}
+                  {series?.yearSeasons ? (
+                    <Select
+                      value={showSeasons}
+                      onValueChange={(next) => changeNumbering(showKey, next)}
+                      disabled={disabled}
+                    >
+                      <SelectTrigger
+                        className="h-8 w-[150px]"
+                        aria-label={`Season numbering for ${name}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={GLOBAL} disabled={showOrder === GLOBAL}>
+                          {GLOBAL_NUMBERING_LABEL}
+                        </SelectItem>
+                        <SelectItem value="years">{SEASON_NUMBERING_LABELS.years}</SelectItem>
+                        <SelectItem value="sequential">{SEASON_NUMBERING_LABELS.sequential}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span className="w-[150px] text-muted-foreground">
+                      {showSeasons === GLOBAL
+                        ? "—"
+                        : SEASON_NUMBERING_LABELS[showSeasons as SeasonNumbering]}
                     </span>
                   )}
                   <Button
@@ -361,15 +439,15 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
       {picked ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
           <span className="min-w-0 flex-1 truncate text-sm font-medium">
-            {picked.name}
-            {picked.year ? ` (${picked.year})` : ""}
+            {displayName(picked)}
           </span>
           {picked.orders.length ? (
             <Select value={order} onValueChange={setOrder}>
-              <SelectTrigger className="w-full sm:w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]" aria-label="Episode order">
                 <SelectValue placeholder="Episode order" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={GLOBAL}>{GLOBAL_ORDER_LABEL}</SelectItem>
                 {picked.orders.map((o) => (
                   <SelectItem key={o.type} value={o.type}>
                     {ORDER_LABELS[o.type] ?? o.name}
@@ -382,15 +460,22 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
               TVDB lists no episode orders for this show.
             </span>
           )}
-          <Button type="button" size="sm" onClick={add} disabled={!order}>
+          {picked.yearSeasons && (
+            <Select value={seasons} onValueChange={setSeasons}>
+              <SelectTrigger className="w-full sm:w-[160px]" aria-label="Season numbering">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={GLOBAL}>{GLOBAL_NUMBERING_LABEL}</SelectItem>
+                <SelectItem value="years">{SEASON_NUMBERING_LABELS.years}</SelectItem>
+                <SelectItem value="sequential">{SEASON_NUMBERING_LABELS.sequential}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          <Button type="button" size="sm" onClick={add} disabled={!canAdd}>
             Add
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => setPicked(null)}
-          >
+          <Button type="button" size="sm" variant="ghost" onClick={closePicker}>
             Cancel
           </Button>
         </div>
@@ -412,6 +497,8 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
           />
           <Button
             type="button"
+            variant="outline"
+            className="shrink-0"
             onClick={() => void lookUp()}
             disabled={disabled || loadingSeries || !tvdbInput.trim() || atLimit}
           >
@@ -426,7 +513,7 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
       {atLimit && (
         <p className="text-sm text-muted-foreground">
           You've reached this instance's limit of {maxEpisodeOrders} shows.
-          Remove one to add another; orders of listed shows can still be
+          Remove one to add another; settings of listed shows can still be
           changed.
         </p>
       )}
@@ -436,7 +523,7 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
           size="sm"
           variant="outline"
           onClick={exportList}
-          disabled={!shows.length}
+          disabled={!showKeys.length}
         >
           <Download className="size-4" />
           Export JSON
@@ -456,7 +543,7 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
           Import JSON
         </Button>
         <span className="ml-auto text-xs text-muted-foreground">
-          {shows.length} of {maxEpisodeOrders}
+          {showKeys.length} of {maxEpisodeOrders}
         </span>
         <input
           ref={fileInput}
@@ -473,9 +560,9 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
         <summary className="cursor-pointer select-none">Import format</summary>
         <div className="mt-2 space-y-2">
           <p>
-            A list of shows, each with its TVDB id and an order.{" "}
-            <code>name</code> is optional and only there to make the file
-            readable.
+            A list of shows, each with its TVDB id and an order, a season
+            numbering or both. <code>name</code> is optional and only there to
+            make the file readable.
           </p>
           <pre className="overflow-x-auto rounded-md border bg-muted/50 p-3 text-xs text-foreground">
             {IMPORT_EXAMPLE}
@@ -489,6 +576,10 @@ export function EpisodeOrderOverrides({ disabled }: { disabled?: boolean }) {
               </span>
             ))}
             . A show only takes an order TVDB lists for it.
+          </p>
+          <p>
+            Seasons: <code>years</code>, <code>sequential</code>. Only for
+            shows TVDB numbers by year.
           </p>
         </div>
       </details>

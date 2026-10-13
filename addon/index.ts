@@ -2387,15 +2387,18 @@ addon.get("/api/tvdb/episode-orders/:tvdbId", async (req, res) => {
     const series = await tvdbApi.getSeriesExtended(tvdbId, tvdbConfig);
     if (!series) return res.status(404).json({ error: "Series not found on TVDB" });
     const orders = new Map();
+    let yearSeasons = false;
     for (const season of Array.isArray(series.seasons) ? series.seasons : []) {
       const type = season?.type?.type;
       if (type && !orders.has(type)) orders.set(type, season.type.name || type);
+      if (type === 'official' && season.number > 1900) yearSeasons = true;
     }
     return res.json({
       tvdbId: String(series.id ?? tvdbId),
       name: series.name || `TVDB ${tvdbId}`,
       year: series.year || '',
       orders: [...orders.entries()].map(([type, name]) => ({ type, name })),
+      yearSeasons,
     });
   } catch (error) {
     consola.error("[TVDB Episode Orders] Lookup failed:", error.message);
