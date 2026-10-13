@@ -95,6 +95,7 @@ export interface UserConfig {
   exclusionGenres?: string;
   exclusionTmdbKeywords?: string[];
   tvdbSeasonType?: string;
+  animeEpisodeDates?: 'provider' | 'earliest' | 'dub';
   tvdbEpisodeOrders?: Record<string, string>;
   castCount?: number;
   blurThumbs?: boolean;

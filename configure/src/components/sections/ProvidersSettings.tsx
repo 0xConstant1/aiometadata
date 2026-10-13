@@ -44,6 +44,12 @@ const animeIdProviders: SelectableOption[] = [
   { value: 'retain', label: 'Retain Requested ID (Auto-detect)' },
 ];
 
+const animeEpisodeDateSources: SelectableOption[] = [
+  { value: 'provider', label: 'Metadata provider' },
+  { value: 'earliest', label: 'Earliest release' },
+  { value: 'dub', label: 'English dub' },
+];
+
 const tvdbSeasonTypes: SelectableOption[] = [
   { value: 'official', label: 'Official Order' },
   { value: 'default', label: 'Aired Order (Default)' },
@@ -340,6 +346,27 @@ export function ProvidersSettings() {
                  guessable from the label, so it stays visible. */
               <p className="text-xs text-muted-foreground">
                 "IMDb" can improve compatibility as it is supported by most streaming addons. "Retain Requested ID" automatically uses the ID type from the request (e.g., IMDb for tt123, Kitsu for kitsu:456, MAL for mal:789). Kitsu is recommended when using MAL as meta provider.
+              </p>
+            }
+          />
+          <SettingRow
+            htmlFor="anime-episode-dates"
+            label="Anime Episode Dates"
+            description="When an anime episode counts as out. Earliest release uses the first release anywhere, which is often a streaming premiere days before the TV broadcast; English dub uses the dub's release. Applies to TVDB (Aired or Official order), Kitsu and MyAnimeList metadata; episodes without a schedule keep the provider's date."
+            control={
+              <ProviderSelect
+                id="anime-episode-dates"
+                ariaLabel="Anime episode dates"
+                value={config.animeEpisodeDates || 'provider'}
+                onValueChange={(value) => setConfig(prev => ({ ...prev, animeEpisodeDates: value as 'provider' | 'earliest' | 'dub' }))}
+                options={animeEpisodeDateSources}
+                hasTvdbKey={hasTvdbKey}
+                className="w-full sm:w-[240px]"
+              />
+            }
+            note={
+              <p className="text-xs text-muted-foreground">
+                Release times from <a href="https://anilist.co" target="_blank" rel="noopener noreferrer" className="underline">AniList</a>; dub times from <a href="https://animeschedule.net" target="_blank" rel="noopener noreferrer" className="underline">AnimeSchedule.net</a>, via <a href="https://github.com/RockinChaos/AniSchedule" target="_blank" rel="noopener noreferrer" className="underline">AniSchedule</a>.
               </p>
             }
           />

@@ -1719,6 +1719,55 @@ class DashboardAPI {
         });
       }
 
+      // 13. Anime release schedule (AniSchedule), refreshed in memory as requests arrive
+      try {
+        const { getAnimeScheduleStats } = require('./animeAiringSchedule');
+        const scheduleStats = getAnimeScheduleStats();
+        const status = !scheduleStats.enabled
+          ? "disabled"
+          : scheduleStats.running
+            ? "running"
+            : scheduleStats.lastError
+              ? "error"
+              : scheduleStats.loaded ? "completed" : "scheduled";
+
+        let nextRunDisplay = "Disabled";
+        if (scheduleStats.enabled) {
+          const nextRunTime = (scheduleStats.lastCheck || 0) + scheduleStats.refreshMinutes * 60 * 1000;
+          nextRunDisplay = nextRunTime > Date.now() ? this.getTimeUntil(new Date(nextRunTime)) : "On next request";
+        }
+
+        const source = scheduleStats.sourceUpdatedAt
+          ? `, source updated ${this.getTimeAgo(new Date(scheduleStats.sourceUpdatedAt))}${scheduleStats.stale ? ", stale: earliest times read from AniList" : ""}`
+          : "";
+        const detail = scheduleStats.lastError
+          ? `last refresh failed: ${scheduleStats.lastError}`
+          : `${scheduleStats.anime.toLocaleString()} anime, ${scheduleStats.dubbed.toLocaleString()} with dub times${source}`;
+
+        tasks.push({
+          id: 13,
+          name: "Update Anime Release Schedule",
+          status,
+          lastRun: scheduleStats.lastRefreshAt ? this.getTimeAgo(new Date(scheduleStats.lastRefreshAt)) : "Never",
+          description: `Earliest release and English dub times for anime episodes (${detail})`,
+          nextRun: nextRunDisplay,
+          action: scheduleStats.enabled ? "restart" : null,
+          category: "mapping"
+        });
+      } catch (error) {
+        logger.warn("Failed to get anime release schedule status:", error.message);
+        tasks.push({
+          id: 13,
+          name: "Update Anime Release Schedule",
+          status: "error",
+          lastRun: "Unknown",
+          description: "Earliest release and English dub times for anime episodes",
+          nextRun: "Unknown",
+          action: "restart",
+          category: "mapping"
+        });
+      }
+
       // 5. ID Mappings update task (scheduled every WIKI_MAPPER_UPDATE_INTERVAL_HOURS)
       try {
         const wikiMapperStats = getIdMappingsStats();

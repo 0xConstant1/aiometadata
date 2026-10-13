@@ -513,6 +513,40 @@ class AniListAPI {
   }
 
   /**
+   * Airing times for the given anime between two Unix times, earliest first.
+   */
+  async getAiringSchedules(mediaIds: number[], from: number, to: number): Promise<Array<{ mediaId: number; episode: number; airingAt: number }>> {
+    const query = `
+      query ($ids: [Int], $from: Int, $to: Int, $page: Int) {
+        Page(page: $page, perPage: 50) {
+          pageInfo { hasNextPage }
+          airingSchedules(mediaId_in: $ids, airingAt_greater: $from, airingAt_lesser: $to, sort: TIME) {
+            mediaId
+            episode
+            airingAt
+          }
+        }
+      }
+    `;
+    const rows: Array<{ mediaId: number; episode: number; airingAt: number }> = [];
+    for (let page = 1; page <= 10; page++) {
+      const response = await this.makeRateLimitedRequest(() =>
+        httpPost(this.baseURL, { query, variables: { ids: mediaIds, from, to, page } }, {
+          headers: anilistHeaders(),
+          timeout: 30000
+        })
+      );
+      const result = response.data?.data?.Page;
+      if (!result) {
+        throw new Error(`AniList GraphQL errors: ${JSON.stringify(response.data?.errors)}`);
+      }
+      rows.push(...(result.airingSchedules || []));
+      if (!result.pageInfo?.hasNextPage) break;
+    }
+    return rows;
+  }
+
+  /**
    * GraphQL query for getting multiple anime artworks by AniList IDs (aliasing)
    */
   async getMultipleAnimeArtworkByAnilistIds(anilistIds: number[], accessToken?: string): Promise<any[]> {

@@ -304,6 +304,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ['anime', 'id', 'kitsu', 'mal', 'imdb', 'compatibility'],
   },
   {
+    id: 'providers.animeEpisodeDates', section: 'providers', anchor: 'anime-episode-dates',
+    label: 'Anime Episode Dates',
+    description: 'Show anime episodes as out when they first release anywhere, or when the English dub releases, instead of the metadata provider\'s date.',
+    keywords: ['anime', 'release', 'air date', 'dub', 'simulcast', 'streaming', 'schedule', 'anilist', 'animeschedule'],
+  },
+  {
     id: 'providers.skipFiller', section: 'providers', anchor: 'skip-filler',
     label: 'Skip Filler Episodes',
     description: 'Automatically filter out episodes marked as filler.',

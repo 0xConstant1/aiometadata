@@ -253,6 +253,7 @@ export interface AppConfig {
     originalLangFallback: boolean;
   };
   tvdbSeasonType: string;
+  animeEpisodeDates?: 'provider' | 'earliest' | 'dub';
   tvdbEpisodeOrders?: Record<string, string>;
   mal: {
     skipFiller: boolean;

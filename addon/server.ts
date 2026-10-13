@@ -158,6 +158,12 @@ const initializationTasks: InitTask[] = [
     run: () => initializeTmdbKeywordIndex()
   },
   {
+    key: 'animeSchedule',
+    timeoutMs: 60_000,
+    run: () => require('./lib/animeAiringSchedule').initializeAnimeSchedule(),
+    summary: () => require('./lib/animeAiringSchedule').animeScheduleStats()
+  },
+  {
     key: 'cacheCleanup',
     timeoutMs: 120_000,
     run: () => runCacheCleanup()
