@@ -40,8 +40,8 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: 'general.contentRatingCountry', section: 'general', anchor: 'content-rating-country',
-    label: 'Content Rating Country',
-    description: 'Country whose age rating is shown.',
+    label: 'Rating Country',
+    description: "Which country's rating the age rating shows, under Display Age Rating.",
     keywords: ['certification', 'classification', 'age', 'country', 'region'],
   },
   {
