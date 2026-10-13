@@ -1162,8 +1162,8 @@ function applyBlurThumbProjection(meta: any, config: any): any {
 
 function applyDisplayAgeRatingProjection(meta: any, config: any): any {
   const certification = meta?.app_extras?.certification;
-  if (!certification) return meta;
   const displayCert = meta?.app_extras?.certificationLocal || certification;
+  if (!displayCert) return meta;
   const links = Array.isArray(meta.links) ? stripRatingLinks(meta.links, meta.app_extras) : [];
   if (config.displayAgeRating) {
     const imdbId = meta.id?.match(/^tt\d+/)?.[0] || meta.imdb_id || meta._imdbId;
