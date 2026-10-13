@@ -1,6 +1,6 @@
 import { LRUCache } from 'lru-cache';
 import { readsBySeason, seasonNumberingProfile, withEpisodeOrder } from '../utils/episodeOrder';
-import { applyContentRatingProjection, ratingLinkNames } from '../utils/contentRating';
+import { applyContentRatingProjection, ratingLinkNames, stripRatingLinks } from '../utils/contentRating';
 import { applySeasonNumberingProjection, predatesSeasonNumbering } from './seasonNumberingProjection';
 import type { MetaHashEntry } from './metaHashStore';
 const redis: any = require('./redisClient');
@@ -1160,17 +1160,11 @@ function applyBlurThumbProjection(meta: any, config: any): any {
   return meta;
 }
 
-function stripCertificationLinks(links: any[], appExtras: any): any[] {
-  const names = ratingLinkNames(appExtras);
-  if (!Array.isArray(links) || names.size === 0) return links;
-  return links.filter((link: any) => !(link?.category === 'Genres' && names.has(link?.name)));
-}
-
 function applyDisplayAgeRatingProjection(meta: any, config: any): any {
   const certification = meta?.app_extras?.certification;
   if (!certification) return meta;
   const displayCert = meta?.app_extras?.certificationLocal || certification;
-  const links = Array.isArray(meta.links) ? stripCertificationLinks(meta.links, meta.app_extras) : [];
+  const links = Array.isArray(meta.links) ? stripRatingLinks(meta.links, meta.app_extras) : [];
   if (config.displayAgeRating) {
     const imdbId = meta.id?.match(/^tt\d+/)?.[0] || meta.imdb_id || meta._imdbId;
     const tmdbPath = meta.type === 'series' ? 'tv' : 'movie';
@@ -1194,9 +1188,16 @@ function projectRatingsInPayload(result: any, config: any, includeRatingLink: bo
       ? { ...meta, app_extras: { ...meta.app_extras } }
       : { ...meta };
     applyContentRatingProjection(own, config);
-    return includeRatingLink ? applyDisplayAgeRatingProjection(own, config) : own;
+    return includeRatingLink || hasRatingLink(own) ? applyDisplayAgeRatingProjection(own, config) : own;
   });
   return { ...result, metas };
+}
+
+// A row built from a full meta already carries the building user's rating link.
+function hasRatingLink(meta: any): boolean {
+  if (!Array.isArray(meta?.links)) return false;
+  const names = ratingLinkNames(meta.app_extras);
+  return meta.links.some((link: any) => link?.category === 'Genres' && names.has(link?.name));
 }
 
 function getConfiguredCastCount(config: any): number | null {
@@ -1938,7 +1939,7 @@ async function writeMetaComponentsWithConfig({ config, metaId, result, ttl = MET
   if (meta.app_extras?.directors?.length) components.push({ name: 'director', data: { directors: meta.app_extras.directors } });
   if (meta.app_extras?.writers?.length) components.push({ name: 'writer', data: { writers: meta.app_extras.writers } });
   if (meta.links && Array.isArray(meta.links) && meta.links.length > 0) {
-    components.push({ name: 'links', data: { links: canonicalizeLinksForCache(stripCertificationLinks(meta.links, meta.app_extras)) } });
+    components.push({ name: 'links', data: { links: canonicalizeLinksForCache(stripRatingLinks(meta.links, meta.app_extras)) } });
   }
   if (meta.trailers?.length) components.push({ name: 'trailers', data: { trailers: meta.trailers } });
   const extrasForCache = projectAppExtrasForComponentCache(meta.app_extras);

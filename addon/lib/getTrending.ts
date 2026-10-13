@@ -4,7 +4,7 @@ import { getMeta } from './getMeta.js';
 import { cacheWrapMetaSmart } from './getCache.js';
 import { UserConfig } from '../types/index.js';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating } from '../utils/ageRating.js';
-import { applyContentRatingProjection, buildCertificationMap } from '../utils/contentRating.js';
+import { applyContentRatingProjection, buildCertificationMap, replaceCertifications } from '../utils/contentRating.js';
 const consola = require('consola');
 
 const logger = consola.withTag('GetTrending'); 
@@ -42,13 +42,10 @@ async function getTrending(type: string, language: string, page: number, genre: 
         const certifications: any = type === 'movie'
             ? await moviedb.getMovieCertifications({ id: item.id }, config)
             : await moviedb.getTvCertifications({ id: item.id }, config);
-        result.meta.app_extras = result.meta.app_extras || {};
         const map = type === 'movie'
             ? buildCertificationMap({ tmdbMovie: certifications })
             : buildCertificationMap({ tmdbTv: certifications });
-        result.meta.app_extras.certifications = map;
-        result.meta.app_extras.certification = map?.US ?? null;
-        result.meta.app_extras.certificationLocal = null;
+        replaceCertifications(result.meta, map);
         applyContentRatingProjection(result.meta, config);
             
         return result.meta;

@@ -149,30 +149,13 @@ function isCertificationMap(value: unknown): value is CertificationMap {
   return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
 }
 
-// A cached movie from before the map: rebuild it from its release dates, keeping the
-// stored local rating, which was built for the language region and may be TVDB's.
-function legacyMovieMap(extras: any, config: any): CertificationMap | null {
-  const map = buildCertificationMap({ tmdbMovie: extras.releaseDates }) || {};
-  const region = languageRegion(config);
-  const stored = extras.certificationLocal;
-  if (region && map[region] === undefined && typeof stored === 'string' && stored !== '' && stored !== extras.certification) {
-    map[region] = stored;
-  }
-  return Object.keys(map).length > 0 ? map : null;
-}
-
+// Entries without a map (cached before it, or MAL/Kitsu) keep the rating they stored.
 export function applyContentRatingProjection(meta: any, config: any): any {
   const extras = meta?.app_extras;
   if (!extras || typeof extras !== 'object' || Array.isArray(extras)) return meta;
+  if (!isCertificationMap(extras.certifications)) return meta;
 
-  let map: CertificationMap | null = isCertificationMap(extras.certifications) ? extras.certifications : null;
-  if (!map && extras.releaseDates && typeof extras.certification === 'string' && extras.certification !== '') {
-    map = legacyMovieMap(extras, config);
-    if (map) extras.certifications = map;
-  }
-  if (!map) return meta;
-
-  extras.certificationLocal = map[resolveRatingCountry(config)] ?? extras.certification ?? null;
+  extras.certificationLocal = extras.certifications[resolveRatingCountry(config)] ?? extras.certification ?? null;
   return meta;
 }
 
@@ -186,4 +169,20 @@ export function ratingLinkNames(appExtras: any): Set<string> {
   add(appExtras.certificationLocal);
   if (isCertificationMap(appExtras.certifications)) Object.values(appExtras.certifications).forEach(add);
   return names;
+}
+
+export function stripRatingLinks(links: any, appExtras: any): any {
+  const names = ratingLinkNames(appExtras);
+  if (!Array.isArray(links) || names.size === 0) return links;
+  return links.filter((link: any) => !(link?.category === 'Genres' && names.has(link?.name)));
+}
+
+// Swaps in a new map; links named from the old one would otherwise outlive it.
+export function replaceCertifications(meta: any, map: CertificationMap | null): any {
+  meta.app_extras = meta.app_extras || {};
+  if (Array.isArray(meta.links)) meta.links = stripRatingLinks(meta.links, meta.app_extras);
+  meta.app_extras.certifications = map;
+  meta.app_extras.certification = map?.US ?? null;
+  meta.app_extras.certificationLocal = null;
+  return meta;
 }
