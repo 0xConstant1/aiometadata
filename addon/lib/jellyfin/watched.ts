@@ -643,7 +643,7 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
 type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';
 
 // Raised to rebuild indexes written in an older spelling.
-const INDEX_FORMAT = 3;
+const INDEX_FORMAT = 4;
 
 interface SummaryData {
   format?: number;
@@ -1011,6 +1011,19 @@ export async function fetchPmdbDropped(apiKey: string): Promise<{ items: any[]; 
   }
 }
 
+/** A show's aired episodes on TMDB, specials left out. */
+async function tmdbAiredEpisodes(tmdbId: number, config: any): Promise<number> {
+  const { tvInfo } = require('../getTmdb');
+  const detail = await tvInfo({ id: tmdbId }, config);
+  const last = detail?.last_episode_to_air;
+  const lastSeason = Number(last?.season_number);
+  if (!(lastSeason > 0)) return 0;
+  const before = (Array.isArray(detail?.seasons) ? detail.seasons : [])
+    .filter((season: any) => Number(season?.season_number) > 0 && Number(season.season_number) < lastSeason)
+    .reduce((sum: number, season: any) => sum + (Number(season?.episode_count) || 0), 0);
+  return before + (Number(last?.episode_number) || 0);
+}
+
 /** A user's PublicMetaDB plays and drops made into a snapshot; plays newest first. */
 export async function assemblePmdb(data: PmdbData, config: any): Promise<RawSnapshot> {
   const { rows, droppedItems, droppedUnread } = data;
@@ -1027,6 +1040,7 @@ export async function assemblePmdb(data: PmdbData, config: any): Promise<RawSnap
   const seen = new Map<string, number>();
   const series = new Map<string, { watched: number; total: number; at?: number }>();
   const latest = new Map<string, { row: any; at: number }>();
+  const byShow = new Map<number, { metaIds: Set<string>; anime: boolean; regular: number }>();
   const history = new Map<string, HistoryEntry>();
   const followedSince = Date.now() - envInt('JELLYFIN_NEXTUP_OWN_DAYS', 120, 1) * 24 * 60 * 60 * 1000;
 
@@ -1057,10 +1071,23 @@ export async function assemblePmdb(data: PmdbData, config: any): Promise<RawSnap
     const counts = series.get(resolved.metaId) ?? { watched: 0, total: 0 };
     counts.watched += 1;
     series.set(resolved.metaId, counts);
+    const show = byShow.get(Number(row.tmdb_id)) ?? { metaIds: new Set<string>(), anime: false, regular: 0 };
+    show.metaIds.add(resolved.metaId);
+    if (resolved.mediaType === 'anime') show.anime = true;
+    if (season > 0) show.regular += 1;
+    byShow.set(Number(row.tmdb_id), show);
 
     const held = latest.get(resolved.metaId);
     if (!held || at > held.at) latest.set(resolved.metaId, { row: { ...resolved, season, episode }, at });
   }
+
+  const { mapWithConcurrency } = require('../../utils/concurrency');
+  const whole = [...byShow].filter(([, show]) => !show.anime && show.metaIds.size === 1);
+  await mapWithConcurrency(whole, envInt('JELLYFIN_SHELF_META_CONCURRENCY', 4, 1), async ([tmdbId, show]: [number, { metaIds: Set<string>; regular: number }]) => {
+    const aired = await tmdbAiredEpisodes(tmdbId, config).catch(() => 0);
+    const counts = series.get([...show.metaIds][0]);
+    if (aired > 0 && counts) Object.assign(counts, { watched: show.regular, total: aired });
+  });
 
   const nextUp: NextUpRow[] = [];
   const following: Array<{ metaId: string; mediaType: 'anime' | 'series' }> = [];
