@@ -583,6 +583,13 @@ export function invalidateResume(userUUID: string): void {
   }
 }
 
+/** Drops a user's held Upcoming and calendar lists. */
+export function invalidateDatedShelves(userUUID: string): void {
+  for (const key of [...nextUpPages.keys()]) {
+    if (String(key).startsWith(`${userUUID}:`) && /:(upcoming|calendar):/.test(String(key))) nextUpPages.delete(key);
+  }
+}
+
 const nextUpPages = new LRUCache<string, any[]>({
   max: envInt('JELLYFIN_NEXTUP_CACHE_MAX', 500, 1),
   ttl: envInt('JELLYFIN_NEXTUP_TTL', 900, 1) * 1000,

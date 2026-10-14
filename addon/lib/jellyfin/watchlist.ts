@@ -1,6 +1,7 @@
 import { fetchMeta, metaToBaseItem } from './items';
 import { clientHasOwnWatchlist } from './context';
 import { profileKey, writesTrackers } from './profiles';
+import { invalidateDatedShelves } from './resume';
 import { dedupeWatchlist, keepsServerWatchlist, shelfCacheWindowMs, trackerWatchlist, watchlistPicks, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { LRUCache } from 'lru-cache';
@@ -193,6 +194,7 @@ export async function setWatchlisted(userUUID: string, config: any, descriptor: 
 
   await database.setWatchlisted(userUUID, profileKey(config), String(meta.id), descriptor.t, listed, meta.type === 'movie' ? 'movie' : 'series');
   invalidateWatchlist(userUUID);
+  invalidateDatedShelves(userUUID);
   if (writesTrackers(config)) {
     const { enqueueTrackerWrites, hasCredential } = require('../trackerOutbox');
     const services = (['mdblist', 'simkl', 'publicmetadb', 'anilist', 'mal'] as const).filter((service) => hasCredential(config, service));
