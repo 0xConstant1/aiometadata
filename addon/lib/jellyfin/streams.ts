@@ -337,6 +337,11 @@ export function coalesce(key: string, work: () => Promise<any[]>): Promise<any[]
   return started;
 }
 
+// Header values carry Latin-1 only.
+function headerValue(value: string): string {
+  return /^[\x20-\x7E]*$/.test(value) ? value : encodeURIComponent(value);
+}
+
 export async function fetchStreams(
   base: string,
   type: string,
@@ -350,8 +355,8 @@ export async function fetchStreams(
   try {
     const headers: Record<string, string> = { accept: 'application/json', 'user-agent': streamUserAgent(client?.userAgent) };
     if (client) {
-      headers['x-jellyfin-client'] = `${client.client}/${client.version}`;
-      headers['x-jellyfin-device'] = client.device;
+      headers['x-jellyfin-client'] = headerValue(`${client.client}/${client.version}`);
+      headers['x-jellyfin-device'] = headerValue(client.device);
     }
     const response = await fetch(url, { headers, signal: controller.signal });
     if (!response.ok) {
