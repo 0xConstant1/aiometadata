@@ -2665,17 +2665,25 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json(itemList(ordered.slice(startIndex, startIndex + limit), ordered.length, startIndex));
   });
 
-  // Tracker-followed shows are all checked; locally known ones are capped.
+  // Tracker-followed shows are all checked; watchlisted and locally known ones are capped.
   const showsInView = async (userUUID: string, config: any, days: number) => {
-    const [snapshot, resume, own, caughtUp] = await Promise.all([
+    const watchlistLimit = envInt('JELLYFIN_UPCOMING_WATCHLIST_LIMIT', 100, 1);
+    const [snapshot, resume, own, caughtUp, listed] = await Promise.all([
       watchedSnapshot(userUUID, config),
       resumeSnapshot(userUUID, config),
       ownNextUpRows(userUUID, profileKey(config)),
       upcomingFollowed(config, days),
+      watchlistEntries(userUUID, config, watchlistLimit).catch(() => ({ entries: [] as any[] })),
     ]);
     const shows = new Map<string, string>();
     for (const row of [...caughtUp, ...snapshot.following]) {
       if (!shows.has(row.metaId)) shows.set(row.metaId, row.mediaType);
+    }
+    const watchlisted = listed.entries
+      .filter((entry: any) => entryItemType(entry) === 'Series' && !snapshot.dropped.has(entry.metaId))
+      .slice(0, watchlistLimit);
+    for (const entry of watchlisted) {
+      if (!shows.has(entry.metaId)) shows.set(entry.metaId, entry.mediaType);
     }
     let local = 0;
     const localCap = envInt('JELLYFIN_UPCOMING_LOCAL_SHOWS', 60, 0);

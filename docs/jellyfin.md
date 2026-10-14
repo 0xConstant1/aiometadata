@@ -178,7 +178,7 @@ Not every tracker holds every kind of state:
 
 **Next Up** lists the next unwatched episode of shows in progress. From MDBList it is MDBList's own Up Next list, read `JELLYFIN_NEXTUP_MDBLIST_PAGES` pages deep; from Simkl it is the next episode of every show in the Watching list, so a planned, on-hold or dropped show never shows up at its first episode; from PublicMetaDB and from plays through this server it is derived from the last finished episode, looking back `JELLYFIN_NEXTUP_OWN_DAYS` days. Specials and unaired episodes are never offered. A candidate that turns out to be finished, unaired or unknown to the metadata is skipped and the page is filled from the ones after it; the reason is in the debug log.
 
-**Upcoming** lists episodes airing within `JELLYFIN_UPCOMING_DAYS` days for every show MDBList lists as followed, plus up to `JELLYFIN_UPCOMING_LOCAL_SHOWS` shows known only from plays here, plus watchlist films not yet released. The followed list is kept `JELLYFIN_UPCOMING_TTL` seconds.
+**Upcoming** lists episodes airing within `JELLYFIN_UPCOMING_DAYS` days for every show MDBList lists as followed, plus the shows on the watchlist, plus up to `JELLYFIN_UPCOMING_LOCAL_SHOWS` shows known only from plays here, plus watchlist films not yet released. The watchlist is read `JELLYFIN_UPCOMING_WATCHLIST_LIMIT` titles deep for shows and for films alike, so a watchlisted show is followed whichever tracker the profile reads. The followed list is kept `JELLYFIN_UPCOMING_TTL` seconds.
 
 **Watched ticks** on a film or episode mean the tracker's history, or the playstate table, lists it. A series shows its progress as watched out of aired, counting only regular episodes that have already aired, so a show with specials or a season still airing can reach a full tick. Ticks are applied on library pages, Latest rows and search results alike.
 
@@ -294,7 +294,7 @@ All of these are in the dashboard under **Server**, or as environment variables,
 | `JELLYFIN_UPCOMING_DAYS` | `90` | How far ahead Upcoming looks. |
 | `JELLYFIN_UPCOMING_TTL` | `21600` | How long the list of followed shows is kept. |
 | `JELLYFIN_UPCOMING_LOCAL_SHOWS` | `60` | Shows known only from local plays checked for an upcoming episode. |
-| `JELLYFIN_UPCOMING_WATCHLIST_LIMIT` (env) | `100` | Watchlist films checked for a release date. |
+| `JELLYFIN_UPCOMING_WATCHLIST_LIMIT` (env) | `100` | Watchlist shows checked for an upcoming episode, and watchlist films for a release date. |
 | `JELLYFIN_WATCHLIST_MEMO_TTL` | `60` | How long the merged watchlist is held in memory after a read, on top of the watchlist catalogs' cache. |
 | `WATCH_STATE_PULL_TTL` | `300` | How long a front end reading watch state from the addon may reuse an answer. |
 | `WATCH_STATE_PULL_ITEMS` | `100` | In-progress titles a watch state read returns. |
