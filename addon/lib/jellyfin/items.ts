@@ -10,6 +10,7 @@ import redis from '../redisClient';
 import type { CatalogRef } from './views';
 import { viewerAccountOwner, viewerMarksUnaired, viewerProfile, viewerReadsExtensions } from './viewer';
 import { SERVER_WATCHLIST_PREFIX } from '../serverWatchlist';
+import { isLandscapeCatalogConfig } from '../../utils/catalogPosterShape';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -712,7 +713,7 @@ function catalogSettingsFor(config: any, catalog: { id: string; type: string }):
 }
 
 export function isLandscapeCatalog(config: any, catalog: { id: string; type: string }): boolean {
-  return catalogSettingsFor(config, catalog)?.metadata?.posterShape === 'landscape';
+  return isLandscapeCatalogConfig(config, catalogSettingsFor(config, catalog));
 }
 
 export function showLandscape(items: any[]): void {

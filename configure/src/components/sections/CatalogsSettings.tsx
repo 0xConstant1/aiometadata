@@ -22,6 +22,7 @@ import { AICatalogDialog } from '@/components/AICatalogDialog';
 import { CacheTTLField } from '@/components/CacheTTLField';
 import { useConfig } from '@/contexts/ConfigContext';
 import type { CatalogConfig } from '@/contexts/config';
+import { mergedSourcesShape } from '@/lib/posterShape';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -2730,6 +2731,13 @@ const MergedCatalogCard = ({
   const [newType, setNewType] = useState(catalog.displayType || catalog.type);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsMergeMode, setSettingsMergeMode] = useState<'interleaved' | 'sequential' | 'alternating'>(catalog.metadata?.mergeMode || 'interleaved');
+  const [settingsPosterShape, setSettingsPosterShape] = useState<'inherit' | 'poster' | 'landscape'>(catalog.metadata?.posterShape || 'inherit');
+  const sourcesShape = mergedSourcesShape(catalog, allCatalogs);
+  const openSettings = () => {
+    setSettingsMergeMode(catalog.metadata?.mergeMode || 'interleaved');
+    setSettingsPosterShape(catalog.metadata?.posterShape || 'inherit');
+    setShowSettings(true);
+  };
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -2911,7 +2919,7 @@ const MergedCatalogCard = ({
                         <Shuffle className={`h-4 w-4 mr-2 ${catalog.randomizePerPage && catalog.enabled ? 'text-purple-400' : 'text-muted-foreground'}`} />
                         {catalog.randomizePerPage ? 'Original Order' : 'Randomize Order'}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setSettingsMergeMode(catalog.metadata?.mergeMode || 'interleaved'); setShowSettings(true); }}>
+                      <DropdownMenuItem onClick={openSettings}>
                         <Settings className="h-4 w-4 mr-2 text-muted-foreground" />
                         Merge Settings
                       </DropdownMenuItem>
@@ -3012,7 +3020,7 @@ const MergedCatalogCard = ({
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => { setSettingsMergeMode(catalog.metadata?.mergeMode || 'interleaved'); setShowSettings(true); }} className="h-8 w-8 active:scale-90 transition-transform">
+                <Button variant="ghost" size="icon" onClick={openSettings} className="h-8 w-8 active:scale-90 transition-transform">
                   <Settings className="h-5 w-5 text-muted-foreground hover:text-foreground" />
                 </Button>
               </TooltipTrigger>
@@ -3095,10 +3103,24 @@ const MergedCatalogCard = ({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Poster Shape</Label>
+              <Select value={settingsPosterShape} onValueChange={(v: 'inherit' | 'poster' | 'landscape') => setSettingsPosterShape(v)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inherit">Match sources (currently {sourcesShape === 'landscape' ? 'Landscape' : 'Poster'})</SelectItem>
+                  <SelectItem value="poster">Poster</SelectItem>
+                  <SelectItem value="landscape">Landscape</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Match sources is Landscape only when every source catalog is landscape. Jellyfin clients keep their own card shapes.</p>
+            </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowSettings(false)}>Cancel</Button>
               <Button onClick={() => {
-                updateCatalog(c => ({ ...c, metadata: { ...c.metadata, mergeMode: settingsMergeMode } }));
+                updateCatalog(c => ({ ...c, metadata: { ...c.metadata, mergeMode: settingsMergeMode, posterShape: settingsPosterShape === 'inherit' ? undefined : settingsPosterShape } }));
                 setShowSettings(false);
               }}>Save</Button>
             </div>
@@ -4861,7 +4883,9 @@ function CatalogsSettingsContent({
     setLoadingAction(shape === 'landscape' ? 'setLandscape' : 'setPoster');
 
     try {
-      const toChange = selectedCatalogs.filter(catalog => (catalog.metadata?.posterShape === 'landscape') !== (shape === 'landscape'));
+      const toChange = selectedCatalogs.filter(catalog => catalog.source === 'merged'
+        ? catalog.metadata?.posterShape !== shape
+        : (catalog.metadata?.posterShape === 'landscape') !== (shape === 'landscape'));
       const keys = new Set(toChange.map(cat => `${cat.id}-${cat.type}`));
 
       if (keys.size > 0) {
@@ -4869,7 +4893,7 @@ function CatalogsSettingsContent({
           ...prev,
           catalogs: prev.catalogs.map(c =>
             keys.has(`${c.id}-${c.type}`)
-              ? { ...c, metadata: { ...c.metadata, posterShape: shape === 'landscape' ? 'landscape' : undefined } }
+              ? { ...c, metadata: { ...c.metadata, posterShape: shape === 'landscape' || c.source === 'merged' ? shape : undefined } }
               : c
           )
         }));

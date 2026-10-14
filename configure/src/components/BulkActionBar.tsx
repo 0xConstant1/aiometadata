@@ -19,6 +19,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { X, MoreHorizontal, Power, PowerOff, Home, HomeIcon, Trash2, Loader2, Star, Shuffle, ArrowUpToLine, ArrowDownToLine, Move, Type, GitMerge, Tag, Timer, RectangleHorizontal, RectangleVertical } from 'lucide-react';
 import { CatalogConfig } from '@/contexts/config';
+import { useConfig } from '@/contexts/ConfigContext';
+import { resolvedPosterShape } from '@/lib/posterShape';
 import { cn } from '@/lib/utils';
 import { TagEditorDialog } from '@/components/TagEditorDialog';
 
@@ -110,8 +112,9 @@ export function BulkActionBar({
   const hasRatingPostersEnabled = selectedCatalogs.some(c => c.enableRatingPosters !== false);
   const hasRandomizeDisabled = selectedCatalogs.some(c => !c.randomizePerPage);
   const hasRandomizeEnabled = selectedCatalogs.some(c => c.randomizePerPage);
-  const hasPosterShape = selectedCatalogs.some(c => c.metadata?.posterShape !== 'landscape');
-  const hasLandscapeShape = selectedCatalogs.some(c => c.metadata?.posterShape === 'landscape');
+  const { config } = useConfig();
+  const hasPosterShape = selectedCatalogs.some(c => resolvedPosterShape(c, config.catalogs) !== 'landscape' || (c.source === 'merged' && !c.metadata?.posterShape));
+  const hasLandscapeShape = selectedCatalogs.some(c => resolvedPosterShape(c, config.catalogs) === 'landscape' || (c.source === 'merged' && !c.metadata?.posterShape));
   
   // Count non-removable catalogs for tooltip (merged catalogs are disbanded, not deleted)
   const nonRemovableCount = selectedCatalogs.filter(c => c.source === 'merged').length;
