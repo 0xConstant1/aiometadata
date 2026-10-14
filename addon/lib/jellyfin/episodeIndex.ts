@@ -230,6 +230,25 @@ export async function indexSeriesWithin(userUUID: string, metaIds: string[], wai
   clearTimeout(timer);
 }
 
+/** Queues the started shows the tracker gives no episode total for, so their marks need no listing first. */
+export async function queueUncountedSeries(userUUID: string, config: any): Promise<number> {
+  const { watchedSnapshot } = require('./watched');
+  const snapshot = await watchedSnapshot(userUUID, config, { patient: true });
+  if (!snapshot.source) return 0;
+  const database: any = require('../database');
+  const rows: any[] = await database.listWatchSeries(snapshot.source);
+  const metaIds = rows
+    .filter((row) => row.series_key === row.group_key && !(row.total > 0))
+    .sort((a, b) => b.at - a.at)
+    .map((row) => String(row.series_key));
+  await warmSeriesIndex(userUUID, metaIds);
+  const stored = await configFor(userUUID);
+  if (!stored) return 0;
+  const missing = metaIds.filter((id) => !memory.has(memoryKey(userUUID, stored, id)));
+  queueSeriesIndex(userUUID, missing);
+  return missing.length;
+}
+
 /** Builds whatever the Next Up candidates of a configuration lack, off the request path. */
 export async function warmNextUpIndex(userUUID: string, config: any): Promise<number> {
   const { watchedSnapshot, ownNextUpRows } = require('./watched');

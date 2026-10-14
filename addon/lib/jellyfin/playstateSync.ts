@@ -188,9 +188,11 @@ async function syncConfiguration(userUUID: string): Promise<{ added: number } | 
       }
       // Keeps the Next Up episode index warm off the request path.
       try {
-        const { warmNextUpIndex } = require('./episodeIndex');
+        const { warmNextUpIndex, queueUncountedSeries } = require('./episodeIndex');
         const built = await runWithRequestContext(userUUID, () => warmNextUpIndex(userUUID, config));
         if (built) logger.debug(`Episode index built for ${built} show(s) of ${who}`);
+        const queued = await runWithRequestContext(userUUID, () => queueUncountedSeries(userUUID, config));
+        if (queued) logger.debug(`Episode index queued for ${queued} show(s) of ${who}`);
       } catch (error: any) {
         logger.debug(`Episode index warm failed for ${who}: ${error?.message || error}`);
       }
