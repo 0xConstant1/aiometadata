@@ -121,7 +121,7 @@ function toFolder(
     notes.push({
       entryId: folder.id,
       entryTitle: title,
-      message: `"${title}": ${nativeSkipped} source${nativeSkipped === 1 ? ' is' : 's are'} resolved by Fusion itself. Nuvio has no equivalent, so ${nativeSkipped === 1 ? 'it is' : 'they are'} only in the Fusion export.`,
+      message: `"${title}": ${nativeSkipped} source${nativeSkipped === 1 ? ' is' : 's are'} resolved by Fusion itself. Nuvio has no equivalent, so ${nativeSkipped === 1 ? 'it is' : 'they are'} left out.`,
       severity: 'info',
     });
   }
@@ -173,7 +173,7 @@ export function toNuvioCollections(
       notes.push({
         entryId: entry.id,
         entryTitle: entry.title,
-        message: `"${trimmed(entry.title) || 'Untitled row'}" is a classic row. Nuvio has no equivalent, so it is only included in the Fusion export.`,
+        message: `"${trimmed(entry.title) || 'Untitled row'}" is a row. Nuvio has no equivalent, so it only shows on Jellyfin.`,
         severity: 'info',
       });
       continue;

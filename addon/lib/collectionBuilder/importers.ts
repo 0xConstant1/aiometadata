@@ -9,8 +9,6 @@ import {
   type CollectionViewMode,
   type FolderDraft,
   subFolders,
-  type FusionAspectRatio,
-  type FusionCardStyle,
   SUFFIX_TYPES,
   type SourceDraft,
   type TileShape,
@@ -80,21 +78,7 @@ function toViewMode(value: unknown): CollectionViewMode {
   return 'TABBED_GRID';
 }
 
-function toAspect(value: unknown): FusionAspectRatio {
-  const normalized = trimmed(value).toLowerCase();
-  if (normalized === 'wide') return 'wide';
-  if (normalized === 'square') return 'square';
-  return 'poster';
-}
-
-function toCardStyle(value: unknown): FusionCardStyle {
-  const normalized = trimmed(value).toLowerCase();
-  if (normalized === 'small') return 'small';
-  if (normalized === 'large') return 'large';
-  return 'medium';
-}
-
-/** The inverse of prefixedId in fusionExport, so a round trip keeps the same id. */
+/** Fusion prefixed widget ids by kind; the bare id is kept. */
 function unprefixedId(value: unknown, prefix: string): string {
   const id = trimmed(value);
   return id.startsWith(prefix) ? id.slice(prefix.length) : id;
@@ -428,20 +412,12 @@ export function fromFusionWidgets(
 
     if (trimmed(raw.type).startsWith('row.classic')) {
       const source = fusionSource(raw.dataSource, title, notes, blueprints, context);
-      const presentation = isRecord(raw.presentation) ? raw.presentation : {};
-      const badges = isRecord(presentation.badges) ? presentation.badges : {};
       const row: ClassicRowDraft = {
         ...createClassicRowDraft(title),
         id: unprefixedId(raw.id, 'catalog.') || newId(),
         title,
         hideTitle: Boolean(raw.hideTitle),
         source,
-        limit: Number.isFinite(Number(raw.limit)) ? Math.trunc(Number(raw.limit)) : 20,
-        cacheTTL: Number.isFinite(Number(raw.cacheTTL)) ? Math.trunc(Number(raw.cacheTTL)) : 1800,
-        aspectRatio: toAspect(presentation.aspectRatio),
-        cardStyle: toCardStyle(presentation.cardStyle),
-        badges: { providers: Boolean(badges.providers), ratings: badges.ratings !== false },
-        backgroundImageURL: trimmed(presentation.backgroundImageURL),
         numbered: trimmed(raw.type) === 'row.classic.numbered',
       };
       entries.push(row);

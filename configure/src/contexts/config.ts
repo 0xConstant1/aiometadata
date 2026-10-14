@@ -378,7 +378,7 @@ export interface AppConfig {
   timezone?: string;
   catalogs: CatalogConfig[];
   deletedCatalogs?: string[];
-  /** Collections and rows built in the Collections editor, exported as Nuvio or Fusion JSON */
+  /** Collections and rows built in the Collections editor, served to Jellyfin clients and exported as Nuvio JSON */
   collections?: BuilderEntry[];
   /** Serve the collection layout's images through this instance's image cache. */
   collectionImagesViaCache?: boolean;

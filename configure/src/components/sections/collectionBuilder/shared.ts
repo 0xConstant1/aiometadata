@@ -1,5 +1,5 @@
 import { nextCopyTitle } from '@/lib/collectionBuilder/entryOps';
-import { allFolders, newId, type BuilderEntry, type FusionAspectRatio, type TileShape } from '@shared/types';
+import { allFolders, newId, type BuilderEntry, type TileShape } from '@shared/types';
 
 export const SHAPE_LABELS: Record<TileShape, string> = {
   POSTER: 'Poster',
@@ -8,13 +8,6 @@ export const SHAPE_LABELS: Record<TileShape, string> = {
 };
 
 export const SHAPE_ORDER: TileShape[] = ['POSTER', 'LANDSCAPE', 'SQUARE'];
-
-/** Classic rows spell the same three shapes lowercase, on presentation.aspectRatio. */
-export const ASPECT_BY_SHAPE: Record<TileShape, FusionAspectRatio> = {
-  POSTER: 'poster',
-  LANDSCAPE: 'wide',
-  SQUARE: 'square',
-};
 
 /** Rough proportions so the choice reads at a glance. */
 export const SHAPE_PREVIEW: Record<TileShape, string> = {

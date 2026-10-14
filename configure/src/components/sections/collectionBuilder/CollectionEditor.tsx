@@ -118,9 +118,16 @@ export function CollectionEditor({
             onCheckedChange={value => update({ hideTitle: value })}
           />
           <Label htmlFor={`${uid}-hide-title`} className="text-sm font-medium">Hide title</Label>
-          <ScopeChip scope="fusion" />
+          <ScopeChip scope="jellyfin" />
         </div>
       </div>
+
+      <ImageUrlField
+        label="Backdrop image URL"
+        value={entry.backdropImageUrl || ''}
+        aspect="wide"
+        onChange={next => update({ backdropImageUrl: next })}
+      />
 
       <UserTagsField tags={userTags} value={entry.tags} onChange={next => update({ tags: next })} />
 
@@ -134,7 +141,7 @@ export function CollectionEditor({
           <Tv className="h-4 w-4 shrink-0 text-cyan-400" />
           <Label className="cursor-pointer text-sm font-medium text-cyan-300">Nuvio presentation</Label>
           <span className="text-xs text-muted-foreground">
-            {target === 'fusion' ? 'Set here, unused by Fusion' : 'Fusion ignores these'}
+            {target === 'jellyfin' ? 'Set here, unused by Jellyfin' : 'Jellyfin ignores these'}
           </span>
           <span className="flex-1" />
           <span className="text-xs text-muted-foreground">{showNuvioBox ? 'Hide' : 'Show'}</span>
@@ -143,12 +150,6 @@ export function CollectionEditor({
         {showNuvioBox && (
         <>
         <div className="grid gap-4 @2xl:grid-cols-2">
-          <ImageUrlField
-            label="Backdrop image URL"
-            value={entry.backdropImageUrl || ''}
-            aspect="wide"
-            onChange={next => update({ backdropImageUrl: next })}
-          />
           <div className="space-y-1.5">
             <Label htmlFor={`${uid}-view-mode`} className="text-sm font-medium">Folder view mode</Label>
             <Select

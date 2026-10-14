@@ -15,7 +15,7 @@ export function UserTagsField({ tags, value, onChange }: { tags: TagDef[]; value
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
         <Label className="text-sm font-medium">Users</Label>
-        <Badge variant="outline" className="border-amber-400/60 text-[10px] text-amber-400">Jellyfin only</Badge>
+        <Badge variant="outline" className="border-purple-400/60 text-[10px] text-purple-400">Jellyfin only</Badge>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {tags.map(tag => (
@@ -32,7 +32,7 @@ export function UserTagsField({ tags, value, onChange }: { tags: TagDef[]; value
       <p className="text-xs text-muted-foreground">
         {chosen.length === 0
           ? 'Every user of the Jellyfin server sees it, trimmed to the catalogs their tags reach. Pick tags to show it to the users made of them only.'
-          : `Only Jellyfin users made of ${chosen.length === 1 ? 'this tag' : 'one of these tags'} see it. The Fusion and Nuvio exports are unaffected.`}
+          : `Only Jellyfin users made of ${chosen.length === 1 ? 'this tag' : 'one of these tags'} see it. The Nuvio export is unaffected.`}
       </p>
     </div>
   );

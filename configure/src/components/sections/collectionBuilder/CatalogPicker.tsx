@@ -23,6 +23,8 @@ export function CatalogPicker({
   onConfirm,
   onCreate,
   onClose,
+  title,
+  description,
 }: {
   isOpen: boolean;
   catalogs: ManifestCatalog[];
@@ -35,6 +37,8 @@ export function CatalogPicker({
   /** Present only where creating a catalog makes sense, so remapping stays a pure pick. */
   onCreate?: (created: CatalogConfig[]) => void;
   onClose: () => void;
+  title?: string;
+  description?: string;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -158,11 +162,11 @@ export function CatalogPicker({
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
       <DialogContent className={onCreate ? 'flex max-h-[85vh] max-w-2xl flex-col' : 'max-w-xl'}>
         <DialogHeader>
-          <DialogTitle>{multiple ? 'Add catalogs' : 'Pick a catalog'}</DialogTitle>
+          <DialogTitle>{title ?? (multiple ? 'Add catalogs' : 'Pick a catalog')}</DialogTitle>
           <DialogDescription>
-            {multiple
+            {description ?? (multiple
               ? 'Select as many as you want, then add them all at once.'
-              : 'Classic rows read from a single catalog.'}
+              : 'A row reads from a single catalog.')}
           </DialogDescription>
         </DialogHeader>
 

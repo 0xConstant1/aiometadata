@@ -16,7 +16,6 @@ import {
 import { mintToken, readToken, revokeToken } from './tokens';
 import { pinOpens, splitSecret } from './pins';
 import {
-  collectionFolder,
   EMPTY_USER_DATA,
   itemList,
   extensionInfo,
@@ -26,7 +25,7 @@ import {
   userDto,
   SERVER_NAME,
 } from './dto';
-import { buildViews, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBoxSetCatalog, isBrowsable, requiresGenre, viewTypeFor } from './views';
+import { buildViews, catalogView, collectionTypeFor, findCatalogByViewId, getCatalogs, getSearchableCatalogs, isBoxSetCatalog, isBrowsable, requiresGenre, rowFor } from './views';
 import { decodeJellyfinId } from './ids';
 import { artTag, imageTag, isWideTag } from './imageTags';
 import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallArt, recallImages, rememberArt, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
@@ -3260,15 +3259,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         res.status(404).json({ Message: 'Item not found' });
         return;
       }
-      res.json(
-        collectionFolder(
-          req.params.itemId,
-          serverIdFor(userUUID),
-          catalog.name,
-          viewTypeFor(catalog),
-          null
-        )
-      );
+      res.json(catalogView(catalog, serverIdFor(userUUID), rowFor(config, catalog)));
       return;
     }
 

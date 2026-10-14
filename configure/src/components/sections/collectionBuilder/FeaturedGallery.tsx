@@ -145,7 +145,7 @@ export function FeaturedGallery({ items, artwork = [], headroom, busy, error, on
                   {featured.classicRows ? (
                     <span
                       className={`${CHIP} text-muted-foreground`}
-                      title="Nuvio has no equivalent and skips them; Fusion keeps them."
+                      title="Nuvio has no equivalent and skips them; Jellyfin keeps them."
                     >
                       {featured.classicRows} classic rows
                     </span>

@@ -9,8 +9,6 @@ import type {
   SourceDraft,
   CollectionDraft,
   FolderDraft,
-  FusionAspectRatio,
-  FusionCardStyle,
   TileShape,
 } from '@shared/types';
 import { folderSources } from '@shared/types';
@@ -29,19 +27,7 @@ const TILE_WIDTH: Record<TileShape, string> = {
   SQUARE: '19%',
 };
 
-const CARD_ASPECT: Record<FusionAspectRatio, string> = {
-  poster: '2 / 3',
-  wide: '16 / 9',
-  square: '1 / 1',
-};
-
-const CARD_WIDTH: Record<FusionCardStyle, string> = {
-  small: '11%',
-  medium: '15%',
-  large: '21%',
-};
-
-const MAX_PREVIEW_CARDS = 10;
+const ROW_PREVIEW_CARDS = 8;
 
 interface PreviewMeta {
   id: string;
@@ -137,10 +123,10 @@ function gradientFor(title: string): string {
   return `linear-gradient(135deg, hsl(${hash} 45% 28%), hsl(${(hash + 40) % 360} 40% 16%))`;
 }
 
-/** Mirrors what nuvioExport.toFolder and fusionExport.toCollectionItem will accept. */
+/** Mirrors what nuvioExport.toFolder and the Jellyfin server will accept; Jellyfin serves no client-resolved source. */
 function usableSourceCount(folder: FolderDraft, target: Target): number {
   return folderSources(folder).filter(source => {
-    if (isNativeSource(source)) return nativeOrigin(source) === target && Boolean(source.native);
+    if (isNativeSource(source)) return target === 'nuvio' && nativeOrigin(source) === 'nuvio' && Boolean(source.native);
     return Boolean((source.catalogId || '').trim()) && Boolean((source.type || '').trim());
   }).length;
 }
@@ -411,7 +397,7 @@ function NuvioCollectionStage({
   );
 }
 
-function FusionCollectionStage({
+function JellyfinCollectionStage({
   entry,
   onEditFolder,
 }: {
@@ -424,18 +410,18 @@ function FusionCollectionStage({
     <div className="rounded-lg border bg-neutral-950 p-4">
       {!entry.hideTitle && (
         <p className="mb-2.5 text-sm font-semibold text-white">
-          {entry.title.trim() || 'Untitled widget'}
+          {entry.title.trim() || 'Untitled collection'}
         </p>
       )}
       {entry.folders.length === 0 ? (
-        <p className="py-6 text-center text-xs text-white/50">No items yet.</p>
+        <p className="py-6 text-center text-xs text-white/50">No folders yet.</p>
       ) : (
         <div className="flex shrink-0 gap-3 overflow-x-auto pb-1">
           {entry.folders.map(folder => (
             <PreviewTile
               key={folder.id}
               folder={folder}
-              target="fusion"
+              target="jellyfin"
               focused={focusedId === folder.id}
               glow={false}
               showTitle={!folder.hideTitle}
@@ -456,18 +442,14 @@ function ClassicRowStage({ entry, target, pendingCatalogs }: {
   target: Target;
   pendingCatalogs?: CatalogConfig[];
 }) {
-  const cards = Math.min(Math.max(entry.limit, 1), MAX_PREVIEW_CARDS);
-  const extra = Math.max(entry.limit - cards, 0);
-  const background = (entry.backgroundImageURL || '').trim();
   const { auth } = useConfig();
-  const items = useCatalogPeek(entry.source, auth.userUUID || configIdFromUrl(), cards, pendingCatalogs);
+  const items = useCatalogPeek(entry.source, auth.userUUID || configIdFromUrl(), ROW_PREVIEW_CARDS, pendingCatalogs);
 
   return (
     <div className={target === 'nuvio' ? 'space-y-2' : ''}>
       {target === 'nuvio' && (
-        <p className="text-xs text-violet-300">
-          Classic rows are Fusion and Jellyfin Clients only. Nuvio has no equivalent, so this row is left out of the Nuvio
-          export.
+        <p className="text-xs text-purple-300">
+          Rows are for Jellyfin clients only. Nuvio has no equivalent, so this row is left out of the Nuvio export.
         </p>
       )}
       <div
@@ -475,28 +457,18 @@ function ClassicRowStage({ entry, target, pendingCatalogs }: {
           target === 'nuvio' ? 'opacity-50' : ''
         }`}
       >
-        {background && (
-          <img
-            key={background}
-            src={background}
-            alt=""
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            className="absolute inset-0 h-full w-full object-cover opacity-30"
-          />
-        )}
         <div className="relative">
           {!entry.hideTitle && (
             <p className="mb-2.5 text-sm font-semibold text-white">
-              {entry.title.trim() || 'Untitled row'}
+              {entry.title.trim() || entry.source?.name || 'Untitled row'}
             </p>
           )}
           <div className="flex shrink-0 items-end gap-3 overflow-x-auto pb-1">
-            {Array.from({ length: cards }, (_, index) => (
-              <div key={index} className="relative shrink-0" style={{ width: CARD_WIDTH[entry.cardStyle] }}>
+            {Array.from({ length: ROW_PREVIEW_CARDS }, (_, index) => (
+              <div key={index} className="relative shrink-0" style={{ width: '15%' }}>
                 <div
                   className="relative w-full overflow-hidden rounded-md bg-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
-                  style={{ aspectRatio: CARD_ASPECT[entry.aspectRatio] }}
+                  style={{ aspectRatio: '2 / 3' }}
                 >
                   {items[index]?.poster && (
                     <img
@@ -507,12 +479,6 @@ function ClassicRowStage({ entry, target, pendingCatalogs }: {
                       className="absolute inset-0 h-full w-full object-cover"
                     />
                   )}
-                  {entry.badges.ratings && (
-                    <span className="absolute bottom-1 left-1 h-3 w-8 rounded-full bg-white/25" />
-                  )}
-                  {entry.badges.providers && (
-                    <span className="absolute bottom-1 right-1 h-3 w-3 rounded-full bg-white/25" />
-                  )}
                 </div>
                 {entry.numbered && (
                   <span className="absolute -left-1 bottom-0 text-2xl font-black leading-none text-white/70">
@@ -521,7 +487,6 @@ function ClassicRowStage({ entry, target, pendingCatalogs }: {
                 )}
               </div>
             ))}
-            {extra > 0 && <span className="shrink-0 text-xs text-white/50">+{extra} more</span>}
           </div>
         </div>
       </div>
@@ -555,7 +520,7 @@ export function CollectionPreview({
         target === 'nuvio' ? (
           <NuvioCollectionStage entry={entry} onEditFolder={onEditFolder} />
         ) : (
-          <FusionCollectionStage entry={entry} onEditFolder={onEditFolder} />
+          <JellyfinCollectionStage entry={entry} onEditFolder={onEditFolder} />
         )
       ) : (
         <ClassicRowStage entry={entry} target={target} pendingCatalogs={pendingCatalogs} />

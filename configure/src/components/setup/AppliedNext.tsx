@@ -12,14 +12,14 @@ const LazyDiscoverBuilder = lazy(() =>
   import('@/components/sections/DiscoverBuilderDialog').then(m => ({ default: m.DiscoverBuilderDialog }))
 );
 
-type ClientId = 'stremio' | 'aurora' | 'realstreams' | 'nuvio' | 'fusion' | 'omni' | 'other';
+type ClientId = 'stremio' | 'aurora' | 'realstreams' | 'nuvio' | 'jellyfin' | 'omni' | 'other';
 
 const CLIENTS: Array<{ id: ClientId; label: string; collections?: boolean }> = [
   { id: 'stremio', label: 'Stremio' },
   { id: 'aurora', label: 'Aurora' },
   { id: 'realstreams', label: 'RealStreams' },
   { id: 'nuvio', label: 'Nuvio', collections: true },
-  { id: 'fusion', label: 'Fusion', collections: true },
+  { id: 'jellyfin', label: 'Jellyfin', collections: true },
   { id: 'omni', label: 'Omni' },
   { id: 'other', label: 'Something else' },
 ];
@@ -122,8 +122,9 @@ export function AppliedNext({
               <div className="space-y-2 border-t border-white/[0.06] pt-3">
                 <p className="text-sm">{chosen.label} can arrange your catalogs into collections.</p>
                 <p className="text-xs text-muted-foreground">
-                  Build the layout here and export it, rather than assembling it one press at a time
-                  on a TV remote.
+                  {chosen.id === 'jellyfin'
+                    ? 'Build the layout here and your Jellyfin clients show it once you save.'
+                    : 'Build the layout here and export it, rather than assembling it one press at a time on a TV remote.'}
                 </p>
                 <Button
                   variant="outline"

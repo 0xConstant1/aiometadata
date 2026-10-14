@@ -532,11 +532,12 @@ export function nativeOrigin(source: { native?: unknown; catalogId?: string }): 
   return null;
 }
 
+/** Jellyfin serves no client-resolved source; Nuvio serves its own. */
 export function isStrandedNative(
   source: { native?: unknown; catalogId?: string },
-  target: NativeOrigin
+  target: 'nuvio' | 'jellyfin'
 ): boolean {
-  return isNativeSource(source) && nativeOrigin(source) !== target;
+  return isNativeSource(source) && (target === 'jellyfin' || nativeOrigin(source) !== target);
 }
 
 export function fromAnyNativeSource(raw: unknown, origin: NativeOrigin | null): Reconstruction {

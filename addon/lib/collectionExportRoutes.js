@@ -1,6 +1,5 @@
 const consola = require('consola');
 const database = require('./database');
-const { toFusionWidgets } = require('./collectionBuilder/fusionExport');
 const { toNuvioCollections } = require('./collectionBuilder/nuvioExport');
 const { buildBlueprintLookup } = require('./collectionBuilder/blueprintLookup');
 const { proxyCollectionImages } = require('./collectionBuilder/imageProxy');
@@ -24,25 +23,16 @@ function resolveBaseUrl(req) {
   return `${req.protocol}://${req.get('host')}`;
 }
 
-/**
- * Both consumers record which addon a source came from. Nuvio keys off the
- * manifest id plus a base URL, Fusion off the manifest URL itself.
- */
-function buildIdentity(req, userUUID, config, tag) {
+/** Nuvio records which addon a source came from by the manifest id plus a base URL. */
+function buildIdentity(req, userUUID, config) {
   const baseUrl = resolveBaseUrl(req);
   const identifier = manifestIdentifier(userUUID);
   const addonBaseUrl = `${baseUrl}/stremio/${identifier}`;
-  const query = tag ? `?tag=${encodeURIComponent(tag)}` : '';
   return {
     addonId: buildInfo.name,
     addonBaseUrl,
     addonName: (config.addonName || '').trim() || 'AIOMetadata',
-    manifestUrl: `${addonBaseUrl}/manifest.json${query}`,
   };
-}
-
-function readTag(req) {
-  return typeof req.query.tag === 'string' ? req.query.tag.trim() : '';
 }
 
 async function loadEntries(userUUID) {
@@ -63,25 +53,6 @@ function sendJson(res, payload) {
 }
 
 function register(addon) {
-  addon.get('/stremio/:userUUID/fusion-widgets.json', async (req, res) => {
-    const { userUUID } = req.params;
-    try {
-      const { config, entries, error } = await loadEntries(userUUID);
-      if (error === 'notFound') {
-        return res.status(404).json({ err: 'User configuration not found.' });
-      }
-
-      const identity = buildIdentity(req, userUUID, config, readTag(req));
-      const blueprints = buildBlueprintLookup(config.catalogs);
-      const { output } = toFusionWidgets(entries, identity, { blueprints });
-      logger.debug(`Served ${output.widgets.length} Fusion widgets for ${userUUID.substring(0, 8)}`);
-      sendJson(res, output);
-    } catch (err) {
-      logger.error(`Fusion widget export failed for ${userUUID}:`, err.message);
-      res.status(500).json({ err: 'Failed to build widgets.' });
-    }
-  });
-
   addon.get('/stremio/:userUUID/nuvio-collections.json', async (req, res) => {
     const { userUUID } = req.params;
     try {
@@ -90,7 +61,7 @@ function register(addon) {
         return res.status(404).json({ err: 'User configuration not found.' });
       }
 
-      const identity = buildIdentity(req, userUUID, config, readTag(req));
+      const identity = buildIdentity(req, userUUID, config);
       const blueprints = buildBlueprintLookup(config.catalogs);
       const { output } = toNuvioCollections(entries, identity, blueprints);
       logger.debug(`Served ${output.length} Nuvio collections for ${userUUID.substring(0, 8)}`);

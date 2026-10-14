@@ -17,8 +17,6 @@ export function collectionImageUrls(entries: BuilderEntry[] | undefined): string
         add(folder.titleLogoUrl);
         add(folder.focusGifUrl);
       }
-    } else if (entry?.kind === 'classicRow') {
-      add(entry.backgroundImageURL);
     }
   }
   return [...out];
@@ -45,7 +43,6 @@ export function proxyCollectionImages(entries: BuilderEntry[], prefix: string): 
     if (entry?.kind === 'collection') {
       return { ...entry, backdropImageUrl: via(entry.backdropImageUrl), folders: mapFoldersDeep(entry.folders || [], folder) };
     }
-    if (entry?.kind === 'classicRow') return { ...entry, backgroundImageURL: via(entry.backgroundImageURL) };
     return entry;
   });
 }

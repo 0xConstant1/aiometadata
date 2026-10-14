@@ -12,7 +12,7 @@ export function deriveSaveStage({ builderJson, configJson, configDirty }: SaveSt
   return configDirty === false ? 'saved' : 'applied';
 }
 
-export function describeSaveStage(stage: SaveStage): { label: string; hint: string } {
+export function describeSaveStage(stage: SaveStage, target: 'nuvio' | 'jellyfin' = 'nuvio'): { label: string; hint: string } {
   if (stage === 'draft') {
     return { label: 'Draft', hint: 'These edits are not in your configuration yet.' };
   }
@@ -21,6 +21,8 @@ export function describeSaveStage(stage: SaveStage): { label: string; hint: stri
   }
   return {
     label: 'Saved',
-    hint: 'Applied and stored on the server. Your app still needs to import it again to show the change.',
+    hint: target === 'jellyfin'
+      ? 'Applied and stored on the server. Jellyfin clients show it the next time they load.'
+      : 'Applied and stored on the server. Nuvio still needs to import it again to show the change.',
   };
 }

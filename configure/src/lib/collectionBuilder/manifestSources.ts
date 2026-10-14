@@ -9,7 +9,7 @@ import { isUserSpecific } from '@shared/catalogSharing';
 export interface ManifestCatalog {
   /** Manifest catalog id. Not always the same as CatalogConfig.id. */
   id: string;
-  /** Manifest catalog type, which is what Nuvio and Fusion record. */
+  /** Manifest catalog type, which is what Nuvio records. */
   type: string;
   /** The config's own type for this catalog, which a displayType may have renamed. */
   baseType?: string;
@@ -65,7 +65,6 @@ export function buildIdentity(
     addonId: overrides.addonId || FALLBACK_ADDON_ID,
     addonBaseUrl: overrides.addonBaseUrl ?? stripManifestSuffix(manifestUrl),
     addonName: overrides.addonName || trimmed(config.addonName) || 'AIOMetadata',
-    manifestUrl: overrides.manifestUrl ?? trimmed(manifestUrl),
   };
 }
 

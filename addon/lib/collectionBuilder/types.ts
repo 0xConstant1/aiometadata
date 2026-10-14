@@ -1,7 +1,5 @@
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE';
 export type CollectionViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT';
-export type FusionAspectRatio = 'poster' | 'wide' | 'square';
-export type FusionCardStyle = 'small' | 'medium' | 'large';
 
 /** Types a manifest id can carry as a suffix, per createCatalog in getManifest. */
 export const SUFFIX_TYPES = ['movie', 'series', 'anime', 'all'];
@@ -53,26 +51,20 @@ export interface CollectionDraft {
   folders: FolderDraft[];
 }
 
-/** Single-catalog row. Fusion only, Nuvio has no equivalent. */
+/** Single-catalog row. Jellyfin only, Nuvio has no equivalent. */
 export interface ClassicRowDraft {
   kind: 'classicRow';
   id: string;
   title: string;
   hideTitle?: boolean;
   source: SourceDraft | null;
-  limit: number;
-  cacheTTL: number;
-  aspectRatio: FusionAspectRatio;
-  cardStyle: FusionCardStyle;
-  badges: { providers: boolean; ratings: boolean };
-  backgroundImageURL?: string;
   numbered?: boolean;
   tags?: string[];
 }
 
 export type BuilderEntry = CollectionDraft | ClassicRowDraft;
 
-/** Identity of this addon as the two consumers record it. */
+/** Identity of this addon as Nuvio records it. */
 export interface AddonIdentity {
   /** Manifest `id` field, used as Nuvio's addonId. */
   addonId: string;
@@ -80,8 +72,6 @@ export interface AddonIdentity {
   addonBaseUrl: string;
   /** Manifest `name`, shown by Nuvio next to the source. */
   addonName: string;
-  /** Full manifest URL, used as Fusion's addonId. */
-  manifestUrl: string;
 }
 
 // ---- Nuvio output (js/data/local/collectionsStore.js) ----
@@ -138,70 +128,6 @@ export interface NuvioCollection {
   folders: NuvioFolder[];
 }
 
-// ---- Fusion output (src/lib/types/widget.ts) ----
-
-export interface FusionAddonCatalogSource {
-  kind: 'addonCatalog';
-  payload: {
-    addonId: string;
-    catalogId: string;
-    type: string;
-    genre?: string;
-  };
-}
-
-export interface FusionNativeSource {
-  kind: string;
-  payload: Record<string, any>;
-}
-
-export type FusionDataSource = FusionAddonCatalogSource | FusionNativeSource;
-
-export interface FusionCollectionItem {
-  id: string;
-  title: string;
-  hideTitle: boolean;
-  imageAspect: FusionAspectRatio;
-  imageURL?: string;
-  dataSources: FusionDataSource[];
-}
-
-export interface FusionCollectionRowWidget {
-  id: string;
-  title: string;
-  hideTitle?: boolean;
-  type: 'collection.row';
-  dataSource: {
-    kind: 'collection';
-    payload: { items: FusionCollectionItem[] };
-  };
-}
-
-export interface FusionRowClassicWidget {
-  id: string;
-  title: string;
-  hideTitle?: boolean;
-  type: 'row.classic' | 'row.classic.numbered';
-  cacheTTL: number;
-  limit: number;
-  presentation: {
-    aspectRatio: FusionAspectRatio;
-    cardStyle: FusionCardStyle;
-    badges: { providers: boolean; ratings: boolean };
-    backgroundImageURL?: string;
-  };
-  dataSource: FusionDataSource;
-}
-
-export type FusionWidget = FusionCollectionRowWidget | FusionRowClassicWidget;
-
-export interface FusionWidgetsConfig {
-  exportType: 'fusionWidgets';
-  exportVersion: 1;
-  requiredAddons: string[];
-  widgets: FusionWidget[];
-}
-
 // ---- Export result ----
 
 /** Anything the target would have silently dropped, surfaced instead. */
@@ -219,15 +145,6 @@ export interface ExportResult<T> {
 }
 
 // ---- Defaults ----
-
-/** Defaults Fusion applies to a newly created classic row. */
-export const CLASSIC_ROW_DEFAULTS = {
-  limit: 20,
-  cacheTTL: 1800,
-  aspectRatio: 'poster' as FusionAspectRatio,
-  cardStyle: 'medium' as FusionCardStyle,
-  badges: { providers: false, ratings: true },
-};
 
 /** Fusion's placeholder for a manifest URL the author does not want to publish. */
 export const MANIFEST_PLACEHOLDER = 'YOUR_AIOMETADATA';
@@ -321,7 +238,6 @@ export function removeFolder(folders: FolderDraft[], id: string): FolderDraft[] 
 
 export function hasNuvioCollectionSettings(entry: CollectionDraft): boolean {
   return Boolean(
-    (entry.backdropImageUrl || '').trim() ||
     entry.pinToTop ||
     entry.focusGlowEnabled === false ||
     (entry.viewMode && entry.viewMode !== 'TABBED_GRID') ||
@@ -333,9 +249,7 @@ export function hasNuvioFolderArt(folder: FolderDraft): boolean {
   return Boolean(
     (folder.coverEmoji || '').trim() ||
     (folder.focusGifUrl || '').trim() ||
-    (folder.heroBackdropUrl || '').trim() ||
     (folder.heroVideoUrl || '').trim() ||
-    (folder.titleLogoUrl || '').trim() ||
     folder.focusGifEnabled === false
   );
 }
@@ -347,12 +261,6 @@ export function createClassicRowDraft(title = 'New Row'): ClassicRowDraft {
     title,
     hideTitle: false,
     source: null,
-    limit: CLASSIC_ROW_DEFAULTS.limit,
-    cacheTTL: CLASSIC_ROW_DEFAULTS.cacheTTL,
-    aspectRatio: CLASSIC_ROW_DEFAULTS.aspectRatio,
-    cardStyle: CLASSIC_ROW_DEFAULTS.cardStyle,
-    badges: { ...CLASSIC_ROW_DEFAULTS.badges },
-    backgroundImageURL: '',
     numbered: false,
   };
 }

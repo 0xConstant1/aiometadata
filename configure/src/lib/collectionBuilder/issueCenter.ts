@@ -13,7 +13,7 @@ export interface IssueRow {
 }
 
 export interface BlockingInput {
-  target: 'nuvio' | 'fusion';
+  target: 'nuvio' | 'jellyfin';
   strandedNative: number;
   overBy: number;
   pendingCount: number;
@@ -73,12 +73,13 @@ export function blockingIssues({
   }
 
   if (strandedNative > 0) {
-    const here = target === 'fusion' ? 'Fusion' : 'Nuvio';
-    const other = target === 'fusion' ? 'Nuvio' : 'Fusion';
+    const sources = `${strandedNative} source${strandedNative === 1 ? '' : 's'}`;
     rows.push({
       key: 'block-native',
       severity: 'blocking',
-      message: `${here} cannot serve ${strandedNative} source${strandedNative === 1 ? '' : 's'} that ${other} fetches itself. Route them through AIOMetadata, or build for ${other}.`,
+      message: target === 'jellyfin'
+        ? `Jellyfin cannot serve ${sources} that the app fetches itself. Route them through AIOMetadata, or build for Nuvio.`
+        : `Nuvio cannot serve ${sources} that Fusion fetched itself. Route them through AIOMetadata.`,
       entryId: null,
       folderId: null,
     });

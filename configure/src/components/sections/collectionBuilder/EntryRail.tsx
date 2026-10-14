@@ -49,7 +49,7 @@ export function SortableTreeRow({
   accent: string;
   severity?: IssueSeverity;
   allNative?: boolean;
-  excluded?: 'nuvio' | 'fusion' | null;
+  excluded?: 'nuvio' | 'jellyfin' | null;
   isActive: boolean;
   /** A descendant is selected: mark this row without claiming the selection. */
   isAncestor?: boolean;
