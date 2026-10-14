@@ -1440,7 +1440,8 @@ export async function applyWatchedState(
   snapshot: WatchedSnapshot,
   userUUID?: string,
   profile = '',
-  config?: any
+  config?: any,
+  opts: { indexWaitMs?: number } = {}
 ): Promise<void> {
   if (!items.length) return;
 
@@ -1494,7 +1495,12 @@ export async function applyWatchedState(
     const missing = [...airedBySeries.entries()].filter(([, aired]) => !aired).map(([metaId]) => metaId);
     const playedShows = missing.length && ownPlayed.size ? new Set([...ownPlayed].map((id) => id.replace(/:\d+:\d+$/, ''))) : new Set<string>();
     const started = missing.filter((metaId) => seriesCounts.has(metaId) || playedShows.has(metaId));
-    if (started.length) require('./episodeIndex').queueSeriesIndex(userUUID, started);
+    if (started.length && opts.indexWaitMs) {
+      await require('./episodeIndex').indexSeriesWithin(userUUID, started, opts.indexWaitMs);
+      await Promise.all(started.map(async (metaId) => airedBySeries.set(metaId, await airedEpisodeIds(userUUID, { i: metaId }))));
+    } else if (started.length) {
+      require('./episodeIndex').queueSeriesIndex(userUUID, started);
+    }
   }
   const direct = [
     ...[...descriptors.values()].filter((d) => d.k === 'movie' || d.k === 'episode').map((d) => stremioIdFor(d)).filter(Boolean) as string[],

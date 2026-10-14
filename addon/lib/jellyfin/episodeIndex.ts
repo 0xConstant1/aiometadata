@@ -215,6 +215,21 @@ export function queueSeriesIndex(userUUID: string, metaIds: string[]): void {
   drainQueue();
 }
 
+/** Indexes the shows now, waiting at most `waitMs`; a build still running then lands for the next read. */
+export async function indexSeriesWithin(userUUID: string, metaIds: string[], waitMs: number): Promise<void> {
+  const config = await configFor(userUUID);
+  if (!config) return;
+  const { mapWithConcurrency } = require('../../utils/concurrency');
+  const wanted = metaIds.filter((metaId) => !queued.has(`${userUUID}:${metaId}`) && !memory.has(memoryKey(userUUID, config, metaId)));
+  for (const metaId of wanted) queued.add(`${userUUID}:${metaId}`);
+  const builds = mapWithConcurrency(wanted, envInt('JELLYFIN_SHELF_META_CONCURRENCY', 4, 1), (metaId: string) =>
+    build(userUUID, config, metaId).catch(() => null).finally(() => queued.delete(`${userUUID}:${metaId}`))
+  );
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([builds, new Promise((resolve) => { timer = setTimeout(resolve, waitMs); })]);
+  clearTimeout(timer);
+}
+
 /** Builds whatever the Next Up candidates of a configuration lack, off the request path. */
 export async function warmNextUpIndex(userUUID: string, config: any): Promise<number> {
   const { watchedSnapshot, ownNextUpRows } = require('./watched');

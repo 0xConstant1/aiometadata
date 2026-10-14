@@ -918,7 +918,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         includeItemTypes
       );
       const page = found.slice(startIndex, startIndex + limit);
-      await applyWatchedState(page, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
+      await applyWatchedState(page, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config, {
+        indexWaitMs: envInt('JELLYFIN_SEARCH_INDEX_WAIT_MS', 3000, 0),
+      });
       res.json(itemList(page, found.length, startIndex));
       return;
     }

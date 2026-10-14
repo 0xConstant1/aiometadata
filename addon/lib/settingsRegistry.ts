@@ -638,6 +638,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_SEARCH_INDEX_WAIT_MS',
+    envVar: 'JELLYFIN_SEARCH_INDEX_WAIT_MS',
+    label: 'Jellyfin Search Index Wait (ms)',
+    description: 'How long a search waits for started shows it found unindexed to be indexed, so their watched mark shows on the first search. 0 leaves them to the background.',
+    category: 'Features',
+    type: 'number',
+    default: 3000,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_NEXTUP_OWN_LIMIT',
     envVar: 'JELLYFIN_NEXTUP_OWN_LIMIT',
     label: 'Jellyfin Next Up Shows',
