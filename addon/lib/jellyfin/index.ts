@@ -34,6 +34,7 @@ import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stre
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamClient, streamsState, streamUserAgent, toNotice, toPlayable, type StreamClient } from './streams';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
+import { animeSequels } from './sequels';
 import { isAnimeTitle, showIdentity } from './canonicalIds';
 import { keepsAnimeOnly, sourceFor } from './trackerSource';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
@@ -43,7 +44,7 @@ import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segme
 import { personByName, personCredits, previewMeta, similarTitles } from './people';
 import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
 import { entryItemType, favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
-import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
+import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow, type UpcomingRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { SIZED_WIDTH, resizeToWidth, widthStep } from '../posterCache/resize';
 import { IMAGE_CSP } from '../posterCache/proxyResponse';
@@ -121,6 +122,14 @@ async function seriesForEpisode(userUUID: string, config: any, descriptor: any):
   }
   const meta = await fetchMeta(userUUID, 'series', descriptor.i);
   return meta ? { meta, seriesId: encodeSeriesId(descriptor) } : null;
+}
+
+/** An episode its meta does not list yet, built from the tracker's air date. */
+function episodeFromDate(meta: any, row: { videoId: string | null; episode: number; mediaType: string }, released: string, seriesId: string, serverId: string): any {
+  const host = process.env.HOST_NAME?.startsWith('http') ? process.env.HOST_NAME : `https://${process.env.HOST_NAME}`;
+  const thumbnail = meta.background || (Date.parse(released) <= Date.now() ? `${host}/missing_thumbnail.png` : null);
+  const video = { ...(row.videoId ? { id: row.videoId } : {}), episode: row.episode, released, ...(thumbnail ? { thumbnail } : {}) };
+  return buildEpisode(meta, video, row.mediaType, seriesId, serverId);
 }
 
 function localAddress(req: any): string {
@@ -2480,7 +2489,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     lap.own = Date.now() - t2;
     // One row per resolved show; the table's newest spelling first.
     const animeOnly = keepsAnimeOnly(config) && !(req.query.SeriesId ?? req.query.seriesId ?? req.query.ParentId ?? req.query.parentId);
-    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId))]
+    const sequels = (await animeSequels(snapshot)).nextUp;
+    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId)), ...sequels]
       .filter((row) => !animeOnly || isAnimeTitle(row.metaId, 'series'));
     const identities = new Map<string, string>();
     await mapWithConcurrency([...new Set(offered.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
@@ -2571,6 +2581,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
           episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
           target = await locate(episodes, String(meta.id));
         }
+      }
+      if (!target && !episodes.length && row.episode === 1 && row.airsAt && row.airsAt <= Date.now()) {
+        target = episodeFromDate(meta, row, new Date(row.airsAt).toISOString(), seriesId, serverId);
+        episodes = [target];
       }
 
       // The table and a tracker can name one show in different id spaces.
@@ -2694,7 +2708,28 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       local += 1;
     }
     const followed = [...shows.entries()].filter(([metaId]) => !keepsAnimeOnly(config) || isAnimeTitle(metaId, 'series'));
-    return { snapshot, caughtUp, followed };
+    const sequels = (await animeSequels(snapshot)).upcoming.filter((row) => !shows.has(row.metaId));
+    return { snapshot, caughtUp, followed, sequels };
+  };
+
+  const sequelPremieres = async (userUUID: string, rows: UpcomingRow[], keep: (at: number) => boolean, seen: Set<string>): Promise<any[]> => {
+    const serverId = serverIdFor(userUUID);
+    const out: any[] = [];
+    await mapWithConcurrency(rows.filter((row) => row.airsAt && keep(row.airsAt)), shelfConcurrency(), async (row) => {
+      const meta = await seriesIndex(userUUID, row.metaId);
+      if (!meta) return;
+      const identity = meta._tmdbId ? `tmdb:${meta._tmdbId}` : meta._imdbId ? `imdb:${meta._imdbId}` : String(meta.id);
+      if (seen.has(identity)) return;
+      seen.add(identity);
+      const premiere = new Date(row.airsAt as number).toISOString();
+      const seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
+      const episodes = buildEpisodes(meta, row.mediaType, seriesId, serverId, null);
+      const episode = (row.videoId ? await locateEpisode(episodes, row.videoId, row.mediaType, String(meta.id)) : episodes.find((e: any) => e.IndexNumber === row.episode))
+        ?? episodeFromDate(meta, row, premiere, seriesId, serverId);
+      episode.PremiereDate = premiere;
+      out.push(episode);
+    });
+    return out;
   };
 
   const serverWatchlistItems = async (userUUID: string, config: any, serverId: string, wanted: Set<string> | null, mark: 'IsFavorite' | 'Likes'): Promise<any[] | null> => {
@@ -2759,7 +2794,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const serverId = serverIdFor(userUUID);
     const profile = profileKey(config);
     const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
-    const { snapshot, caughtUp, followed } = await showsInView(userUUID, config, envInt('JELLYFIN_UPCOMING_DAYS', 90, 1));
+    const { snapshot, caughtUp, followed, sequels } = await showsInView(userUUID, config, envInt('JELLYFIN_UPCOMING_DAYS', 90, 1));
     const timed = new Map<string, Array<{ videoId?: string | null; season: number | null; episode: number; airsAt: number }>>();
     for (const row of [...snapshot.nextUp, ...caughtUp]) {
       if (!row.airsAt) continue;
@@ -2794,6 +2829,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         dated.push(episode);
       }
     });
+    for (const episode of await sequelPremieres(userUUID, sequels, (at) => at >= from && at <= to, seenShows)) {
+      if (seenEpisodes.has(episode.Id)) continue;
+      seenEpisodes.add(episode.Id);
+      dated.push(episode);
+    }
     if (withFilms) dated.push(...(await watchlistFilms(userUUID, config, (at) => Number.isFinite(at) && at >= from && at <= to)));
 
     await applyWatchedState(dated, snapshot, userUUID, profile);
@@ -2822,7 +2862,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const lately = (at: number): boolean => Number.isFinite(at) && at <= now && at > now - holdMs;
     const airing = upcomingMode(config) === 'airing';
 
-    const { snapshot, caughtUp, followed } = await showsInView(userUUID, config, days);
+    const { snapshot, caughtUp, followed, sequels } = await showsInView(userUUID, config, days);
 
     let nextUpShows: Promise<Set<string>> | null = null;
     const inNextUp = async (metaId: string): Promise<boolean> => {
@@ -2956,6 +2996,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       premieres.push(next);
     });
 
+    premieres.push(...(await sequelPremieres(userUUID, sequels, within, seen)));
     const films = await watchlistFilms(userUUID, config, within, seen);
 
     return [...premieres, ...films]

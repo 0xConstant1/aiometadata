@@ -658,6 +658,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_NEXTUP_SEQUEL_DAYS',
+    envVar: 'JELLYFIN_NEXTUP_SEQUEL_DAYS',
+    label: 'Jellyfin Next Up Anime Sequel Window (days)',
+    description: 'Simkl keeps each anime season as its own entry. Next Up offers the first episode of the next season when the last was finished, or the new one began, within this many days. 0 offers it only when it begins.',
+    category: 'Features',
+    type: 'number',
+    default: 120,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_WATCHLIST_MEMO_TTL',
     envVar: 'JELLYFIN_WATCHLIST_MEMO_TTL',
     label: 'Jellyfin Watchlist Memo (seconds)',

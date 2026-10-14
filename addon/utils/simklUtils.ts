@@ -2102,6 +2102,7 @@ export {
   fetchSimklDvdReleases,
   fetchSimklGenreItems,
   fetchSimklCalendarItems,
+  fetchSimklCalendarMonth,
   checkinMovie,
   checkinSeries,
   getSimklQuota,
@@ -2131,6 +2132,33 @@ async function fetchSimklCalendar(
     );
   } catch (err: any) {
     logger.error(`Error fetching Simkl calendar ${type}:`, err.message);
+    return [];
+  }
+}
+
+/** One month of Simkl's calendar. */
+async function fetchSimklCalendarMonth(
+  type: 'tv' | 'anime' | 'movie_release',
+  year: number,
+  month: number,
+  cacheTTL: number = 21600
+): Promise<any[]> {
+  try {
+    return await cacheWrapGlobal(
+      `simkl-calendar:${type}:${year}-${month}`,
+      async () => {
+        const url = `https://data.simkl.in/calendar/${year}/${month}/${type}.json?${simklDataParams()}`;
+        const response: any = await makeRateLimitedRequest(
+          () => httpGet(url, { dispatcher: simklDispatcher }),
+          `Simkl Calendar (${type} ${year}-${month})`
+        );
+        return Array.isArray(response.data) ? response.data : [];
+      },
+      cacheTTL,
+      { upstream: true }
+    );
+  } catch (err: any) {
+    logger.warn(`Simkl calendar ${type} ${year}-${month} failed: ${err.message}`);
     return [];
   }
 }

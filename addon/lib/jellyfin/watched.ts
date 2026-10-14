@@ -99,7 +99,16 @@ export interface WatchedSnapshot {
   dropped: Set<string>;
   /** The drops could not be read, so `dropped` is not the whole list. */
   droppedUnread?: boolean;
+  /** Anime entries the tracker lists as completed. */
+  finishedAnime?: FinishedAnime[];
+  /** Every entry on the tracker's lists, as `mal:` and `simkl:` keys. */
+  listedAnime?: Set<string>;
   fingerprint: string;
+}
+
+export interface FinishedAnime {
+  ids: { simkl?: number; mal?: number; anilist?: number; kitsu?: number; anidb?: number };
+  at: number;
 }
 
 const EMPTY: WatchedSnapshot = { source: null, nextUp: [], following: [], dropped: new Set(), fingerprint: '' };
@@ -117,6 +126,8 @@ interface Collecting {
   /** When a video was last watched, by video id, where the tracker says. */
   at: Map<string, number>;
   dropped: Set<string>;
+  finishedAnime?: FinishedAnime[];
+  listedAnime?: Set<string>;
 }
 
 /** Every id a series might be addressed by, so a lookup needs no id space. */
@@ -175,6 +186,16 @@ function collectShow(entry: any, snapshot: Collecting, isAnime: boolean, history
     : (ids.imdb ? String(ids.imdb) : ids.tvdb ? `tvdb:${ids.tvdb}` : null);
   if (metaId && entry?.status === 'watching') {
     snapshot.following.push({ metaId, mediaType: isAnime && ids.kitsu ? 'anime' : 'series' });
+  }
+  if (ids.mal) snapshot.listedAnime?.add(`mal:${ids.mal}`);
+  if (ids.simkl) snapshot.listedAnime?.add(`simkl:${ids.simkl}`);
+  if (isAnime && entry?.status === 'completed') {
+    const numbered: FinishedAnime['ids'] = {};
+    for (const key of ['simkl', 'mal', 'anilist', 'kitsu', 'anidb'] as const) {
+      const value = Number(ids[key]);
+      if (Number.isInteger(value) && value > 0) numbered[key] = value;
+    }
+    snapshot.finishedAnime?.push({ ids: numbered, at: Date.parse(entry?.last_watched_at ?? '') || 0 });
   }
   // An older Simkl app is sent `notinteresting` where a newer one gets `dropped`.
   if (entry?.status === 'dropped' || entry?.status === 'notinteresting') for (const key of seriesKeysWithKitsu(ids)) snapshot.dropped.add(key);
@@ -262,6 +283,8 @@ interface RawSnapshot {
   following?: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
   dropped?: string[];
   droppedUnread?: boolean;
+  finishedAnime?: FinishedAnime[];
+  listedAnime?: string[];
 }
 
 /** A Simkl library, as `/sync/all-items` returns it, made into a snapshot. */
@@ -274,6 +297,8 @@ export function assembleSimkl(data: any): RawSnapshot {
     following: [],
     at: new Map(),
     dropped: new Set(),
+    finishedAnime: [],
+    listedAnime: new Set(),
   };
   const history = new Map<string, HistoryEntry>();
 
@@ -301,6 +326,8 @@ export function assembleSimkl(data: any): RawSnapshot {
     nextUp: snapshot.nextUp.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt),
     following: snapshot.following,
     dropped: [...snapshot.dropped],
+    finishedAnime: snapshot.finishedAnime,
+    listedAnime: [...(snapshot.listedAnime ?? [])],
   };
 }
 
@@ -607,6 +634,8 @@ interface SummaryData {
   following: Array<{ metaId: string; mediaType: 'anime' | 'series' }>;
   dropped: string[];
   droppedUnread?: boolean;
+  finishedAnime?: FinishedAnime[];
+  listedAnime?: string[];
 }
 
 const summaries = new LRUCache<string, WatchedSnapshot>({ max: envInt('JELLYFIN_WATCHED_CACHE_MAX', 200, 1) });
@@ -620,6 +649,7 @@ function viewOf(source: string, fingerprint: string, data: SummaryData): Watched
     following: data?.following ?? [],
     dropped: new Set(data?.dropped ?? []),
     droppedUnread: data?.droppedUnread === true,
+    ...(data?.finishedAnime ? { finishedAnime: data.finishedAnime, listedAnime: new Set(data.listedAnime ?? []) } : {}),
     fingerprint,
   };
 }
@@ -768,14 +798,22 @@ async function buildIndex(service: MirroredService, credential: string, config: 
   const database: any = require('../database');
   const fingerprint = `store:${source}:v${version}`;
   const stored = await database.getWatchSummary(source);
-  if (stored?.version === version && stored.data?.format === INDEX_FORMAT) return viewOf(source, fingerprint, stored.data);
+  const current = stored?.data?.format === INDEX_FORMAT && (service !== 'simkl' || Array.isArray(stored.data.finishedAnime));
+  if (stored?.version === version && current) return viewOf(source, fingerprint, stored.data);
 
   const started = Date.now();
   const raw = await assembleFromMirror(service, credential, config);
   const { pendingWatches } = require('../trackerOutbox');
   withPending(raw, await pendingWatches(service, credential).catch(() => []));
   const written = await writeIndex(source, raw);
-  const data: SummaryData = { format: INDEX_FORMAT, nextUp: raw.nextUp ?? [], following: raw.following ?? [], dropped: raw.dropped ?? [], droppedUnread: raw.droppedUnread === true };
+  const data: SummaryData = {
+    format: INDEX_FORMAT,
+    nextUp: raw.nextUp ?? [],
+    following: raw.following ?? [],
+    dropped: raw.dropped ?? [],
+    droppedUnread: raw.droppedUnread === true,
+    ...(raw.finishedAnime ? { finishedAnime: raw.finishedAnime, listedAnime: raw.listedAnime ?? [] } : {}),
+  };
   // Written last: an index left half-written by a crash is rebuilt, since its version never lands.
   await database.putWatchSummary(source, version, data);
   logger.debug(`Watch index for ${service} ${source.slice(-8)} at version ${version}: ${raw.episodes.length} episodes, ${raw.movies.length} films, ${written.added} rows written and ${written.removed} removed in ${Date.now() - started}ms`);

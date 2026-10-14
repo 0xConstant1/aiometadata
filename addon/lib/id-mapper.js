@@ -1306,6 +1306,11 @@ async function getCinemetaVideosForImdbIoSeries(imdbId) {
   }
 }
 
+function getSiblingsByTvdbId(tvdbId) {
+  if (!isInitialized) return [];
+  return tvdbIdToAnimeListMap.get(parseInt(tvdbId, 10)) || [];
+}
+
 function getSiblingsByImdbId(imdbId) {
   if (!isInitialized) return [];
   // IMDb IDs are strings, no need to parse.
@@ -2976,6 +2981,7 @@ module.exports = {
   getMappingByImdbId,
   getMappingByKitsuId,
   getMappingBySimklId,
+  getSiblingsByTvdbId,
   resolveKitsuIdFromTvdbSeason,
   resolveKitsuIdFromTmdbSeason,
   resolveKitsuIdForEpisodeByTmdb,
