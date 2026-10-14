@@ -13,6 +13,7 @@ export interface WatchlistEntry {
   /** The shelf the service files it under, which is what a pick names. */
   kind: WatchlistKind;
   addedAt: number;
+  film?: boolean;
 }
 
 export type WatchlistIds = { imdb?: string; tmdb?: number | string; tvdb?: number | string; kitsu?: number | string; mal?: number | string };
@@ -148,7 +149,7 @@ async function shelfEntries(userUUID: string, config: any, catalog: Shelf, need:
       if (!meta?.id) return;
       const kind: WatchlistKind = catalog.kind ?? (meta.type === 'movie' ? 'movies' : 'series');
       const mediaType: WatchlistEntry['mediaType'] = kind === 'anime' ? 'anime' : meta.type === 'movie' ? 'movie' : 'series';
-      rows.push({ metaId: String(meta.id), mediaType, kind, addedAt: Date.parse(meta._listedAt ?? '') || -rank });
+      rows.push({ metaId: String(meta.id), mediaType, kind, addedAt: Date.parse(meta._listedAt ?? '') || -rank, ...(kind === 'anime' && meta.type === 'movie' ? { film: true } : {}) });
     });
     return { rows, ok: !window.failed, exhausted: !window.hasMore };
   } catch (error: any) {

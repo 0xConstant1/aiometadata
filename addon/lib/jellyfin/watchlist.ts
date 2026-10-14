@@ -53,6 +53,16 @@ export function invalidateWatchlist(userUUID: string): void {
   }
 }
 
+async function fillMetaTypes(table: 'jellyfin_watchlist' | 'jellyfin_favourites', userUUID: string, profile: string, rows: any[]): Promise<void> {
+  const untyped = rows.filter((row) => row.media_type === 'anime' && !row.meta_type);
+  await mapWithConcurrency(untyped, 4, async (row: any) => {
+    const meta = await fetchMeta(userUUID, 'series', String(row.meta_id)).catch(() => null);
+    if (!meta?.type) return;
+    row.meta_type = meta.type === 'movie' ? 'movie' : 'series';
+    await database.setMetaType(table, userUUID, profile, String(row.meta_id), row.meta_type).catch(() => undefined);
+  });
+}
+
 // Picked shelves are the favourites; a change made here stands only until their caches catch up.
 export async function watchlistEntries(userUUID: string, config: any, need = Number.MAX_SAFE_INTEGER): Promise<{ entries: WatchlistEntry[]; exhausted: boolean; complete: boolean }> {
   const profile = profileKey(config);
@@ -63,6 +73,7 @@ export async function watchlistEntries(userUUID: string, config: any, need = Num
   const since = watchlistPicks(config).size ? Date.now() - (await shelfCacheWindowMs(config)) : -Infinity;
   const keepsServer = keepsServerWatchlist(config);
   const local = rows.filter((row) => (Number(row.updated_at) || 0) >= since || (keepsServer && Number(row.listed)));
+  await fillMetaTypes('jellyfin_watchlist', userUUID, profile, local.filter((row) => Number(row.listed)));
 
   const out = new Map<string, WatchlistEntry>();
   for (const row of tracker) out.set(row.metaId, row);
@@ -70,7 +81,7 @@ export async function watchlistEntries(userUUID: string, config: any, need = Num
     const metaId = String(row.meta_id);
     if (Number(row.listed)) {
       const mediaType = row.media_type === 'movie' ? 'movie' : row.media_type === 'anime' ? 'anime' : 'series';
-      out.set(metaId, { metaId, mediaType, kind: mediaType === 'movie' ? 'movies' : mediaType, addedAt: Number(row.updated_at) || 0 });
+      out.set(metaId, { metaId, mediaType, kind: mediaType === 'movie' ? 'movies' : mediaType, addedAt: Number(row.updated_at) || 0, ...(row.meta_type === 'movie' ? { film: true } : {}) });
     } else if (out.has(metaId)) {
       out.delete(metaId);
     }
@@ -79,10 +90,14 @@ export async function watchlistEntries(userUUID: string, config: any, need = Num
   return { entries: entries.sort((a, b) => b.addedAt - a.addedAt), exhausted: held.exhausted, complete: held.complete };
 }
 
+export function entryItemType(entry: WatchlistEntry): 'Movie' | 'Series' {
+  return entry.mediaType === 'movie' || entry.film ? 'Movie' : 'Series';
+}
+
 /** The titles of a shelf, marked as it is to the client: a favourite, or a liked title for a watchlist. */
 export async function watchlistItems(userUUID: string, config: any, serverId: string, entries: WatchlistEntry[], concurrency: number, mark: 'IsFavorite' | 'Likes' = 'IsFavorite'): Promise<any[]> {
   const built = await mapWithConcurrency(entries, concurrency, async (entry: WatchlistEntry) => {
-    const meta = await fetchMeta(userUUID, entry.mediaType === 'movie' ? 'movie' : 'series', entry.metaId);
+    const meta = await fetchMeta(userUUID, entryItemType(entry) === 'Movie' ? 'movie' : 'series', entry.metaId);
     if (!meta) return null;
     const item = metaToBaseItem(meta, entry.mediaType, serverId, null);
     item.UserData = { ...item.UserData, [mark]: true };
@@ -130,10 +145,12 @@ export async function applyWatchlistState(items: any[], userUUID: string, config
 
 /** Favourites kept for a client with a watchlist of its own, newest first. */
 export async function favouriteEntries(userUUID: string, config: any): Promise<WatchlistEntry[]> {
-  const rows: any[] = await database.listFavourites(userUUID, profileKey(config)).catch(() => []);
+  const profile = profileKey(config);
+  const rows: any[] = await database.listFavourites(userUUID, profile).catch(() => []);
+  await fillMetaTypes('jellyfin_favourites', userUUID, profile, rows);
   return rows.map((row) => {
     const mediaType = row.media_type === 'movie' ? 'movie' : row.media_type === 'anime' ? 'anime' : 'series';
-    return { metaId: String(row.meta_id), mediaType, kind: mediaType === 'movie' ? 'movies' : mediaType, addedAt: Number(row.updated_at) || 0 };
+    return { metaId: String(row.meta_id), mediaType, kind: mediaType === 'movie' ? 'movies' : mediaType, addedAt: Number(row.updated_at) || 0, ...(row.meta_type === 'movie' ? { film: true } : {}) };
   });
 }
 
@@ -141,7 +158,7 @@ export async function setFavourite(userUUID: string, config: any, descriptor: an
   if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'series')) return false;
   const meta = await fetchMeta(userUUID, descriptor.k === 'movie' ? 'movie' : 'series', descriptor.i);
   if (!meta) return false;
-  await database.setFavourite(userUUID, profileKey(config), String(meta.id), descriptor.t, favourite);
+  await database.setFavourite(userUUID, profileKey(config), String(meta.id), descriptor.t, favourite, meta.type === 'movie' ? 'movie' : 'series');
   return true;
 }
 
@@ -174,7 +191,7 @@ export async function setWatchlisted(userUUID: string, config: any, descriptor: 
   const meta = await fetchMeta(userUUID, stremioType, descriptor.i);
   if (!meta) return false;
 
-  await database.setWatchlisted(userUUID, profileKey(config), String(meta.id), descriptor.t, listed);
+  await database.setWatchlisted(userUUID, profileKey(config), String(meta.id), descriptor.t, listed, meta.type === 'movie' ? 'movie' : 'series');
   invalidateWatchlist(userUUID);
   if (writesTrackers(config)) {
     const { enqueueTrackerWrites, hasCredential } = require('../trackerOutbox');

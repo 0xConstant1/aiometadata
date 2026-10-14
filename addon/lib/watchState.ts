@@ -51,7 +51,7 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
   const { sourceFor } = require('./jellyfin/trackerSource');
   const { parseStremioId } = require('./jellyfin/ids');
   const { runtimeFromMeta } = require('./jellyfin/playstateSync');
-  const { watchlistEntries } = require('./jellyfin/watchlist');
+  const { entryItemType, watchlistEntries } = require('./jellyfin/watchlist');
   const { dropsKeptHere, localDrops } = require('./jellyfin/dropped');
 
   const listed = watchlistEntries(userUUID, config).catch(() => null);
@@ -82,7 +82,7 @@ export async function buildWatchStatePull(userUUID: string, config: any, since: 
   const held = await listed;
   const watchlist = held?.complete
     ? held.entries.map((entry: any) => ({
-        type: entry.mediaType === 'movie' ? ('movie' as const) : ('series' as const),
+        type: entryItemType(entry) === 'Movie' ? ('movie' as const) : ('series' as const),
         metaId: entry.metaId,
         ...(entry.addedAt > 0 ? { at: seconds(entry.addedAt) } : {}),
       }))

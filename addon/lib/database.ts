@@ -164,6 +164,7 @@ class Database {
     await this.ensureAccountColumns();
     await this.ensurePlaystateProfile();
     await this.ensurePlaystateOrigin();
+    await this.ensureWatchlistMetaType();
     await this.ensureTrackerOutboxProfile();
   }
 
@@ -248,6 +249,23 @@ class Database {
     }
   }
 
+  async ensureWatchlistMetaType(): Promise<void> {
+    for (const table of ['jellyfin_watchlist', 'jellyfin_favourites']) {
+      try {
+        if (this.type === 'sqlite') {
+          const existing = await this.allQuery(`PRAGMA table_info(${table})`);
+          if (existing.some((column: any) => column.name === 'meta_type')) continue;
+          await this.runQuery(`ALTER TABLE ${table} ADD COLUMN meta_type TEXT`);
+          logger.info(`Migrated ${table}: rows record their meta type`);
+        } else {
+          await this.runQuery(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS meta_type TEXT`);
+        }
+      } catch (error: any) {
+        logger.warn(`Could not add ${table}.meta_type: ${error.message}`);
+      }
+    }
+  }
+
   async ensureTrackerOutboxProfile(): Promise<void> {
     try {
       if (this.type === 'sqlite') {
@@ -326,6 +344,7 @@ class Database {
         profile TEXT NOT NULL DEFAULT '',
         meta_id TEXT NOT NULL,
         media_type TEXT NOT NULL,
+        meta_type TEXT,
         listed INTEGER NOT NULL DEFAULT 1,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
@@ -403,6 +422,7 @@ class Database {
         profile TEXT NOT NULL DEFAULT '',
         meta_id TEXT NOT NULL,
         media_type TEXT NOT NULL,
+        meta_type TEXT,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
@@ -551,6 +571,7 @@ class Database {
         profile TEXT NOT NULL DEFAULT '',
         meta_id TEXT NOT NULL,
         media_type TEXT NOT NULL,
+        meta_type TEXT,
         listed INTEGER NOT NULL DEFAULT 1,
         updated_at BIGINT NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
@@ -628,6 +649,7 @@ class Database {
         profile TEXT NOT NULL DEFAULT '',
         meta_id TEXT NOT NULL,
         media_type TEXT NOT NULL,
+        meta_type TEXT,
         updated_at BIGINT NOT NULL,
         PRIMARY KEY (user_uuid, profile, meta_id)
       )`,
@@ -1362,19 +1384,26 @@ class Database {
 
   async listWatchlist(userUUID: string, profile = ''): Promise<any[]> {
     const query = this.type === 'sqlite'
-      ? 'SELECT meta_id, media_type, listed, updated_at FROM jellyfin_watchlist WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC'
-      : 'SELECT meta_id, media_type, listed, updated_at FROM jellyfin_watchlist WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC';
+      ? 'SELECT meta_id, media_type, meta_type, listed, updated_at FROM jellyfin_watchlist WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC'
+      : 'SELECT meta_id, media_type, meta_type, listed, updated_at FROM jellyfin_watchlist WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC';
     return this.allQuery(query, [userUUID, profile]);
   }
 
   // listed=0 is a removal kept until the trackers stop listing the title.
-  async setWatchlisted(userUUID: string, profile: string, metaId: string, mediaType: string, listed: boolean): Promise<void> {
+  async setWatchlisted(userUUID: string, profile: string, metaId: string, mediaType: string, listed: boolean, metaType: string | null = null): Promise<void> {
     const query = this.type === 'sqlite'
-      ? `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, listed, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = excluded.media_type, listed = excluded.listed, updated_at = excluded.updated_at`
-      : `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, listed, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, listed = EXCLUDED.listed, updated_at = EXCLUDED.updated_at`;
-    await this.runQuery(query, [userUUID, profile, metaId, mediaType, listed ? 1 : 0, Date.now()]);
+      ? `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, meta_type, listed, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = excluded.media_type, meta_type = COALESCE(excluded.meta_type, jellyfin_watchlist.meta_type), listed = excluded.listed, updated_at = excluded.updated_at`
+      : `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, meta_type, listed, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, meta_type = COALESCE(EXCLUDED.meta_type, jellyfin_watchlist.meta_type), listed = EXCLUDED.listed, updated_at = EXCLUDED.updated_at`;
+    await this.runQuery(query, [userUUID, profile, metaId, mediaType, metaType, listed ? 1 : 0, Date.now()]);
+  }
+
+  async setMetaType(table: 'jellyfin_watchlist' | 'jellyfin_favourites', userUUID: string, profile: string, metaId: string, metaType: string): Promise<void> {
+    const query = this.type === 'sqlite'
+      ? `UPDATE ${table} SET meta_type = ? WHERE user_uuid = ? AND profile = ? AND meta_id = ?`
+      : `UPDATE ${table} SET meta_type = $1 WHERE user_uuid = $2 AND profile = $3 AND meta_id = $4`;
+    await this.runQuery(query, [metaType, userUUID, profile, metaId]);
   }
 
   // How a tracker names an episode or film, resolved to the ids this server publishes.
@@ -1712,19 +1741,19 @@ class Database {
   // Favourites for a client with a watchlist of its own; only kept here, never on a tracker.
   async listFavourites(userUUID: string, profile = ''): Promise<any[]> {
     const query = this.type === 'sqlite'
-      ? 'SELECT meta_id, media_type, updated_at FROM jellyfin_favourites WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC'
-      : 'SELECT meta_id, media_type, updated_at FROM jellyfin_favourites WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC';
+      ? 'SELECT meta_id, media_type, meta_type, updated_at FROM jellyfin_favourites WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC'
+      : 'SELECT meta_id, media_type, meta_type, updated_at FROM jellyfin_favourites WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC';
     return this.allQuery(query, [userUUID, profile]);
   }
 
-  async setFavourite(userUUID: string, profile: string, metaId: string, mediaType: string, favourite: boolean): Promise<void> {
+  async setFavourite(userUUID: string, profile: string, metaId: string, mediaType: string, favourite: boolean, metaType: string | null = null): Promise<void> {
     if (favourite) {
       const query = this.type === 'sqlite'
-        ? `INSERT INTO jellyfin_favourites (user_uuid, profile, meta_id, media_type, updated_at) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = excluded.media_type, updated_at = excluded.updated_at`
-        : `INSERT INTO jellyfin_favourites (user_uuid, profile, meta_id, media_type, updated_at) VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, updated_at = EXCLUDED.updated_at`;
-      await this.runQuery(query, [userUUID, profile, metaId, mediaType, Date.now()]);
+        ? `INSERT INTO jellyfin_favourites (user_uuid, profile, meta_id, media_type, meta_type, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = excluded.media_type, meta_type = COALESCE(excluded.meta_type, jellyfin_favourites.meta_type), updated_at = excluded.updated_at`
+        : `INSERT INTO jellyfin_favourites (user_uuid, profile, meta_id, media_type, meta_type, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, meta_type = COALESCE(EXCLUDED.meta_type, jellyfin_favourites.meta_type), updated_at = EXCLUDED.updated_at`;
+      await this.runQuery(query, [userUUID, profile, metaId, mediaType, metaType, Date.now()]);
       return;
     }
     const query = this.type === 'sqlite'

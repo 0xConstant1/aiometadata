@@ -25,7 +25,7 @@ function sortOf(config: any, catalogId: string, type: string): Sort {
 async function titleMeta(config: any, userUUID: string, row: any): Promise<any | null> {
   const { cacheWrapMetaSmart } = require('./getCache');
   const { getMeta } = require('./getMeta');
-  const type = row.media_type === 'movie' ? 'movie' : 'series';
+  const type = row.media_type === 'movie' || row.meta_type === 'movie' ? 'movie' : 'series';
   const id = String(row.meta_id);
   const result = await cacheWrapMetaSmart(
     userUUID,

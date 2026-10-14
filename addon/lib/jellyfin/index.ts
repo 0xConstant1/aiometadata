@@ -42,7 +42,7 @@ import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByNa
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, previewMeta, similarTitles } from './people';
 import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
-import { favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
+import { entryItemType, favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { SIZED_WIDTH, resizeToWidth, widthStep } from '../posterCache/resize';
@@ -668,7 +668,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
         : null;
       const entries = (await favouriteEntries(userUUID, config)).filter((entry) =>
-        !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
+        !wanted || wanted.has(entryItemType(entry))
       );
       const page = entries.slice(startIndex, startIndex + limit);
       const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
@@ -693,7 +693,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
       const read = await watchlistEntries(userUUID, config);
       const entries = read.entries.filter((entry) =>
-        !wanted || wanted.has(entry.mediaType === 'movie' ? 'Movie' : 'Series')
+        !wanted || wanted.has(entryItemType(entry))
       );
       const listed = Date.now() - started;
       const page = entries.slice(startIndex, startIndex + limit);
@@ -2695,7 +2695,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const shelves = (await getCatalogs(userUUID, config)).filter((catalog: any) => {
       const mediaType = isServerWatchlistCatalog(catalog.id) ? serverWatchlistMediaType(catalog.id) : undefined;
       if (!mediaType || !wanted) return Boolean(mediaType);
-      return mediaType === 'all' ? wanted.has('Movie') || wanted.has('Series') : wanted.has(mediaType === 'movie' ? 'Movie' : 'Series');
+      return mediaType === 'all' || mediaType === 'anime' ? wanted.has('Movie') || wanted.has('Series') : wanted.has(mediaType === 'movie' ? 'Movie' : 'Series');
     });
     if (!shelves.length) return null;
     const cap = envInt('SERVER_WATCHLIST_MAX_ITEMS', 500, 1);
@@ -2738,7 +2738,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
     });
     const listed = (await watchlistEntries(userUUID, config, filmLimit).catch(() => ({ entries: [] as any[] }))).entries
-      .filter((entry: any) => entry.mediaType === 'movie')
+      .filter((entry: any) => entryItemType(entry) === 'Movie')
       .slice(0, filmLimit);
     await mapWithConcurrency(listed, shelfConcurrency(), async (entry: any) => {
       const meta = await fetchMeta(userUUID, 'movie', entry.metaId).catch(() => null);
