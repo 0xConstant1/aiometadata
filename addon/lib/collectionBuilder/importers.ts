@@ -2,6 +2,8 @@ import {
   createClassicRowDraft,
   createCollectionDraft,
   createFolderDraft,
+  currentFields,
+  mapFoldersDeep,
   newId,
   type BuilderEntry,
   type ClassicRowDraft,
@@ -14,6 +16,7 @@ import {
   type TileShape,
 } from './types';
 import {
+  BLUEPRINT_KEY,
   dedupeBlueprints,
   fromEmbedded,
   lookupKey,
@@ -444,20 +447,33 @@ export function fromFusionWidgets(
 
 // ---- Builder's own shape, for restoring a config backup ----
 
-function fromBuilderEntries(input: unknown, notes: string[]): BuilderEntry[] {
+function fromBuilderEntries(input: unknown, notes: string[], blueprints: CatalogBlueprint[]): BuilderEntry[] {
   const list = Array.isArray(input)
     ? input
     : isRecord(input) && Array.isArray(input.entries) ? input.entries : [];
+
+  // A layout file carries each catalog on a source; the source itself keeps only its address.
+  const unpack = (title: string) => (source: SourceDraft): SourceDraft => {
+    if (!isRecord(source) || !(BLUEPRINT_KEY in source)) return source;
+    blueprints.push(...fromEmbedded(source, title));
+    const { [BLUEPRINT_KEY]: _carried, ...rest } = source as SourceDraft & Record<string, unknown>;
+    return rest as SourceDraft;
+  };
 
   const entries: BuilderEntry[] = [];
   for (const raw of list) {
     if (!isRecord(raw)) continue;
     if (raw.kind === 'classicRow') {
-      entries.push({ ...createClassicRowDraft(trimmed(raw.title)), ...raw } as ClassicRowDraft);
+      const row = currentFields({ ...createClassicRowDraft(trimmed(raw.title)), ...raw } as ClassicRowDraft);
+      entries.push(row.source ? { ...row, source: unpack(row.title)(row.source) } : row);
       continue;
     }
     if (raw.kind === 'collection') {
-      entries.push({ ...createCollectionDraft(trimmed(raw.title)), ...raw } as CollectionDraft);
+      const collection = { ...createCollectionDraft(trimmed(raw.title)), ...raw } as CollectionDraft;
+      entries.push({
+        ...collection,
+        folders: mapFoldersDeep(collection.folders ?? [], folder => ({ ...folder, sources: (folder.sources ?? []).map(unpack(folder.title)) })),
+      });
       continue;
     }
     notes.push('Skipped an entry with an unknown kind.');
@@ -532,7 +548,7 @@ export function importEntries(raw: unknown, options: ImportOptions = {}): Import
 
   if (format === 'nuvio') return done(fromNuvioCollections(raw, notes, blueprints, context));
   if (format === 'fusion') return done(fromFusionWidgets(raw, notes, blueprints, context));
-  if (format === 'builder') return done(fromBuilderEntries(raw, notes));
+  if (format === 'builder') return done(fromBuilderEntries(raw, notes, blueprints));
 
   return {
     format: 'unknown',

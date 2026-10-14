@@ -64,6 +64,21 @@ export interface ClassicRowDraft {
 
 export type BuilderEntry = CollectionDraft | ClassicRowDraft;
 
+/** An entry with only the fields its kind has now; older versions wrote more on rows. */
+export function currentFields<T extends BuilderEntry>(entry: T): T {
+  if (entry.kind !== 'classicRow') return entry;
+  const { kind, id, title, hideTitle, source, numbered, tags } = entry;
+  return {
+    kind,
+    id,
+    title,
+    ...(hideTitle !== undefined && { hideTitle }),
+    source,
+    ...(numbered !== undefined && { numbered }),
+    ...(tags !== undefined && { tags }),
+  } as T;
+}
+
 /** Identity of this addon as Nuvio records it. */
 export interface AddonIdentity {
   /** Manifest `id` field, used as Nuvio's addonId. */

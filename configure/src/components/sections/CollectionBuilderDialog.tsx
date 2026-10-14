@@ -51,6 +51,7 @@ import { getSourceBadgeStyle } from '@/lib/sourceBadges';
 
 import {
   createClassicRowDraft,
+  currentFields,
   createCollectionDraft,
   createFolderDraft,
   allFolders,
@@ -70,6 +71,7 @@ import {
   type SourceDraft,
 } from '@shared/types';
 import { toNuvioCollections } from '@shared/nuvioExport';
+import { toLayoutFile } from '@shared/layoutExport';
 import { proxyCollectionImages } from '@shared/imageProxy';
 import {
   groupMissingCatalogs,
@@ -121,7 +123,7 @@ import {
   type ImportMode,
 } from '@/lib/collectionBuilder/importModes';
 import { listStarterTemplates } from '@/lib/collectionBuilder/templates';
-import { FUSION_CHIP, NUVIO_CHIP, TERMS, type Target } from '@/lib/collectionBuilder/terms';
+import { FUSION_CHIP, JELLYFIN_CHIP, NUVIO_CHIP, TERMS, type Target } from '@/lib/collectionBuilder/terms';
 import { CollectionPreview } from './CollectionPreview';
 import { buildBlueprintLookup } from '@shared/blueprintLookup';
 import {
@@ -389,7 +391,10 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     () => toNuvioCollections(exportEntries, identity, blueprints, { usePlaceholder }),
     [exportEntries, identity, blueprints, usePlaceholder]
   );
-  const json = useMemo(() => JSON.stringify(nuvioResult.output, null, 2), [nuvioResult]);
+  const json = useMemo(
+    () => JSON.stringify(target === 'nuvio' ? nuvioResult.output : toLayoutFile(exportEntries, blueprints), null, 2),
+    [target, nuvioResult, exportEntries, blueprints]
+  );
 
   const notes: ExportNote[] = useMemo(
     () => (target === 'nuvio' ? nuvioResult.notes : jellyfinNotes(committedEntries)),
@@ -890,14 +895,15 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
 
   const applyToConfig = (options: { withCatalogs?: boolean; thenSave?: boolean } = {}) => {
     const addCatalogs = options.withCatalogs !== false && pendingCount > 0;
-    const applied = clone(committedEntries);
+    const applied = clone(committedEntries).map(currentFields);
 
     setConfig(prev => ({
       ...prev,
       collections: applied,
       ...(addCatalogs && { catalogs: applyCatalogAdditions(prev.catalogs || [], pendingAdditions) }),
     }));
-    setBaseline(JSON.stringify(committedEntries));
+    setEntries(prev => prev.map(currentFields));
+    setBaseline(JSON.stringify(applied));
     if (addCatalogs) setStagedBlueprints([]);
 
     const catalogNote = addCatalogs
@@ -970,8 +976,8 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   const hostedUrl = useMemo(() => {
     const base = stripManifestSuffix(manifestUrl);
     if (!base) return '';
-    return `${base}/nuvio-collections.json`;
-  }, [manifestUrl]);
+    return `${base}/${target === 'nuvio' ? 'nuvio-collections' : 'aiometadata-collections'}.json`;
+  }, [manifestUrl, target]);
 
   // What a featured design was trimmed to survives a re-read of the same text.
   const [importSkip, setImportSkip] = useState<Set<string>>(() => new Set());
@@ -1415,8 +1421,11 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
     );
   };
 
+  // The layout file keeps every source as it is, so only the Nuvio export has anything to lose.
+  const exportLoses = target === 'nuvio' && strandedNative > 0;
+
   const handleCopyUrl = async () => {
-    if (strandedNative > 0) {
+    if (exportLoses) {
       setNativeBlockFor('link');
       return;
     }
@@ -1427,7 +1436,7 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   };
 
   const handleCopy = async () => {
-    if (strandedNative > 0) {
+    if (exportLoses) {
       setNativeBlockFor('copy');
       return;
     }
@@ -1438,11 +1447,11 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
   };
 
   const handleDownload = () => {
-    if (strandedNative > 0) {
+    if (exportLoses) {
       setNativeBlockFor('download');
       return;
     }
-    const name = 'nuvio-collections';
+    const name = target === 'nuvio' ? 'nuvio-collections' : 'aiometadata-collections';
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -1463,32 +1472,49 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
               <Upload className="h-5 w-5" /> Export &amp; share
             </DialogTitle>
             <DialogDescription>
-              Every collection you have built, as Nuvio JSON. Jellyfin clients read your collections from the server, so they need no export.
+              {target === 'nuvio'
+                ? 'Every collection you have built, as Nuvio JSON.'
+                : 'Every collection and row you have built, folders inside folders included, for someone else to import into their AIOMetadata.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-2">
                   <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-500/10 p-3 text-xs">
                     <Info className="mt-px h-4 w-4 shrink-0 text-sky-400" />
                     <div className="space-y-1">
-                      <p className="font-medium text-sky-200">
-                        Saving updates your addon, not Nuvio
-                      </p>
-                      <p className="text-muted-foreground">
-                        Nothing is pushed to your app. Import the file or the link below again for these edits to
-                        show up there.
-                      </p>
-                      <p className="text-muted-foreground">
-                        Editing a collection you imported keeps its id, so Nuvio updates the one you already have instead of adding a second copy. Building a new collection from scratch mints a new id and arrives alongside the old one.
-                      </p>
+                      {target === 'nuvio' ? (
+                        <>
+                          <p className="font-medium text-sky-200">
+                            Saving updates your addon, not Nuvio
+                          </p>
+                          <p className="text-muted-foreground">
+                            Nothing is pushed to your app. Import the file or the link below again for these edits to
+                            show up there.
+                          </p>
+                          <p className="text-muted-foreground">
+                            Editing a collection you imported keeps its id, so Nuvio updates the one you already have instead of adding a second copy. Building a new collection from scratch mints a new id and arrives alongside the old one.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium text-sky-200">
+                            Your own Jellyfin clients need no file
+                          </p>
+                          <p className="text-muted-foreground">
+                            Saving is enough for them. This file is for sharing: whoever imports it in their
+                            collections builder gets the same layout, with the catalogs it uses created for them. Your
+                            user tags stay out of it.
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
                       variant="outline"
-                      className={`text-xs ${NUVIO_CHIP}`}
+                      className={`text-xs ${target === 'nuvio' ? NUVIO_CHIP : JELLYFIN_CHIP}`}
                     >
-                      Nuvio collections
+                      {target === 'nuvio' ? 'Nuvio collections' : 'AIOMetadata layout'}
                     </Badge>
                     <span className="text-xs text-muted-foreground">The manifest URL is in the header</span>
                     <div className="ml-auto flex items-center gap-2">
@@ -1508,7 +1534,9 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                       <LinkIcon className="h-4 w-4 text-primary" />
                       <Label htmlFor="collection-hosted-url" className="text-xs font-medium">Import by link</Label>
                       <span className="text-xs text-muted-foreground">
-                        Serves the same JSON live, if your app can read a URL
+                        {target === 'nuvio'
+                          ? 'Serves the same JSON live, if your app can read a URL'
+                          : 'Serves the same JSON live; paste it into Import JSON on the other side'}
                       </span>
                     </div>
                     {hostedUrl ? (
@@ -1566,31 +1594,33 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                     </div>
                   )}
 
-                  <div className="space-y-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="collection-use-placeholder"
-                        checked={usePlaceholder}
-                        onCheckedChange={setUsePlaceholder}
-                      />
-                      <Label htmlFor="collection-use-placeholder" className="text-xs font-medium">
-                        Make a copy for someone else
-                      </Label>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Your addon link contains your user ID, and this file embeds it on every row. Anyone who has it
-                      can read that config. Turn this on to blank it out before posting the file publicly. Whoever
-                      imports it here gets their own link filled in automatically, so they end up with your layout
-                      pointing at their catalogs.
-                    </p>
-                    {usePlaceholder && (
-                      <p className="flex items-start gap-1.5 text-xs text-amber-500">
-                        <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-                        This copy is for handing out, not for your own use. It has no addon link in it, so
-                        importing it back here is what puts one in.
+                  {target === 'nuvio' && (
+                    <div className="space-y-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id="collection-use-placeholder"
+                          checked={usePlaceholder}
+                          onCheckedChange={setUsePlaceholder}
+                        />
+                        <Label htmlFor="collection-use-placeholder" className="text-xs font-medium">
+                          Make a copy for someone else
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Your addon link contains your user ID, and this file embeds it on every row. Anyone who has it
+                        can read that config. Turn this on to blank it out before posting the file publicly. Whoever
+                        imports it here gets their own link filled in automatically, so they end up with your layout
+                        pointing at their catalogs.
                       </p>
-                    )}
-                  </div>
+                      {usePlaceholder && (
+                        <p className="flex items-start gap-1.5 text-xs text-amber-500">
+                          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                          This copy is for handing out, not for your own use. It has no addon link in it, so
+                          importing it back here is what puts one in.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <textarea
                     readOnly
@@ -1649,19 +1679,17 @@ export function CollectionBuilderDialog({ isOpen, onClose }: CollectionBuilderDi
                   <Rows3 className="h-4 w-4" /> Jellyfin
                 </button>
               </div>
-              {target === 'nuvio' && (
-                <button
-                  type="button"
-                  onClick={() => setExportOpen(true)}
-                  aria-label="Export and share"
-                  className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm @2xl:px-3 text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground active:bg-white/[0.06] @2xl:flex ${
-                    mobilePane === 'entries' ? 'flex' : 'hidden'
-                  }`}
-                >
-                  <Upload className="h-4 w-4" />
-                  <span className="hidden @2xl:inline">Export &amp; share</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setExportOpen(true)}
+                aria-label="Export and share"
+                className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm @2xl:px-3 text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground active:bg-white/[0.06] @2xl:flex ${
+                  mobilePane === 'entries' ? 'flex' : 'hidden'
+                }`}
+              >
+                <Upload className="h-4 w-4" />
+                <span className="hidden @2xl:inline">Export &amp; share</span>
+              </button>
               <Badge
                 variant="outline"
                 className={`ml-auto mr-8 h-7 px-2.5 text-xs ${

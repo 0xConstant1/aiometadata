@@ -1,6 +1,7 @@
 const consola = require('consola');
 const database = require('./database');
 const { toNuvioCollections } = require('./collectionBuilder/nuvioExport');
+const { toLayoutFile } = require('./collectionBuilder/layoutExport');
 const { buildBlueprintLookup } = require('./collectionBuilder/blueprintLookup');
 const { proxyCollectionImages } = require('./collectionBuilder/imageProxy');
 const { getCollectionImagePrefix } = require('./posterCache/config');
@@ -53,6 +54,23 @@ function sendJson(res, payload) {
 }
 
 function register(addon) {
+  addon.get('/stremio/:userUUID/aiometadata-collections.json', async (req, res) => {
+    const { userUUID } = req.params;
+    try {
+      const { config, entries, error } = await loadEntries(userUUID);
+      if (error === 'notFound') {
+        return res.status(404).json({ err: 'User configuration not found.' });
+      }
+
+      const output = toLayoutFile(entries, buildBlueprintLookup(config.catalogs));
+      logger.debug(`Served ${output.entries.length} layout entries for ${userUUID.substring(0, 8)}`);
+      sendJson(res, output);
+    } catch (err) {
+      logger.error(`Layout export failed for ${userUUID}:`, err.message);
+      res.status(500).json({ err: 'Failed to build the layout.' });
+    }
+  });
+
   addon.get('/stremio/:userUUID/nuvio-collections.json', async (req, res) => {
     const { userUUID } = req.params;
     try {
