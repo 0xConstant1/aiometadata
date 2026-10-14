@@ -434,6 +434,7 @@ export async function assembleAnimeList(entries: AnimeListEntry[]): Promise<RawS
 export interface MdblistData {
   movieRows: any[];
   episodeRows: any[];
+  showRows?: any[];
   /** MDBList's own up-next list; empty when it could not be read. */
   upNext: any[];
   droppedShows: any[];
@@ -503,7 +504,7 @@ export async function fetchMdblistWatched(apiKey: string, mediatype: 'episode' |
 }
 
 export async function assembleMdblist(data: MdblistData, config: any): Promise<RawSnapshot> {
-  const { movieRows, episodeRows, upNext, droppedShows, droppedUnread } = data;
+  const { movieRows, episodeRows, showRows = [], upNext, droppedShows, droppedUnread } = data;
   const { Resolutions } = require('./resolutions');
   const resolutions = new Resolutions();
   await resolutions.preload(
@@ -533,6 +534,7 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
   }
 
   const latest = new Map<string, { resolved: any; season: number; number: number; at: number }>();
+  const byShow = new Map<string, { metaIds: Set<string>; anime: boolean; regular: number }>();
   for (const entry of episodeRows) {
     const episode = entry?.episode;
     const season = Number(episode?.season);
@@ -552,11 +554,26 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
     counts.watched += 1;
     if (seen && (!counts.at || seen > counts.at)) counts.at = seen;
     series.set(resolved.metaId, counts);
+    if (ids.mdblist) {
+      const show = byShow.get(String(ids.mdblist)) ?? { metaIds: new Set<string>(), anime: false, regular: 0 };
+      show.metaIds.add(resolved.metaId);
+      if (resolved.mediaType === 'anime') show.anime = true;
+      if (season > 0) show.regular += 1;
+      byShow.set(String(ids.mdblist), show);
+    }
 
     const held = latest.get(resolved.metaId);
     if (!held || seen > held.at || (seen === held.at && (season > held.season || (season === held.season && number > held.number)))) {
       latest.set(resolved.metaId, { resolved, season, number, at: seen });
     }
+  }
+
+  for (const entry of showRows) {
+    const aired = Number(entry?.show?.total_aired_episodes) || 0;
+    const show = byShow.get(String(entry?.show?.ids?.mdblist ?? ''));
+    if (aired <= 0 || !show || show.anime || show.metaIds.size !== 1) continue;
+    const counts = series.get([...show.metaIds][0]);
+    if (counts) Object.assign(counts, { watched: show.regular, total: aired });
   }
 
   // MDBList names the next episode itself, the one its own app shows. The
@@ -626,7 +643,7 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
 type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';
 
 // Raised to rebuild indexes written in an older spelling.
-const INDEX_FORMAT = 2;
+const INDEX_FORMAT = 3;
 
 interface SummaryData {
   format?: number;
@@ -678,18 +695,20 @@ async function assembleFromMirror(service: MirroredService, credential: string, 
   if (service === 'mdblist') {
     const movieRows: any[] = [];
     const episodeRows: any[] = [];
+    const showRows: any[] = [];
     let upNext: any[] = [];
     let dropped: any = { shows: [], unread: false };
     for (const row of rows) {
       if (row.key.startsWith('movie:')) movieRows.push(row.data);
       else if (row.key.startsWith('ep:')) episodeRows.push(row.data);
+      else if (row.key.startsWith('showinfo:')) showRows.push(row.data);
       else if (row.key === 'upnext') upNext = Array.isArray(row.data) ? row.data : [];
       else if (row.key === 'dropped') dropped = row.data ?? dropped;
     }
     movieRows.sort(byTime('last_watched_at'));
     episodeRows.sort(byTime('last_watched_at'));
     // MDBList names no followed shows.
-    return { ...(await assembleMdblist({ movieRows, episodeRows, upNext, droppedShows: dropped.shows ?? [], droppedUnread: dropped.unread === true }, config)), following: [] };
+    return { ...(await assembleMdblist({ movieRows, episodeRows, showRows, upNext, droppedShows: dropped.shows ?? [], droppedUnread: dropped.unread === true }, config)), following: [] };
   }
   if (service === 'anilist' || service === 'mal') {
     return assembleAnimeList(rows.filter((row) => row.key.startsWith('entry:')).map((row) => row.data));
@@ -798,7 +817,7 @@ async function buildIndex(service: MirroredService, credential: string, config: 
   const database: any = require('../database');
   const fingerprint = `store:${source}:v${version}`;
   const stored = await database.getWatchSummary(source);
-  const current = stored?.data?.format === INDEX_FORMAT && (service !== 'simkl' || Array.isArray(stored.data.finishedAnime));
+  const current = stored?.data?.format === INDEX_FORMAT;
   if (stored?.version === version && current) return viewOf(source, fingerprint, stored.data);
 
   const started = Date.now();
