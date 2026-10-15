@@ -1659,6 +1659,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1000,
   },
   {
+    key: 'JELLYFIN_DROP_HOLD',
+    envVar: 'JELLYFIN_DROP_HOLD',
+    label: 'Drop Hold (seconds)',
+    description: 'How long a show dropped or undropped from a client is shown that way while the tracker has yet to report the change.',
+    category: 'Features',
+    type: 'number',
+    default: 600,
+    min: 10,
+  },
+  {
     key: 'JELLYFIN_USERDATA_PUSH_DELAY_MS',
     envVar: 'JELLYFIN_USERDATA_PUSH_DELAY_MS',
     label: 'Watch State Push Delay (ms)',

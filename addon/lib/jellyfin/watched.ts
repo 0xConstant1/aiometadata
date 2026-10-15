@@ -1233,8 +1233,12 @@ export async function watchedSnapshot(userUUID: string, config: any, opts: { pat
   }
 
   // Kept out of what is held: a drop made here shows on the next read.
-  const { dropsKeptHere, localDrops } = require('./dropped');
-  if (!userUUID || !dropsKeptHere(config)) return snapshot;
+  const { dropsKeptHere, localDrops, withHeldDrops } = require('./dropped');
+  if (!userUUID) return snapshot;
+  if (!dropsKeptHere(config)) {
+    const dropped = withHeldDrops(userUUID, config, snapshot.dropped);
+    return dropped === snapshot.dropped ? snapshot : { ...snapshot, dropped };
+  }
   const local: Set<string> = await localDrops(userUUID, config);
   return local.size ? { ...snapshot, dropped: new Set([...snapshot.dropped, ...local]) } : snapshot;
 }
