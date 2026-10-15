@@ -8613,6 +8613,44 @@ addon.put('/api/dashboard/settings/:key', requireDashboardAdmin, async (req, res
   }
 });
 
+addon.get('/api/dashboard/settings/export', requireDashboardAdmin, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(settingsService.exportSettings());
+});
+
+addon.post('/api/dashboard/settings/import', requireDashboardAdmin, async (req, res) => {
+  const { settings, confirm } = req.body || {};
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    return res.status(400).json({ error: 'Expected a settings object mapping keys to values' });
+  }
+  const { getSettingDefinition } = require('./lib/settingsRegistry');
+  const imported = [];
+  const skipped = [];
+  const failed = [];
+  let requiresRestart = false;
+  for (const [key, raw] of Object.entries(settings)) {
+    const def = getSettingDefinition(key);
+    if (!def) { skipped.push({ key, reason: 'unknown setting' }); continue; }
+    if (def.envOnly) { skipped.push({ key, reason: 'set by environment variable only' }); continue; }
+    if (raw === null || raw === undefined) { skipped.push({ key, reason: def.sensitive ? 'secret left out of the file' : 'no value' }); continue; }
+    const value = String(raw);
+    if (settingsService.hasStoredValue(key) && settingsService.getSetting(key) === value) { skipped.push({ key, reason: 'unchanged' }); continue; }
+    const invalid = settingsService.invalidValueReason(def, value);
+    if (invalid) { failed.push({ key, reason: invalid }); continue; }
+    const block = await describeSelfDemotion(req, key, value, confirm);
+    if (block) { skipped.push({ key, reason: block.reason || block.error }); continue; }
+    try {
+      await settingsService.setSetting(key, value);
+      imported.push(key);
+      if (def.requiresRestart) requiresRestart = true;
+    } catch (error) {
+      failed.push({ key, reason: error.message });
+    }
+  }
+  if (imported.length) consola.info(`[Settings] Imported ${imported.length} setting(s) from a file`);
+  res.json({ imported, skipped, failed, requiresRestart });
+});
+
 addon.post('/api/dashboard/settings/reset/:key', requireDashboardAdmin, async (req, res) => {
   try {
     const proposed = settingsService.previewSettingValue(req.params.key, null);

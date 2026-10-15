@@ -133,6 +133,48 @@ export function applySideEffects(key?: string): void {
   if (key === undefined || key === 'CONSOLA_LEVEL') applyLogLevel();
 }
 
+export interface SettingsExport {
+  exportedAt: string;
+  version: string;
+  settings: Record<string, string | null>;
+  /** Secrets are written as null; these are the keys to enter again by hand. */
+  maskedSecretKeys: string[];
+}
+
+/** Every setting saved from the dashboard, secrets blanked. */
+export function exportSettings(): SettingsExport {
+  const settings: Record<string, string | null> = {};
+  const maskedSecretKeys: string[] = [];
+  for (const def of SETTINGS_REGISTRY) {
+    if (def.envOnly || !cache.has(def.key)) continue;
+    if (def.sensitive) {
+      settings[def.key] = null;
+      maskedSecretKeys.push(def.key);
+    } else {
+      settings[def.key] = cache.get(def.key) as string;
+    }
+  }
+  return { exportedAt: new Date().toISOString(), version: require('./buildInfo').version, settings, maskedSecretKeys };
+}
+
+/** Why a value cannot be saved under this setting, or null when it can. */
+export function invalidValueReason(def: SettingDefinition, value: string): string | null {
+  if (def.type === 'number') {
+    const n = Number(value);
+    if (value.trim() === '' || !Number.isFinite(n)) return 'not a number';
+    if (def.min !== undefined && n < def.min) return `below ${def.min}`;
+    if (def.max !== undefined && n > def.max) return `above ${def.max}`;
+  }
+  if (def.type === 'boolean' && value !== 'true' && value !== 'false') return 'not true or false';
+  if (def.type === 'select' && def.options && !def.options.includes(value)) return 'not one of its options';
+  if (def.validate && !def.validate(value)) return 'invalid value';
+  return null;
+}
+
+export function hasStoredValue(key: string): boolean {
+  return cache.has(key);
+}
+
 export function getAllSettings(): object[] {
   const disabledMap = evaluateDisabledState();
 

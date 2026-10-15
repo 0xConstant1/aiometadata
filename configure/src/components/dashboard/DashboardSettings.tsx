@@ -54,12 +54,17 @@ import {
   Snowflake,
   Puzzle,
   Search,
+  Download,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   type SettingItem,
+  type SettingsImportResult,
   useUpdateSetting,
   useResetSetting,
+  useExportSettings,
+  useImportSettings,
 } from "@/hooks/useDashboardQueries";
 import { RestartManager } from "./RestartManager";
 
@@ -490,6 +495,40 @@ export function DashboardSettings({ data }: DashboardSettingsProps) {
   const settings = useMemo(() => data?.settings || [], [data?.settings]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const exportMutation = useExportSettings();
+  const importMutation = useImportSettings();
+  const importInput = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<SettingsImportResult | null>(null);
+  const importNotes = importResult
+    ? [
+        ...importResult.failed.map((row) => ({ ...row, failed: true })),
+        ...importResult.skipped.filter((row) => row.reason !== "unchanged").map((row) => ({ ...row, failed: false })),
+      ]
+    : [];
+
+  async function handleExport() {
+    try {
+      const payload = await exportMutation.mutateAsync();
+      const count = Object.keys(payload.settings).length;
+      toast.success(`${count} setting${count === 1 ? "" : "s"} exported`, payload.maskedSecretKeys.length > 0
+        ? { description: `${payload.maskedSecretKeys.length} secret${payload.maskedSecretKeys.length === 1 ? " is" : "s are"} left out and must be entered again after importing.` }
+        : undefined);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to export settings");
+    }
+  }
+
+  async function handleImportFile(file: File | undefined) {
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const map = parsed && typeof parsed.settings === "object" && !Array.isArray(parsed.settings) ? parsed.settings : parsed;
+      if (!map || typeof map !== "object" || Array.isArray(map)) throw new Error("This file holds no settings");
+      setImportResult(await importMutation.mutateAsync(map));
+    } catch (err: any) {
+      toast.error(err instanceof SyntaxError ? "This file is not valid JSON" : err.message || "Failed to import settings");
+    }
+  }
 
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -542,15 +581,58 @@ export function DashboardSettings({ data }: DashboardSettingsProps) {
   return (
     <div className="space-y-4">
       <RestartManager pendingLabels={pendingLabels} canRestart={data?.canRestart} />
-      <div className="relative max-w-md">
-        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Search settings by name, key or description"
-          className="pl-8 h-9"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative max-w-md flex-1 min-w-[16rem]">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search settings by name, key or description"
+            className="pl-8 h-9"
+          />
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" size="sm" className="h-9" onClick={handleExport} disabled={exportMutation.isPending}>
+            {exportMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
+            Export
+          </Button>
+          <Button variant="outline" size="sm" className="h-9" onClick={() => importInput.current?.click()} disabled={importMutation.isPending}>
+            {importMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
+            Import
+          </Button>
+          <input
+            ref={importInput}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => { void handleImportFile(e.target.files?.[0]); e.target.value = ""; }}
+          />
+        </div>
       </div>
+      <AlertDialog open={importResult !== null} onOpenChange={(open) => { if (!open) setImportResult(null); }}>
+        <AlertDialogContent className="max-h-[80vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Settings imported</AlertDialogTitle>
+            <AlertDialogDescription>
+              {importResult?.imported.length ?? 0} applied, {importResult?.skipped.length ?? 0} skipped, {importResult?.failed.length ?? 0} not applied.
+              {importResult?.requiresRestart ? " Some of them take effect after a restart." : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {importNotes.length > 0 && (
+            <ul className="space-y-1 text-xs">
+              {importNotes.map((row) => (
+                <li key={row.key} className="flex gap-2">
+                  <span className={`font-mono ${row.failed ? "text-red-400" : "text-muted-foreground"}`}>{row.key}</span>
+                  <span className="text-muted-foreground">{row.reason}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setImportResult(null)}>Done</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex gap-6">
       <nav className="hidden lg:block w-52 shrink-0 sticky top-0 self-start space-y-1">
         {categories.map((cat) => (

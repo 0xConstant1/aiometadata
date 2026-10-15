@@ -1443,6 +1443,65 @@ export function useResetSetting() {
 }
 
 
+export interface SettingsImportResult {
+  imported: string[];
+  skipped: { key: string; reason: string }[];
+  failed: { key: string; reason: string }[];
+  requiresRestart: boolean;
+}
+
+/** Downloads every setting saved from the dashboard, secrets blanked. */
+export function useExportSettings() {
+  const { adminKey, logout } = useAdmin();
+
+  return useMutation({
+    mutationFn: async () => {
+      const headers: Record<string, string> = {};
+      if (adminKey) headers['x-admin-key'] = adminKey;
+      const response = await fetch('/api/dashboard/settings/export', { headers });
+      if (response.status === 401) { logout(); throw new Error('Session expired.'); }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `aiometadata-settings-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      return payload as { settings: Record<string, string | null>; maskedSecretKeys: string[] };
+    },
+  });
+}
+
+export function useImportSettings() {
+  const { adminKey, logout } = useAdmin();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (settings: Record<string, unknown>): Promise<SettingsImportResult> => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (adminKey) headers['x-admin-key'] = adminKey;
+      const response = await fetch('/api/dashboard/settings/import', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ settings }),
+      });
+      if (response.status === 401) { logout(); throw new Error('Session expired.'); }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.settings });
+    },
+  });
+}
+
 export interface JellyfinSessionRow {
   profile: string;
   profileKey: string;
