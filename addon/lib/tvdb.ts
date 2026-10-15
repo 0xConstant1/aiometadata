@@ -4,6 +4,7 @@ config();
 import { cacheWrapTvdbApi, stableStringify } from './getCache.js';
 import { to3LetterCode } from './language-map.js';
 import { readsBySeason } from '../utils/episodeOrder';
+import { normalizeTitle } from '../utils/normalizeTitle';
 import { httpPost, httpGet } from '../utils/httpClient.js';
 import { UserConfig } from '../types/index.js';
 import consola from 'consola';
@@ -101,6 +102,7 @@ interface TvdbSearchResult {
   country?: string;
   status?: string;
   slug?: string;
+  remote_ids?: Array<{ id: string; type: number; sourceName: string }>;
 }
 
 interface TvdbSeriesExtended {
@@ -532,30 +534,25 @@ function _filterTvdbSearchResults(results: TvdbSearchResult[], query: string): T
     return [];
   }
 
-  const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizedQuery = normalizeTitle(query);
+  const compactQuery = normalizedQuery.replace(/\s/g, '');
 
-  const filteredResults = results.filter((item: TvdbSearchResult) => {
-    if (item.network === 'YouTube') {
-      return false;
-    }
+  // Most YouTube entries are channel uploads; keep the ones TMDB lists or the user named exactly.
+  const kept = results.filter((item: TvdbSearchResult) => item.network !== 'YouTube'
+    || item.remote_ids?.some(r => r.sourceName === 'TheMovieDB.com')
+    || (normalizedQuery && normalizeTitle(item.name) === normalizedQuery));
 
+  const filteredResults = kept.filter((item: TvdbSearchResult) => {
     const hasMissingPoster = !item.image_url || item.image_url.includes('/images/missing/');
     if (!item.network && hasMissingPoster) {
-      const normalizedName = item.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)) {
-        return true;
-      }
-      return false;
+      const compactName = normalizeTitle(item.name).replace(/\s/g, '');
+      return compactName.includes(compactQuery) || compactQuery.includes(compactName);
     }
 
     return true;
   });
 
-  if (filteredResults.length === 0) {
-    return results.filter((item: TvdbSearchResult) => item.network !== 'YouTube');
-  }
-
-  return filteredResults;
+  return filteredResults.length > 0 ? filteredResults : kept;
 }
 
 async function searchSeries(query: string, config: UserConfig, offset: number = 0, limit: number = 25): Promise<TvdbSearchResult[]> {

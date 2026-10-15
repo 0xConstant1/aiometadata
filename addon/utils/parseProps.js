@@ -10,6 +10,7 @@ const jikan = require('../lib/mal');
 const { resolveAllIds } = require('../lib/id-resolver');
 const idMapper = require('../lib/id-mapper');
 const { selectFanartImageByLang } = require('./fanart');
+const { normalizeTitle: normalize } = require('./normalizeTitle');
 const { tmdbImageUrl, tmdbLogoSize, tmdbBackdropSize, tmdbLandscapeSize, tmdbPosterSize } = require('./tmdbImageSize');
 const { getImdbRating } = require('../lib/getImdbRating');
 const consola = require('consola');
@@ -381,32 +382,6 @@ function buildPosterProxyUrl(host, type, proxyId, fallback, language, config) {
   
   // RPDB needs proxy endpoint for fallback handling
   return `${host}/poster/${type}/${proxyId}?fallback=${encodeURIComponent(fallback)}&lang=${language}&key=${apiKey}`;
-}
-
-/**
- * Normalizes a string for searching:
- * - Converts to lowercase
- * - Removes accents and diacritics
- * - Converts & to 'and'
- * - Removes non-alphanumeric characters (except whitespace)
- * - Removes a leading "the "
- * - Collapses multiple spaces
- */
-function normalize(str) {
-  if (!str) return '';
-  return str
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s*&\s*/g, ' and ')
-    // Convert dashes, underscores, slashes to spaces
-    // eslint-disable-next-line no-useless-escape
-    .replace(/[\u2010-\u2015–—−_\/]+/g, ' ')
-    // Remove all other non-alphanumeric characters
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/^the\s+/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 
@@ -814,9 +789,10 @@ function sortTvdbSearchResults(results, query) {
       hasOverview: !!(item.description && item.description.trim() !== ''),
       isContinuing: item.status === "Continuing",
       isUpcoming: item.status === "Upcoming",
+      isYouTube: !!item._isYouTube,
     };
   });
-  
+
   // 2. FILTER out the lowest quality results.
   let filteredResults = processedResults.filter(item => {
     // Only filter out "Other" if it's NOT similar enough
@@ -853,7 +829,11 @@ function sortTvdbSearchResults(results, query) {
   
   // 3. SORT the filtered results based on our relevance hierarchy.
   filteredResults.sort((a, b) => {
-    // Primary Sort: Absolutely prioritize items WITH a poster over those without.
+    // YouTube results rank after everything else.
+    if (a.isYouTube !== b.isYouTube) {
+      return a.isYouTube ? 1 : -1;
+    }
+    // Then prioritize items WITH a poster over those without.
     if (a.hasPoster !== b.hasPoster) {
       return a.hasPoster ? -1 : 1;
     }
