@@ -1631,10 +1631,12 @@ async function performTvdbSearch(type: string, query: string, language: string, 
 
   logger.debug(`TVDB initial search completed in ${Date.now() - searchStartTime}ms.`);
 
+  const youtubeIds = new Set<string>();
   (titleResults || []).forEach((result: any) => {
     const resultId = result.tvdb_id || result.id;
     if (resultId) {
       idMap.set(String(resultId), type);
+      if (result.network === 'YouTube') youtubeIds.add(String(resultId));
     }
   });
 
@@ -1662,6 +1664,9 @@ async function performTvdbSearch(type: string, query: string, language: string, 
   );
 
   const finalResults = (await Promise.all(parsePromises)).filter(Boolean);
+  for (const meta of finalResults) {
+    if (youtubeIds.has(meta._tvdbId)) meta._isYouTube = true;
+  }
   logger.info(`Successfully parsed ${finalResults.length} items into Stremio metas.`);
 
   const sortedResults = Utils.sortTvdbSearchResults(finalResults, sanitizedQuery);
