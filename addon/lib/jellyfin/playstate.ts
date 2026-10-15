@@ -26,6 +26,10 @@ interface SessionPosition {
   viewer?: string | null;
   device?: string;
   playSession?: string;
+  /** When progress passed the watched mark, so the stop that follows does not report it again. */
+  playedAt?: number;
+  /** Below the mark again since, with a resume point written. */
+  rewound?: boolean;
 }
 
 // A client that dies never sends a stop, so the last tick is kept and a stop
@@ -365,9 +369,11 @@ async function report(
   // A client re-sends Playing while it runs; reopening an already-playing
   // session is noise. A resume comes through the pause edge instead.
   if (event === 'start' && known && known.paused === false && sameSession(known, device, playSession)) {
-    setPosition(key, { positionMs, at: Date.now(), paused: false, viewer: req.jellyfin?.profileId ?? null, device, playSession });
+    setPosition(key, { positionMs, at: Date.now(), paused: false, viewer: req.jellyfin?.profileId ?? null, device, playSession, playedAt: known.playedAt, rewound: known.rewound });
     return;
   }
+  const same = known && sameSession(known, device, playSession);
+  const playedAt = same ? known.playedAt : undefined;
 
   let played: boolean | null = null;
   if (event === 'played') played = true;
@@ -380,9 +386,26 @@ async function report(
   } else {
     // Recorded as playing, not unknown: a following tick reporting the same
     // state would otherwise read as a change and reopen the session.
-    setPosition(key, { positionMs, at: Date.now(), paused: event === 'pause', viewer: req.jellyfin?.profileId ?? null, device, playSession });
+    setPosition(key, { positionMs, at: Date.now(), paused: event === 'pause', viewer: req.jellyfin?.profileId ?? null, device, playSession, playedAt, rewound: same ? known.rewound : undefined });
   }
 
+  if (playedAt && (event === 'start' || event === 'pause' || played === true)) {
+    if (event === 'stop') await recordPlaystate(userUUID, profile, session, event, positionMs, played);
+    return;
+  }
+  await settle(userUUID, config, profile, session, event, positionMs, played, resumedFrom);
+}
+
+async function settle(
+  userUUID: string,
+  config: any,
+  profile: string,
+  session: ResolvedSession,
+  event: 'start' | 'pause' | 'stop' | 'played' | 'unplayed',
+  positionMs: number,
+  played: boolean | null,
+  resumedFrom: number | null = null
+): Promise<void> {
   // The table is written before any tracker is told, so a read never waits on one.
   await recordPlaystate(userUUID, profile, session, event, positionMs, played);
   if (played === true && session.descriptor.k === 'episode') {
@@ -626,7 +649,7 @@ export async function recordProgress(req: any, body: any): Promise<void> {
   const newSession = !paused && !!previous?.playSession && !!session && previous.playSession !== session;
   if (!changed && !startsPaused && !newSession) {
     const now = Date.now();
-    const next: SessionPosition = { positionMs, at: now, paused, writtenAt: previous?.writtenAt, writtenMs: previous?.writtenMs, viewer: req.jellyfin?.profileId ?? previous?.viewer ?? null, device: previous?.device ?? require('./context').clientInfo(req).deviceId, playSession: previous?.playSession ?? playSessionOf(body) };
+    const next: SessionPosition = { positionMs, at: now, paused, writtenAt: previous?.writtenAt, writtenMs: previous?.writtenMs, viewer: req.jellyfin?.profileId ?? previous?.viewer ?? null, device: previous?.device ?? require('./context').clientInfo(req).deviceId, playSession: previous?.playSession ?? playSessionOf(body), playedAt: previous?.playedAt, rewound: previous?.rewound };
     // Table only; a tracker still hears edges alone.
     const interval = envInt('JELLYFIN_PROGRESS_WRITE_INTERVAL', 60, 0) * 1000;
     const moved = positionMs !== (previous?.writtenMs ?? -1);
@@ -634,8 +657,33 @@ export async function recordProgress(req: any, body: any): Promise<void> {
       const config = await loadConfig(req);
       const session = config ? await resolvePlaying(userUUID, itemId, body) : null;
       if (session) {
-        logger.debug(`Progress ${session.videoId} at ${positionMs}ms`);
-        await recordPlaystate(userUUID, profileKey(config), session, 'start', positionMs, null);
+        // Past the mark the title counts as watched now, as a Jellyfin server does it,
+        // so a client that moves on without a usable stop still leaves it watched.
+        // Rewound below it, the position is kept again; the watch stands.
+        const finished = Boolean(session.runtimeMs && (positionMs / session.runtimeMs) * 100 >= watchedAtPercent());
+        logger.debug(`Progress ${session.videoId} at ${positionMs}ms${finished ? ', past the watched mark' : ''}`);
+        // Only a position played up to counts, not one jumped to: since the last report it
+        // moved no further than playback could have, so scrubbing ahead and back marks nothing.
+        const played = previous ? positionMs - previous.positionMs : -1;
+        const continuous = played >= 0 && played <= (now - (previous?.at ?? now)) * 2 + 10_000;
+        if (finished && !previous?.playedAt && !continuous) {
+          logger.debug(`Progress ${session.videoId} jumped past the watched mark; waiting for it to play on`);
+          setPosition(key, next);
+          return;
+        }
+        if (finished && !previous?.playedAt) {
+          next.playedAt = now;
+          setPosition(key, next);
+          await settle(userUUID, config, profileKey(config), session, 'stop', positionMs, true);
+          return;
+        }
+        if (!finished) {
+          await recordPlaystate(userUUID, profileKey(config), session, 'start', positionMs, null);
+          if (previous?.playedAt) next.rewound = true;
+        } else if (previous?.rewound) {
+          await recordPlaystate(userUUID, profileKey(config), session, 'stop', positionMs, true);
+          next.rewound = false;
+        }
         next.writtenAt = now;
         next.writtenMs = positionMs;
       }
