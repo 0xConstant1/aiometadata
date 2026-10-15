@@ -1658,6 +1658,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1000,
   },
   {
+    key: 'JELLYFIN_USERDATA_PUSH_DELAY_MS',
+    envVar: 'JELLYFIN_USERDATA_PUSH_DELAY_MS',
+    label: 'Watch State Push Delay (ms)',
+    description: 'How long changes to a user\'s watch state are gathered before open client sockets are told of them in one message.',
+    category: 'Features',
+    type: 'number',
+    default: 500,
+    min: 0,
+  },
+  {
     key: 'JELLYFIN_STREAM_CACHE_MAX',
     envVar: 'JELLYFIN_STREAM_CACHE_MAX',
     label: 'Stream Result Cache Size',

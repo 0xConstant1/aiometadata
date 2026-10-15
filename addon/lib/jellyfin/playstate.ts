@@ -2,7 +2,7 @@ import consola from 'consola';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import redis from '../redisClient';
-import { decodeJellyfinId, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
+import { dashedGuid, decodeJellyfinId, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { fetchMeta } from './items';
 import { upsertPlaystateEverywhere } from './aliases';
@@ -187,6 +187,7 @@ function bodyItemId(req: any, body: any): string | null {
 }
 
 export interface ResolvedSession {
+  itemId: string;
   stremioType: 'movie' | 'series';
   videoId: string;
   descriptor: any;
@@ -240,7 +241,7 @@ async function resolveSession(userUUID: string, itemId: string, known?: any): Pr
     }
   }
 
-  const session: ResolvedSession = { stremioType, videoId, descriptor, runtimeMs, aliases: aliases.filter((id) => id !== videoId) };
+  const session: ResolvedSession = { itemId, stremioType, videoId, descriptor, runtimeMs, aliases: aliases.filter((id) => id !== videoId) };
   if (meta) resolvedSessions.set(cacheKey, session, { ttl: envInt('JELLYFIN_SESSION_CACHE_TTL', 12 * 60 * 60, 60) * 1000 });
   return session;
 }
@@ -297,7 +298,54 @@ function reportFor(
   };
 }
 
+async function listedFilms(userUUID: string, config: any): Promise<Set<string>> {
+  const { watchlistEntries } = require('./watchlist');
+  const { entries } = await watchlistEntries(userUUID, config);
+  return new Set(entries.map((entry: any) => String(entry.metaId)));
+}
+
+async function announce(userUUID: string, config: any, profile: string, session: ResolvedSession): Promise<void> {
+  const { hasListeners, pushUserData } = require('./socket');
+  if (!(await hasListeners(userUUID, profile))) return;
+  const database: any = require('../database');
+  const row = await database.getPlaystate(userUUID, session.videoId, profile);
+  const positionMs = Number(row?.position_ms) || 0;
+  const runtimeMs = Number(row?.runtime_ms) || session.runtimeMs || 0;
+  const played = Boolean(Number(row?.played));
+  let favourite = false;
+  if (session.descriptor.k === 'movie' && config) {
+    const listed = await listedFilms(userUUID, config).catch(() => new Set<string>());
+    favourite = [session.descriptor.i, ...session.aliases].some((id) => listed.has(String(id)));
+  }
+  const itemId = dashedGuid(normaliseJellyfinId(session.itemId));
+  pushUserData(userUUID, profile, [{
+    Key: itemId,
+    ItemId: itemId,
+    Played: played,
+    PlayCount: Math.max(played ? 1 : 0, Number(row?.play_count) || 0),
+    PlaybackPositionTicks: positionMs * TICKS_PER_MS,
+    PlayedPercentage: positionMs > 0 && runtimeMs > 0 ? Math.min(100, (positionMs / runtimeMs) * 100) : played ? 100 : 0,
+    LastPlayedDate: row?.last_played_at ? new Date(Number(row.last_played_at)).toISOString() : null,
+    IsFavorite: favourite,
+  }]);
+}
+
 async function recordPlaystate(
+  userUUID: string,
+  profile: string,
+  session: ResolvedSession,
+  event: 'start' | 'pause' | 'stop' | 'played' | 'unplayed',
+  positionMs: number,
+  played: boolean | null,
+  config: any
+): Promise<void> {
+  await writePlaystate(userUUID, profile, session, event, positionMs, played);
+  announce(userUUID, config, profile, session).catch((error: any) =>
+    logger.debug(`User data push failed for ${session.videoId}: ${error?.message || error}`)
+  );
+}
+
+async function writePlaystate(
   userUUID: string,
   profile: string,
   session: ResolvedSession,
@@ -390,7 +438,7 @@ async function report(
   }
 
   if (playedAt && (event === 'start' || event === 'pause' || played === true)) {
-    if (event === 'stop') await recordPlaystate(userUUID, profile, session, event, positionMs, played);
+    if (event === 'stop') await recordPlaystate(userUUID, profile, session, event, positionMs, played, config);
     return;
   }
   await settle(userUUID, config, profile, session, event, positionMs, played, resumedFrom);
@@ -407,7 +455,7 @@ async function settle(
   resumedFrom: number | null = null
 ): Promise<void> {
   // The table is written before any tracker is told, so a read never waits on one.
-  await recordPlaystate(userUUID, profile, session, event, positionMs, played);
+  await recordPlaystate(userUUID, profile, session, event, positionMs, played, config);
   if (played === true && session.descriptor.k === 'episode') {
     const { undropOnWatch } = require('./dropped');
     undropOnWatch(userUUID, config, [session.descriptor.i]);
@@ -510,7 +558,7 @@ async function markEach(req: any, body: any, event: 'played' | 'unplayed', upTo 
       return null;
     }
     deletePosition(`${userUUID}:${profile}:${id}`);
-    await recordPlaystate(userUUID, profile, session, event, 0, played);
+    await recordPlaystate(userUUID, profile, session, event, 0, played, config);
     return session;
   })).filter((s): s is ResolvedSession => s !== null);
 
@@ -678,10 +726,10 @@ export async function recordProgress(req: any, body: any): Promise<void> {
           return;
         }
         if (!finished) {
-          await recordPlaystate(userUUID, profileKey(config), session, 'start', positionMs, null);
+          await recordPlaystate(userUUID, profileKey(config), session, 'start', positionMs, null, config);
           if (previous?.playedAt) next.rewound = true;
         } else if (previous?.rewound) {
-          await recordPlaystate(userUUID, profileKey(config), session, 'stop', positionMs, true);
+          await recordPlaystate(userUUID, profileKey(config), session, 'stop', positionMs, true, config);
           next.rewound = false;
         }
         next.writtenAt = now;
@@ -748,6 +796,9 @@ export async function recordUserData(req: any, body: any): Promise<{ played: boo
   const profile = profileKey(config);
   deletePosition(`${userUUID}:${profile}:${itemId}`);
   await upsertPlaystateEverywhere(userUUID, session.videoId, { positionMs, runtimeMs: session.runtimeMs ?? 0, ...(positionMs > 0 ? { lastPlayedAt: Date.now() } : {}), origin: 'server' }, profile, session.aliases);
+  announce(userUUID, config, profile, session).catch((error: any) =>
+    logger.debug(`User data push failed for ${session.videoId}: ${error?.message || error}`)
+  );
 
   const { invalidateResume } = require('./resume');
   invalidateResume(userUUID);

@@ -1,7 +1,10 @@
 import consola from 'consola';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { envInt } from '../../utils/envNumber';
-import { readToken } from './tokens';
+import redis from '../redisClient';
+import { readTokenSession } from './tokens';
+import { profileKey, profileUserId } from './profiles';
+import { dashedGuid } from './idsCodec';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -17,12 +20,16 @@ function reject(socket: any, status: number, text: string): void {
   socket.destroy();
 }
 
-/**
- * Text frames only, and every message here is well under the 125 byte cutoff
- * that would need an extended length. A server frame is never masked.
- */
+/** Text frames only. A server frame is never masked. */
 function textFrame(payload: string): Buffer {
   const body = Buffer.from(payload, 'utf8');
+  if (body.length > 0xffff) {
+    const header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(body.length), 2);
+    return Buffer.concat([header, body]);
+  }
   if (body.length > 125) {
     const header = Buffer.alloc(4);
     header[0] = 0x81;
@@ -64,11 +71,104 @@ function readFrame(buffer: Buffer): { opcode: number; payload: Buffer; size: num
   return { opcode, payload, size: offset + length };
 }
 
+interface Listener {
+  userId: string;
+  send: (MessageType: string, Data?: any) => void;
+}
+
+const listeners = new Map<string, Set<Listener>>();
+const pending = new Map<string, Map<string, any>>();
+
+const CHANNEL = 'jf:userdata';
+const LISTENING = 'jf:userdata:listening:';
+const ORIGIN = randomUUID();
+const PUSH_PART = 100;
+let subscribed = false;
+
+function deliver(scope: string, list: any[]): void {
+  for (const listener of listeners.get(scope) ?? []) {
+    listener.send('UserDataChanged', { UserId: listener.userId, UserDataList: list });
+  }
+}
+
+function subscribe(): void {
+  if (subscribed || !redis) return;
+  subscribed = true;
+  const subscriber = redis.duplicate();
+  subscriber.on('error', (error: Error) => logger.debug(`User data subscriber: ${error.message}`));
+  subscriber.on('message', (_channel: string, raw: string) => {
+    try {
+      const message = JSON.parse(raw);
+      if (message?.o !== ORIGIN && typeof message?.s === 'string' && Array.isArray(message.l)) deliver(message.s, message.l);
+    } catch {
+      /* not ours */
+    }
+  });
+  subscriber.subscribe(CHANNEL).catch((error: Error) => {
+    subscribed = false;
+    subscriber.disconnect();
+    logger.debug(`User data subscribe failed: ${error.message}`);
+  });
+}
+
+function flush(scope: string): void {
+  const held = pending.get(scope);
+  pending.delete(scope);
+  if (!held?.size) return;
+  const list = [...held.values()];
+  for (let i = 0; i < list.length; i += PUSH_PART) {
+    const part = list.slice(i, i + PUSH_PART);
+    deliver(scope, part);
+    redis?.publish(CHANNEL, JSON.stringify({ o: ORIGIN, s: scope, l: part })).catch(() => undefined);
+  }
+}
+
+function pingMs(): number {
+  return envInt('JELLYFIN_SOCKET_PING_MS', 30000, 1000);
+}
+
+function markListening(scope: string): void {
+  redis?.set(`${LISTENING}${scope}`, '1', 'PX', pingMs() * 3).catch(() => undefined);
+}
+
+export async function hasListeners(userUUID: string, profile: string): Promise<boolean> {
+  const scope = `${userUUID}:${profile}`;
+  if (listeners.get(scope)?.size) return true;
+  if (!redis) return false;
+  try {
+    return (await redis.exists(`${LISTENING}${scope}`)) === 1;
+  } catch {
+    return false;
+  }
+}
+
+export function pushUserData(userUUID: string, profile: string, entries: any[]): void {
+  if (!entries.length) return;
+  const scope = `${userUUID}:${profile}`;
+  let held = pending.get(scope);
+  if (!held) {
+    held = new Map();
+    pending.set(scope, held);
+    setTimeout(() => flush(scope), envInt('JELLYFIN_USERDATA_PUSH_DELAY_MS', 500, 0));
+  }
+  for (const entry of entries) held.set(entry.ItemId, entry);
+}
+
+async function historyOf(userUUID: string, profileId: string | null): Promise<string> {
+  if (!profileId) return '';
+  try {
+    const { loadConfig } = require('./context');
+    const config = await loadConfig({ jellyfin: { userUUID, profileId } });
+    return config ? profileKey(config) : profileId;
+  } catch {
+    return profileId;
+  }
+}
+
 /**
  * The official clients open this straight after signing in and log an error for
- * the lifetime of the session when it is missing. Nothing is pushed over it:
- * every list here is fetched, so the socket exists to be answered, not to carry
- * events.
+ * the lifetime of the session when it is missing. It carries `UserDataChanged`
+ * for each watch state written here.
  */
 export function attachJellyfinSocket(server: any): void {
   const perUser = new Map<string, number>();
@@ -88,15 +188,16 @@ export function attachJellyfinSocket(server: any): void {
       return;
     }
 
-    let userUUID: string | null = null;
+    let session: { userUUID: string; profileId: string | null } | null = null;
     try {
-      userUUID = await readToken(token ?? undefined);
+      session = await readTokenSession(token ?? undefined);
     } catch {
       reject(socket, 503, 'Service Unavailable');
       return;
     }
 
-    if (!userUUID || userUUID !== decodeURIComponent(match[1])) {
+    const userUUID = session?.userUUID;
+    if (!session || !userUUID || userUUID !== decodeURIComponent(match[1])) {
       reject(socket, 401, 'Unauthorized');
       return;
     }
@@ -105,6 +206,9 @@ export function attachJellyfinSocket(server: any): void {
       reject(socket, 429, 'Too Many Requests');
       return;
     }
+
+    const scope = `${userUUID}:${await historyOf(userUUID, session.profileId)}`;
+    if (socket.destroyed) return;
 
     socket.write(
       'HTTP/1.1 101 Switching Protocols\r\n' +
@@ -118,11 +222,24 @@ export function attachJellyfinSocket(server: any): void {
     socket.setNoDelay(true);
 
     const send = (MessageType: string, Data: any = null) => {
-      if (!socket.destroyed) socket.write(textFrame(JSON.stringify({ MessageType, Data })));
+      if (!socket.destroyed) socket.write(textFrame(JSON.stringify({ MessageType, MessageId: randomUUID().replace(/-/g, ''), Data })));
     };
 
+    const listener: Listener = { userId: dashedGuid(profileUserId(userUUID, session.profileId)), send };
+    let followers = listeners.get(scope);
+    if (!followers) {
+      followers = new Set();
+      listeners.set(scope, followers);
+    }
+    followers.add(listener);
+    subscribe();
+    markListening(scope);
+
     send('ForceKeepAlive', 60);
-    const timer = setInterval(() => send('KeepAlive'), envInt('JELLYFIN_SOCKET_PING_MS', 30000, 1000));
+    const timer = setInterval(() => {
+      send('KeepAlive');
+      markListening(scope);
+    }, pingMs());
 
     let pending = Buffer.alloc(0);
     socket.on('data', (chunk: Buffer) => {
@@ -153,8 +270,14 @@ export function attachJellyfinSocket(server: any): void {
       }
     });
 
+    let released = false;
     const release = () => {
+      if (released) return;
+      released = true;
       clearInterval(timer);
+      const held = listeners.get(scope);
+      held?.delete(listener);
+      if (held && held.size === 0) listeners.delete(scope);
       const left = (perUser.get(userUUID as string) ?? 1) - 1;
       if (left <= 0) perUser.delete(userUUID as string);
       else perUser.set(userUUID as string, left);
