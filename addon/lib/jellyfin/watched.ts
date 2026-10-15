@@ -946,17 +946,23 @@ export type UpcomingRow = Omit<NextUpRow, 'lastWatchedAt'>;
  * Shows the tracker follows with an episode on the way, and that episode: watchlisted,
  * in progress or caught up. Whether one counts as upcoming is the shelf's call.
  */
-export async function upcomingFollowed(config: any, days: number): Promise<UpcomingRow[]> {
+function upcomingFeedKey(config: any, days: number): string | null {
   const { readsTrackers } = require('./profiles');
-  if (!readsTrackers(config) || sourceFor(config) !== 'mdblist') return [];
+  if (!readsTrackers(config) || sourceFor(config) !== 'mdblist') return null;
   const apiKey = credentialFor(config, 'mdblist');
-  if (!apiKey) return [];
+  if (!apiKey) return null;
+  return `jellyfin_upcoming_mdblist_v3:${createHash('sha256').update(apiKey).digest('hex').substring(0, 16)}:${days}`;
+}
+
+export async function upcomingFollowed(config: any, days: number): Promise<UpcomingRow[]> {
+  const key = upcomingFeedKey(config, days);
+  if (!key) return [];
+  const apiKey = credentialFor(config, 'mdblist');
 
   const { cacheWrapGlobal, classifyResultAllowEmpty } = require('../getCache');
-  const keyHash = createHash('sha256').update(apiKey).digest('hex').substring(0, 16);
   try {
     return await cacheWrapGlobal(
-      `jellyfin_upcoming_mdblist_v3:${keyHash}:${days}`,
+      key,
       async () => {
         const { fetchMDBListUpcoming } = require('../../utils/mdbList');
         const out: UpcomingRow[] = [];
@@ -985,6 +991,12 @@ export async function upcomingFollowed(config: any, days: number): Promise<Upcom
     logger.warn(`MDBList upcoming failed: ${error?.message || error}`);
     return [];
   }
+}
+
+export async function forgetUpcomingFollowed(config: any): Promise<void> {
+  const key = upcomingFeedKey(config, envInt('JELLYFIN_UPCOMING_DAYS', 90, 1));
+  const redis: any = require('../redisClient');
+  if (key && redis) await redis.del(`global:${key}`);
 }
 
 // The newest play of a show seeds Next Up, which moves on from it.

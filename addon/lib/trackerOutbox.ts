@@ -48,6 +48,7 @@ const executors: Record<OutboxOp, Executor> = {
 // Writes that change what the trackers report as watched, rather than only where playback stands.
 const CHANGES_WATCHED = new Set<OutboxOp>(['scrobble', 'credit', 'unwatch', 'episodes', 'dropped', 'anime']);
 const CHANGES_RESUME = new Set<OutboxOp>(['scrobble', 'credit', 'unwatch', 'clearResume', 'episodes']);
+const CHANGES_UPCOMING = new Set<OutboxOp>(['watchlist']);
 
 const LEASE_MS = 5 * 60 * 1000;
 const SCAN_LIMIT = 1000;
@@ -326,24 +327,31 @@ async function deliver(row: any): Promise<void> {
 
 // --- After a write lands ------------------------------------------------------------
 
-const settling = new Map<string, { timer: NodeJS.Timeout; watched: boolean; resume: boolean; config: any }>();
+const settling = new Map<string, { timer: NodeJS.Timeout; watched: boolean; resume: boolean; upcoming: boolean; config: any }>();
 
 /** What the trackers now hold changed, so the shelves read from them are read again; a burst of writes does it once. */
 function settle(userUUID: string, config: any, ops: OutboxOp[]): void {
   const watched = ops.some((op) => CHANGES_WATCHED.has(op));
   const resume = ops.some((op) => CHANGES_RESUME.has(op));
-  if (!watched && !resume) return;
+  const upcoming = ops.some((op) => CHANGES_UPCOMING.has(op));
+  if (!watched && !resume && !upcoming) return;
   const key = `${userUUID}:${accountOwner(config)}`;
   const pending = settling.get(key);
   if (pending) clearTimeout(pending.timer);
   const entry = {
     watched: watched || Boolean(pending?.watched),
     resume: resume || Boolean(pending?.resume),
+    upcoming: upcoming || Boolean(pending?.upcoming),
     config,
     timer: setTimeout(() => {
       settling.delete(key);
       if (entry.resume) require('./jellyfin/resume').invalidateResume(userUUID);
       if (entry.watched) require('./jellyfin/watched').invalidateWatched(entry.config).catch(() => undefined);
+      if (entry.upcoming) {
+        require('./jellyfin/watched').forgetUpcomingFollowed(entry.config)
+          .then(() => require('./jellyfin/resume').invalidateDatedShelves(userUUID))
+          .catch(() => undefined);
+      }
     }, 1500),
   };
   entry.timer.unref?.();
