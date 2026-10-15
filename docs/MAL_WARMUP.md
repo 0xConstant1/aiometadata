@@ -21,7 +21,7 @@ Background warming proactively fetches and caches catalog data during low-traffi
 - ✅ **ETag-Aware**: Skips refetching unchanged data (304 responses)
 - ✅ **Prioritized**: Warms most-accessed catalogs first
 - ✅ **Configurable**: Full control via environment variables
-- ✅ **Quiet Hours**: Optional scheduling for low-traffic periods
+- ✅ **Warming Hours**: Optional window for low-traffic periods
 - ✅ **Observable**: Stats endpoint for monitoring
 - ✅ **Graceful**: Won't interfere with user requests
 
@@ -59,21 +59,17 @@ MAL_WARMUP_PRIORITY_PAGES=2
 MAL_WARMUP_SFW=true
 ```
 
-### Quiet Hours Mode
+### Warming Hours
 
-Run warmup only during specific UTC hours (useful for VPS with limited bandwidth):
+Run warmup only during specific hours (useful for VPS with limited bandwidth). The hours are read in the server's time zone (`TZ`):
 
 ```bash
-# Enable quiet hours (default: false)
-MAL_WARMUP_QUIET_HOURS_ENABLED=true
-
-# Time range in UTC, format: "start-end" (default: 2-8)
-MAL_WARMUP_QUIET_HOURS_RANGE=2-8
+# Empty (default) runs at any hour
+MAL_WARMUP_WINDOW=02:00-08:00
 
 # Examples:
-# "2-8"   = 2:00 AM to 8:00 AM UTC
-# "22-6"  = 10:00 PM to 6:00 AM UTC (wrap-around)
-# "0-24"  = All day
+# "02:00-08:00" = 2:00 AM to 8:00 AM
+# "22:00-06:00" = 10:00 PM to 6:00 AM (wrap-around)
 ```
 
 ### Selective Phase Control
@@ -214,8 +210,7 @@ Response example:
   "config": {
     "enabled": true,
     "intervalHours": 6,
-    "quietHoursEnabled": false,
-    "quietHoursRange": "2-8",
+    "window": null,
     "priorityPages": 2,
     "phases": {
       "metadata": true,
@@ -257,8 +252,7 @@ Response example:
 ```bash
 MAL_WARMUP_ENABLED=true
 MAL_WARMUP_INTERVAL_HOURS=12          # Less frequent
-MAL_WARMUP_QUIET_HOURS_ENABLED=true
-MAL_WARMUP_QUIET_HOURS_RANGE=2-8      # Low-traffic hours
+MAL_WARMUP_WINDOW=02:00-08:00         # Low-traffic hours
 MAL_WARMUP_PRIORITY_PAGES=1           # Fewer pages
 MAL_WARMUP_DECADES=false
 MAL_WARMUP_LOG_LEVEL=silent
@@ -292,7 +286,7 @@ MAL_WARMUP_ENABLED=false
 
 1. Check if enabled: `MAL_WARMUP_ENABLED=true`
 2. Check logs for "recently warmed" message (this is normal!)
-3. Verify quiet hours aren't blocking execution
+3. Verify `MAL_WARMUP_WINDOW` isn't holding it until later
 4. Check stats endpoint for last warmup time
 5. To force warmup: Clear Redis key `cache-warming:last-mal-warm`
 
@@ -305,7 +299,7 @@ MAL_WARMUP_ENABLED=false
 
 ### Server Load During Warmup
 
-1. Enable quiet hours mode
+1. Set `MAL_WARMUP_WINDOW` to low-traffic hours
 2. Increase `MAL_WARMUP_TASK_DELAY_MS`
 3. Reduce concurrent phases (disable some via phase flags)
 
@@ -327,7 +321,7 @@ The warmer integrates seamlessly with your existing cache infrastructure:
 
 1. **Start Conservative**: Use default settings first
 2. **Monitor API Usage**: Check Jikan rate limit headers
-3. **Enable Quiet Hours**: If bandwidth is limited
+3. **Set Warming Hours**: If bandwidth is limited
 4. **Adjust Based on Traffic**: More users = more warmup value
 5. **Cache TTL**: Ensure MAL cache TTL is at least 4-6 hours
 6. **Scale Gradually**: Increase pages/genres if needed
@@ -366,8 +360,7 @@ The warmer integrates seamlessly with your existing cache infrastructure:
   config: {                     // Current configuration
     enabled: boolean,
     intervalHours: number,
-    quietHoursEnabled: boolean,
-    quietHoursRange: string,
+    window: string | null,
     priorityPages: number,
     topGenresCount: number,
     phases: {

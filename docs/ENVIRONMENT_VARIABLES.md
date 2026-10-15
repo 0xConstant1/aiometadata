@@ -391,17 +391,13 @@ Complete documentation: [MAL_WARMUP.md](./MAL_WARMUP.md)
 - **Description**: Extra delay between individual warmup tasks (in milliseconds)
 - **Example**: `MAL_WARMUP_TASK_DELAY_MS=200`
 
-### `MAL_WARMUP_QUIET_HOURS_ENABLED`
-- **Default**: `false`
-- **Description**: Only run warmup during specific UTC hours
-- **Example**: `MAL_WARMUP_QUIET_HOURS_ENABLED=true`
-
-### `MAL_WARMUP_QUIET_HOURS_RANGE`
-- **Default**: `2-8`
-- **Description**: UTC time range for quiet hours (format: "start-end")
+### `MAL_WARMUP_WINDOW`
+- **Default**: *(any time)*
+- **Description**: The hours MAL warming may start, as `start-end` in the server's time zone (`TZ`). A run that comes due outside them waits for them to open.
 - **Examples**:
-  - `2-8` = 2:00 AM to 8:00 AM UTC
-  - `22-6` = 10:00 PM to 6:00 AM UTC (wrap-around)
+  - `04:00-06:00` = only between 4 and 6 AM
+  - `22:00-02:00` = 10 PM to 2 AM (a range past midnight wraps)
+- **Replaces**: `MAL_WARMUP_QUIET_HOURS_ENABLED` and `MAL_WARMUP_QUIET_HOURS_RANGE`. Those still work when this is unset; values saved in the dashboard are converted on the next start.
 
 ### `MAL_WARMUP_PRIORITY_PAGES`
 - **Default**: `2`
@@ -474,15 +470,11 @@ This feature warms **ALL** enabled catalogs (TMDB, MAL, MDBList, Custom Manifest
 - **Description**: Resume from last checkpoint on container restart
 - **Example**: `CATALOG_WARMUP_RESUME_ON_RESTART=false`
 
-### `CATALOG_WARMUP_QUIET_HOURS_ENABLED`
-- **Default**: `false`
-- **Description**: Only run warmup outside specific UTC hours
-- **Example**: `CATALOG_WARMUP_QUIET_HOURS_ENABLED=true`
-
-### `CATALOG_WARMUP_QUIET_HOURS`
-- **Default**: `02:00-06:00`
-- **Description**: UTC time range to avoid warming (format: "HH:MM-HH:MM")
-- **Example**: `CATALOG_WARMUP_QUIET_HOURS=22:00-06:00`
+### `CATALOG_WARMUP_WINDOW`
+- **Default**: *(any time)*
+- **Description**: The hours full warming may start, as `start-end` in the server's time zone (`TZ`). A range past midnight wraps. A run still going when the hours end finishes, and a run started from the dashboard ignores them.
+- **Example**: `CATALOG_WARMUP_WINDOW=04:00-06:00`
+- **Replaces**: `CATALOG_WARMUP_QUIET_HOURS_ENABLED` and `CATALOG_WARMUP_QUIET_HOURS`. Those still work when this is unset; values saved in the dashboard are converted on the next start.
 
 ### `CATALOG_WARMUP_TASK_DELAY_MS`
 - **Default**: `100`
@@ -511,16 +503,11 @@ This feature warms **ALL** enabled catalogs (TMDB, MAL, MDBList, Custom Manifest
 - **Example**: `CACHE_CLEANUP_AUTO_ENABLED=false`
 - **Note**: When disabled, cache cleanup can still be triggered manually via the dashboard
 
-### `CACHE_CLEANUP_QUIET_HOURS_ENABLED`
-- **Default**: `false`
-- **Description**: Enable quiet hours for cache cleanup (avoids running during specific hours)
-- **Example**: `CACHE_CLEANUP_QUIET_HOURS_ENABLED=true`
-
-### `CACHE_CLEANUP_QUIET_HOURS`
-- **Default**: `02:00-06:00`
-- **Description**: Time range to avoid cache cleanup (format: "HH:MM-HH:MM")
-- **Example**: `CACHE_CLEANUP_QUIET_HOURS=22:00-06:00`
-- **Note**: Uses 24-hour format. Cache cleanup runs every 6 hours but skips during quiet hours
+### `CACHE_CLEANUP_WINDOW`
+- **Default**: *(any time)*
+- **Description**: The hours automatic cache cleanup may run, as `start-end` in the server's time zone (`TZ`). Cleanup runs every 6 hours; one that comes due outside the hours waits for them to open.
+- **Example**: `CACHE_CLEANUP_WINDOW=03:00-05:00`
+- **Replaces**: `CACHE_CLEANUP_QUIET_HOURS_ENABLED` and `CACHE_CLEANUP_QUIET_HOURS`. Those still work when this is unset; values saved in the dashboard are converted on the next start.
 
 ---
 
@@ -1302,8 +1289,7 @@ ENABLE_CACHE_WARMING=true
 
 # Cache Cleanup Scheduler
 CACHE_CLEANUP_AUTO_ENABLED=true
-CACHE_CLEANUP_QUIET_HOURS_ENABLED=false
-CACHE_CLEANUP_QUIET_HOURS=02:00-06:00
+CACHE_CLEANUP_WINDOW=
 ```
 
 ### Shared Hosting Setup (.env)
@@ -1323,8 +1309,7 @@ CACHE_WARMUP_MODE=essential  # Use 'essential' for lightweight warming only
 # Conservative MAL Warmup
 MAL_WARMUP_ENABLED=true
 MAL_WARMUP_INTERVAL_HOURS=12
-MAL_WARMUP_QUIET_HOURS_ENABLED=true
-MAL_WARMUP_QUIET_HOURS_RANGE=2-8
+MAL_WARMUP_WINDOW=02:00-08:00
 MAL_WARMUP_PRIORITY_PAGES=1
 MAL_WARMUP_DECADES=false
 MAL_WARMUP_LOG_LEVEL=silent
@@ -1376,7 +1361,7 @@ MAL_WARMUP_LOG_LEVEL=silent
 - Use MAL_SOCKS_PROXY_URL for Jikan
 - Reduce MAL_WARMUP_PRIORITY_PAGES (e.g., from 2 to 1)
 - Increase MAL_WARMUP_INTERVAL_HOURS (e.g., from 6 to 12)
-- Enable MAL_WARMUP_QUIET_HOURS
+- Set MAL_WARMUP_WINDOW to low-traffic hours
 - Disable MAL_WARMUP_DECADES if enabled
 
 ### Slow Performance

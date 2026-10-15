@@ -1,5 +1,6 @@
 import consola from 'consola';
 import { SETTINGS_REGISTRY, CONDITIONAL_RULES, getSettingDefinition, type SettingDefinition } from './settingsRegistry.js';
+import { WINDOW_JOBS, quietHoursKeys, windowSettingFromQuietHours } from './runWindow';
 
 const logger = consola.withTag('Settings');
 const database: any = require('./database');
@@ -17,6 +18,7 @@ export async function initializeSettings(): Promise<void> {
   for (const row of rows) {
     cache.set(row.key, row.value);
   }
+  await convertQuietHours();
   for (const [key, value] of cache) {
     const def = getSettingDefinition(key);
     if (def && !def.envOnly) {
@@ -30,6 +32,52 @@ export async function initializeSettings(): Promise<void> {
   initialized = true;
   applySideEffects();
   logger.info(`Loaded ${rows.length} settings from database`);
+}
+
+async function storeRow(key: string, value: string): Promise<void> {
+  if (database.type === 'sqlite') {
+    await database.runQuery(
+      `INSERT INTO addon_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP`,
+      [key, value, value]
+    );
+  } else {
+    await database.runQuery(
+      `INSERT INTO addon_settings (key, value, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
+      [key, value]
+    );
+  }
+}
+
+async function deleteRow(key: string): Promise<void> {
+  if (database.type === 'sqlite') {
+    await database.runQuery('DELETE FROM addon_settings WHERE key = ?', [key]);
+  } else {
+    await database.runQuery('DELETE FROM addon_settings WHERE key = $1', [key]);
+  }
+}
+
+const JOB_NAMES = { CATALOG_WARMUP: 'catalog warming', MAL_WARMUP: 'MAL warming', CACHE_CLEANUP: 'cache cleanup' } as const;
+
+async function convertQuietHours(): Promise<void> {
+  for (const job of WINDOW_JOBS) {
+    const { enabled, range } = quietHoursKeys(job);
+    if (!cache.has(enabled) && !cache.has(range)) continue;
+    const target = `${job}_WINDOW`;
+    if (!cache.has(target)) {
+      const window = windowSettingFromQuietHours(job, cache.get(enabled) ?? process.env[enabled], cache.get(range) ?? process.env[range]);
+      if (window) {
+        await storeRow(target, window);
+        cache.set(target, window);
+        logger.info(`Quiet hours for ${JOB_NAMES[job]} are now ${target}=${window}`);
+      }
+    }
+    for (const key of [enabled, range]) {
+      await deleteRow(key);
+      cache.delete(key);
+    }
+  }
 }
 
 export function getSetting(key: string): string {
@@ -59,19 +107,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
   if (def.envOnly) throw new Error(`Setting ${key} can only be configured via environment variable`);
   if (def.validate && !def.validate(value)) throw new Error(`Invalid value for ${key}`);
 
-  if (database.type === 'sqlite') {
-    await database.runQuery(
-      `INSERT INTO addon_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP`,
-      [key, value, value]
-    );
-  } else {
-    await database.runQuery(
-      `INSERT INTO addon_settings (key, value, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT(key) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
-      [key, value]
-    );
-  }
+  await storeRow(key, value);
   cache.set(key, value);
   if (!originalEnv.has(def.envVar)) {
     originalEnv.set(def.envVar, process.env[def.envVar]);
@@ -86,11 +122,7 @@ export async function resetSetting(key: string): Promise<void> {
   if (!def) throw new Error(`Unknown setting: ${key}`);
   if (def.envOnly) throw new Error(`Setting ${key} can only be configured via environment variable`);
 
-  if (database.type === 'sqlite') {
-    await database.runQuery('DELETE FROM addon_settings WHERE key = ?', [key]);
-  } else {
-    await database.runQuery('DELETE FROM addon_settings WHERE key = $1', [key]);
-  }
+  await deleteRow(key);
   cache.delete(key);
   const orig = originalEnv.get(def.envVar);
   if (orig !== undefined) {

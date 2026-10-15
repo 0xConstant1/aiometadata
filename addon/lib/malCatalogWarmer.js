@@ -3,6 +3,7 @@ const { cacheWrapJikanApi, cacheWrapCatalog } = require('./getCache');
 const { sleep } = require('../utils/concurrency');
 const { parseAnimeCatalogMetaBatch } = require('../utils/parseProps');
 const { envInt } = require('../utils/envNumber');
+const { runWindow, insideWindow, msUntilWindow } = require('./runWindow');
 const malWarmerLogger = (require('consola').default || require('consola')).withTag('MAL Warmer');
 
 // Environment variable configuration with sensible defaults
@@ -22,12 +23,6 @@ const WARMUP_CONFIG = {
   
   // Extra delay between warmup tasks in ms (default: 100ms)
   taskDelayMs: envInt('MAL_WARMUP_TASK_DELAY_MS', 100),
-  
-  // Enable quiet hours mode (only run during specific UTC hours)
-  quietHoursEnabled: process.env.MAL_WARMUP_QUIET_HOURS_ENABLED === 'true', // Default: false
-  
-  // Quiet hours range in UTC (format: "2-8" means 2:00 AM to 8:00 AM UTC)
-  quietHoursRange: process.env.MAL_WARMUP_QUIET_HOURS_RANGE || '2-8',
   
   // Number of pages to warm for high-priority catalogs (default: 2)
   priorityPages: envInt('MAL_WARMUP_PRIORITY_PAGES', 2),
@@ -59,10 +54,11 @@ class MALCatalogWarmer {
       nextRun: null
     };
     this.intervalHandle = null;
+    this.windowTimer = null;
     this.log('debug', `MAL Catalog Warmer initialized with config:`, {
       enabled: WARMUP_CONFIG.enabled,
       intervalHours: WARMUP_CONFIG.intervalHours,
-      quietHours: WARMUP_CONFIG.quietHoursEnabled ? WARMUP_CONFIG.quietHoursRange : 'disabled',
+      window: runWindow('MAL_WARMUP')?.text ?? 'any time',
       priorityPages: WARMUP_CONFIG.priorityPages
     });
   }
@@ -74,6 +70,10 @@ class MALCatalogWarmer {
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle);
       this.intervalHandle = null;
+    }
+    if (this.windowTimer) {
+      clearTimeout(this.windowTimer);
+      this.windowTimer = null;
     }
     
     if (this.isWarming) {
@@ -113,8 +113,6 @@ class MALCatalogWarmer {
     WARMUP_CONFIG.enabled = process.env.MAL_WARMUP_ENABLED !== 'false' && warmupMode === 'essential';
     WARMUP_CONFIG.intervalHours = parseInt(process.env.MAL_WARMUP_INTERVAL_HOURS) || 6;
     WARMUP_CONFIG.taskDelayMs = envInt('MAL_WARMUP_TASK_DELAY_MS', 100);
-    WARMUP_CONFIG.quietHoursEnabled = process.env.MAL_WARMUP_QUIET_HOURS_ENABLED === 'true';
-    WARMUP_CONFIG.quietHoursRange = process.env.MAL_WARMUP_QUIET_HOURS_RANGE || '2-8';
     WARMUP_CONFIG.priorityPages = envInt('MAL_WARMUP_PRIORITY_PAGES', 2);
     WARMUP_CONFIG.warmPriority = process.env.MAL_WARMUP_PRIORITY !== 'false';
     WARMUP_CONFIG.warmSchedule = process.env.MAL_WARMUP_SCHEDULE !== 'false';
@@ -208,7 +206,7 @@ class MALCatalogWarmer {
     }
   }
 
-  async runWarmup() {
+  async runWarmup(force = false) {
     if (this.isWarming) {
       this.log('info', 'Warmup already in progress, skipping...');
       return;
@@ -217,14 +215,17 @@ class MALCatalogWarmer {
     this.syncConfigFromEnv();
     if (!jikan.isJikanEnabled()) return;
 
-    // Check if we're in quiet hours
-    if (WARMUP_CONFIG.quietHoursEnabled) {
-      const inQuietHours = this.isInQuietHours();
-      if (!inQuietHours) {
-        const now = new Date();
-        this.log('info', `Outside quiet hours (current time: ${now.getUTCHours()}:00 UTC), skipping warmup...`);
-        return;
+    const window = runWindow('MAL_WARMUP');
+    if (!force && !insideWindow(window)) {
+      const wait = msUntilWindow(window);
+      this.log('info', `Outside MAL warming hours (${window.text}); trying again in ${Math.round(wait / 60000)} minutes`);
+      if (!this.windowTimer) {
+        this.windowTimer = setTimeout(async () => {
+          this.windowTimer = null;
+          if (await this.shouldWarmup()) this.runWarmup();
+        }, wait);
       }
+      return;
     }
 
     // Reset stop flag at start
@@ -299,20 +300,6 @@ class MALCatalogWarmer {
       
       const outcome = stoppedEarly ? '🛑 Warmup stopped' : errors > 0 ? '⚠️ Warmup complete with errors' : '✅ Warmup complete';
       this.log(errors > 0 ? 'warn' : 'info', `${outcome}: ${itemsWarmed} items, ${errors} errors, ${this.warmupStats.duration}s. Next run: ${nextRun.toISOString()}`);
-    }
-  }
-
-  isInQuietHours() {
-    const now = new Date();
-    const hour = now.getUTCHours();
-    const [start, end] = WARMUP_CONFIG.quietHoursRange.split('-').map(h => parseInt(h.trim()));
-    
-    if (start < end) {
-      // Normal range: e.g., 2-8 means 2:00 to 8:00
-      return hour >= start && hour < end;
-    } else {
-      // Wrap-around range: e.g., 22-6 means 22:00 to 6:00 next day
-      return hour >= start || hour < end;
     }
   }
 
@@ -607,8 +594,7 @@ class MALCatalogWarmer {
       config: {
         enabled: WARMUP_CONFIG.enabled,
         intervalHours: WARMUP_CONFIG.intervalHours,
-        quietHoursEnabled: WARMUP_CONFIG.quietHoursEnabled,
-        quietHoursRange: WARMUP_CONFIG.quietHoursRange,
+        window: runWindow('MAL_WARMUP')?.text ?? null,
         priorityPages: WARMUP_CONFIG.priorityPages,
         phases: {
           metadata: WARMUP_CONFIG.warmMetadata,
@@ -640,7 +626,7 @@ class MALCatalogWarmer {
     }
     
     // Run warmup in background (fire-and-forget)
-    this.runWarmup();
+    this.runWarmup(true);
     
     return { 
       success: true, 

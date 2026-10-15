@@ -16,6 +16,7 @@ const { buildProxyArtUrl } = require('./posterCache/proxyArt.js');
 const movielens = require('./movielens');
 const database = require('./database');
 const redis = require('./redisClient');
+const { runWindow, insideWindow, msUntilWindow } = require('./runWindow');
 /** Slack for clock skew, so a key already sitting on the target is left alone. */
 const EXPIRY_TOLERANCE_MS = 1000;
 const consola = require('consola');
@@ -55,8 +56,6 @@ const WARMUP_CONFIG = {
   initialDelaySeconds: envInt('CATALOG_WARMUP_INITIAL_DELAY_SECONDS', 300),
   maxPagesPerCatalog: envInt('CATALOG_WARMUP_MAX_PAGES_PER_CATALOG', 100),
   resumeOnRestart: process.env.CATALOG_WARMUP_RESUME_ON_RESTART !== 'false',
-  quietHoursEnabled: process.env.CATALOG_WARMUP_QUIET_HOURS_ENABLED === 'true',
-  quietHoursRange: process.env.CATALOG_WARMUP_QUIET_HOURS || '02:00-06:00',
   taskDelayMs: envInt('CATALOG_WARMUP_TASK_DELAY_MS', 100),
   logLevel: process.env.CATALOG_WARMUP_LOG_LEVEL || 'info',
   autoOnEpochChange: (process.env.CATALOG_WARMUP_AUTO_ON_EPOCH_CHANGE
@@ -132,8 +131,6 @@ class ComprehensiveCatalogWarmer {
     this.config.enabled = !!(process.env.CACHE_WARMUP_UUIDS || process.env.CACHE_WARMUP_UUID) && (process.env.CACHE_WARMUP_MODE || 'essential') === 'comprehensive';
     this.config.intervalHours = Math.max(12, parseFloat(process.env.CATALOG_WARMUP_INTERVAL_HOURS) || 24);
     this.config.maxPagesPerCatalog = envInt('CATALOG_WARMUP_MAX_PAGES_PER_CATALOG', 100);
-    this.config.quietHoursEnabled = process.env.CATALOG_WARMUP_QUIET_HOURS_ENABLED === 'true';
-    this.config.quietHoursRange = process.env.CATALOG_WARMUP_QUIET_HOURS || '02:00-06:00';
     this.config.taskDelayMs = envInt('CATALOG_WARMUP_TASK_DELAY_MS', 100);
     this.config.logLevel = process.env.CATALOG_WARMUP_LOG_LEVEL || 'info';
     this.config.autoOnEpochChange = (process.env.CATALOG_WARMUP_AUTO_ON_EPOCH_CHANGE
@@ -185,24 +182,6 @@ class ComprehensiveCatalogWarmer {
 
   async delay(ms) {
     return sleep(ms);
-  }
-
-  isQuietHours() {
-    if (!this.config.quietHoursEnabled) return false;
-
-    const [startHour, endHour] = this.config.quietHoursRange.split('-').map(t => {
-      const [h, m] = t.split(':').map(Number);
-      return h + m / 60;
-    });
-
-    const now = new Date();
-    const currentHour = now.getHours() + now.getMinutes() / 60;
-
-    if (startHour < endHour) {
-      return currentHour >= startHour && currentHour < endHour;
-    } else {
-      return currentHour >= startHour || currentHour < endHour;
-    }
   }
 
   async shouldWarmup() {
@@ -949,9 +928,9 @@ class ComprehensiveCatalogWarmer {
       this.log('info', 'Force restart requested - bypassing interval check');
     }
 
-    // Check quiet hours
-    if (this.isQuietHours()) {
-      this.log('info', 'Skipping warmup during quiet hours');
+    const window = runWindow('CATALOG_WARMUP');
+    if ((!force || options.respectWindow) && !insideWindow(window)) {
+      this.log('info', `Outside warming hours (${window.text}); waiting for them`);
       return false;
     }
 
@@ -1146,7 +1125,7 @@ class ComprehensiveCatalogWarmer {
 
       if (lastEpoch && lastEpoch !== currentEpoch) {
         this.log('success', `Cache epoch changed from ${lastEpoch} to ${currentEpoch} - triggering automatic warmup`);
-        const warmupCompleted = await this.runWarmup(true);
+        const warmupCompleted = await this.runWarmup(true, { respectWindow: true });
 
         if (warmupCompleted) {
           await redis.set(epochKey, currentEpoch);
@@ -1250,7 +1229,11 @@ class ComprehensiveCatalogWarmer {
       this.log('info', `Next check scheduled in ${this.config.intervalHours} hours`);
     }
     
-    if (!didRun && delayMs < MIN_RETRY_DELAY_MS) {
+    const untilWindow = msUntilWindow(runWindow('CATALOG_WARMUP'));
+    if (!didRun && untilWindow > delayMs) {
+      delayMs = untilWindow;
+      this.log('info', `Next check when warming hours open, in ${Math.round(delayMs / 60000)} minutes`);
+    } else if (!didRun && delayMs < MIN_RETRY_DELAY_MS) {
       delayMs = MIN_RETRY_DELAY_MS;
       this.log('info', 'Warmup skipped - retrying in 1 minute');
     }

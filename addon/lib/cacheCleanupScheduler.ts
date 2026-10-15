@@ -2,6 +2,7 @@
 // Handles automatic scheduling of expired cache cleanup
 
 import consola from 'consola';
+import { insideWindow, msUntilWindow, runWindow } from './runWindow';
 
 const logger = consola.create({
   defaults: {
@@ -18,56 +19,48 @@ interface SchedulerStatus {
   lastRun: string | null;
   nextRun: string | null;
   intervalHours: number;
-  quietHoursEnabled: boolean;
-  quietHoursRange: string;
+  window: string | null;
 }
 
 class CacheCleanupScheduler {
   private dashboardApi: DashboardAPI;
   private isRunning: boolean = false;
-  private intervalId: NodeJS.Timeout | null = null;
+  private timer: NodeJS.Timeout | null = null;
   private intervalHours: number = 6; // Run every 6 hours
-  private quietHoursEnabled: boolean;
-  private quietHoursRange: string;
   private lastRun: Date | null = null;
   private nextRun: Date | null = null;
 
   constructor(dashboardApi: DashboardAPI) {
     this.dashboardApi = dashboardApi;
-    this.quietHoursEnabled = process.env.CACHE_CLEANUP_QUIET_HOURS_ENABLED === 'true';
-    this.quietHoursRange = process.env.CACHE_CLEANUP_QUIET_HOURS || '02:00-06:00';
   }
 
   private log(level: string, message: string): void {
     (logger as any)[level](message);
   }
 
-  private isQuietHours(): boolean {
-    if (!this.quietHoursEnabled) return false;
+  private schedule(delayMs: number): void {
+    this.nextRun = new Date(Date.now() + delayMs);
+    this.timer = setTimeout(() => {
+      this.tick().catch((error) => this.log('error', `Scheduled cache cleanup failed: ${(error as Error).message}`));
+    }, delayMs);
+  }
 
-    const [startHour, endHour] = this.quietHoursRange.split('-').map(t => {
-      const [h, m] = t.split(':').map(Number);
-      return h + m / 60;
-    });
-
-    const now = new Date();
-    const currentHour = now.getHours() + now.getMinutes() / 60;
-
-    if (startHour < endHour) {
-      return currentHour >= startHour && currentHour < endHour;
-    } else {
-      return currentHour >= startHour || currentHour < endHour;
+  private async tick(): Promise<void> {
+    const window = runWindow('CACHE_CLEANUP');
+    if (!insideWindow(window)) {
+      const wait = msUntilWindow(window);
+      this.log('info', `Outside cleanup hours (${window?.text}); next cleanup in ${Math.round(wait / 60000)} minutes`);
+      this.schedule(wait);
+      return;
     }
+    await this.runCleanup();
+    this.schedule(this.intervalHours * 60 * 60 * 1000);
+    this.log('info', `Next scheduled cleanup: ${this.nextRun?.toISOString()}`);
   }
 
   private async runCleanup(): Promise<void> {
     if (this.isRunning) {
       this.log('warn', 'Cache cleanup already running, skipping');
-      return;
-    }
-
-    if (this.isQuietHours()) {
-      this.log('info', 'Skipping cache cleanup during quiet hours');
       return;
     }
 
@@ -89,41 +82,24 @@ class CacheCleanupScheduler {
       this.log('error', `Scheduled cache cleanup failed: ${(error as Error).message}`);
     } finally {
       this.isRunning = false;
-      this.updateNextRunTime();
     }
   }
 
-  private updateNextRunTime(): void {
-    const now = Date.now();
-    this.nextRun = new Date(now + (this.intervalHours * 60 * 60 * 1000));
-    this.log('info', `Next scheduled cleanup: ${this.nextRun.toISOString()}`);
-  }
-
   public start(): void {
-    if (this.intervalId) {
+    if (this.timer) {
       this.log('warn', 'Cache cleanup scheduler already started');
       return;
     }
 
     this.log('success', `Starting cache cleanup scheduler (every ${this.intervalHours} hours)`);
-    
-    // Run immediately on startup (after a short delay)
-    setTimeout(async () => {
-      await this.runCleanup();
-    }, 30000); // 30 second delay
-
-    // Schedule recurring runs
-    this.intervalId = setInterval(async () => {
-      await this.runCleanup();
-    }, this.intervalHours * 60 * 60 * 1000);
-
-    this.updateNextRunTime();
+    this.schedule(30000);
   }
 
   public stop(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+      this.nextRun = null;
       this.log('info', 'Cache cleanup scheduler stopped');
     }
   }
@@ -134,8 +110,7 @@ class CacheCleanupScheduler {
       lastRun: this.lastRun ? this.lastRun.toISOString() : null,
       nextRun: this.nextRun ? this.nextRun.toISOString() : null,
       intervalHours: this.intervalHours,
-      quietHoursEnabled: this.quietHoursEnabled,
-      quietHoursRange: this.quietHoursRange
+      window: runWindow('CACHE_CLEANUP')?.text ?? null
     };
   }
 }

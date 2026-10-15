@@ -1,5 +1,6 @@
 import { DEFAULT_CACHE_EPOCH } from './cacheEpoch';
 import { parseProviderPolicies } from './posterCache/config';
+import { isWindowValue } from './runWindow';
 
 export interface DisabledRule {
   settingKey: string;
@@ -2521,22 +2522,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: true,
   },
   {
-    key: 'CATALOG_WARMUP_QUIET_HOURS_ENABLED',
-    envVar: 'CATALOG_WARMUP_QUIET_HOURS_ENABLED',
-    label: 'Quiet Hours Enabled',
-    description: 'Pause warming during quiet hours',
-    category: 'Warming: Full',
-    type: 'boolean',
-    default: false,
-  },
-  {
-    key: 'CATALOG_WARMUP_QUIET_HOURS',
-    envVar: 'CATALOG_WARMUP_QUIET_HOURS',
-    label: 'Quiet Hours Range',
-    description: 'Time range for quiet hours (e.g. 02:00-06:00)',
+    key: 'CATALOG_WARMUP_WINDOW',
+    envVar: 'CATALOG_WARMUP_WINDOW',
+    label: 'Warming Hours',
+    description: "When warming may start, as start-end in the server's time zone (TZ), e.g. 04:00-06:00. A range past midnight wraps, like 22:00-02:00. Empty runs at any hour. A run still going when the hours end finishes.",
     category: 'Warming: Full',
     type: 'string',
-    default: '02:00-06:00',
+    default: '',
+    validate: isWindowValue,
   },
   {
     key: 'CATALOG_WARMUP_LOG_LEVEL',
@@ -2635,22 +2628,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     options: ['debug', 'info', 'warn', 'error'],
   },
   {
-    key: 'MAL_WARMUP_QUIET_HOURS_ENABLED',
-    envVar: 'MAL_WARMUP_QUIET_HOURS_ENABLED',
-    label: 'MAL Quiet Hours',
-    description: 'Pause MAL warming during quiet hours',
-    category: 'Warming: MAL',
-    type: 'boolean',
-    default: false,
-  },
-  {
-    key: 'MAL_WARMUP_QUIET_HOURS_RANGE',
-    envVar: 'MAL_WARMUP_QUIET_HOURS_RANGE',
-    label: 'MAL Quiet Hours Range',
-    description: 'Time range for MAL quiet hours',
+    key: 'MAL_WARMUP_WINDOW',
+    envVar: 'MAL_WARMUP_WINDOW',
+    label: 'MAL Warming Hours',
+    description: "When MAL warming may start, as start-end in the server's time zone (TZ), e.g. 04:00-06:00. A range past midnight wraps, like 22:00-02:00. Empty runs at any hour.",
     category: 'Warming: MAL',
     type: 'string',
-    default: '02:00-06:00',
+    default: '',
+    validate: isWindowValue,
   },
 
   // --- Rate Limiting ---
@@ -3112,24 +3097,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: true,
   },
   {
-    key: 'CACHE_CLEANUP_QUIET_HOURS_ENABLED',
-    envVar: 'CACHE_CLEANUP_QUIET_HOURS_ENABLED',
-    label: 'Cleanup Quiet Hours',
-    description: 'Pause automatic cache cleanup during quiet hours',
-    category: 'Cache',
-    type: 'boolean',
-    default: false,
-    requiresRestart: true,
-  },
-  {
-    key: 'CACHE_CLEANUP_QUIET_HOURS',
-    envVar: 'CACHE_CLEANUP_QUIET_HOURS',
-    label: 'Cleanup Quiet Hours Range',
-    description: 'Time range during which cache cleanup is paused (e.g. 02:00-06:00)',
+    key: 'CACHE_CLEANUP_WINDOW',
+    envVar: 'CACHE_CLEANUP_WINDOW',
+    label: 'Cleanup Hours',
+    description: "When automatic cache cleanup may run, as start-end in the server's time zone (TZ), e.g. 04:00-06:00. A range past midnight wraps, like 22:00-02:00. Empty runs at any hour.",
     category: 'Cache',
     type: 'string',
-    default: '02:00-06:00',
-    requiresRestart: true,
+    default: '',
+    validate: isWindowValue,
   },
   {
     key: 'CACHE_RETRY_DELAY',
@@ -4725,8 +4700,7 @@ export const CONDITIONAL_RULES: ConditionalRule[] = [
       keys: [
         'CACHE_WARMUP_UUIDS', 'CATALOG_WARMUP_INTERVAL_HOURS', 'CATALOG_WARMUP_INITIAL_DELAY_SECONDS',
         'CATALOG_WARMUP_MAX_PAGES_PER_CATALOG', 'CATALOG_WARMUP_TASK_DELAY_MS',
-        'CATALOG_WARMUP_RESUME_ON_RESTART', 'CATALOG_WARMUP_QUIET_HOURS_ENABLED',
-        'CATALOG_WARMUP_QUIET_HOURS', 'CATALOG_WARMUP_LOG_LEVEL',
+        'CATALOG_WARMUP_RESUME_ON_RESTART', 'CATALOG_WARMUP_WINDOW', 'CATALOG_WARMUP_LOG_LEVEL',
         'CATALOG_WARMUP_AUTO_ON_EPOCH_CHANGE', 'POSTER_WARMUP_URL',
         'CATALOG_WARMUP_TTL_LEAD_SECONDS',
       ],
