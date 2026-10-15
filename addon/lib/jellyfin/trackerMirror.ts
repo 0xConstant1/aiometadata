@@ -168,6 +168,7 @@ async function syncSimkl(key: string, tokenId: string, config: any, watermark: a
 // --- MDBList ------------------------------------------------------------------------
 
 const MDBLIST_WATCH_FIELDS = ['watched_at', 'season_watched_at', 'episode_watched_at', 'journal_at'];
+const MDBLIST_MIRROR_FORMAT = 2;
 
 function mdblistMovieRow(entry: any): MirrorRow | null {
   const id = entry?.movie?.ids?.mdblist;
@@ -182,7 +183,7 @@ function mdblistEpisodeRow(entry: any): MirrorRow | null {
   return { key: `ep:${show}:${season}:${number}`, group: `show:${show}`, sub: String(season), data: entry };
 }
 
-// A watched show, for its aired episode count; filed with its episodes so a removal takes it too.
+// A watched show, for its aired episode count.
 function mdblistShowRow(entry: any): MirrorRow | null {
   const id = entry?.show?.ids?.mdblist;
   return id ? { key: `showinfo:${id}`, group: `show:${id}`, data: entry } : null;
@@ -223,13 +224,13 @@ async function mdblistFull(key: string, apiKey: string, activities: any): Promis
     { key: 'dropped', data: dropped },
   ] as MirrorRow[];
   await replaceMirror(key, rows, () => true);
-  return { changed: true, watermark: { ...activities, ...(await mdblistUpNextMark(apiKey)) }, full: true };
+  return { changed: true, watermark: { ...activities, ...(await mdblistUpNextMark(apiKey)), format: MDBLIST_MIRROR_FORMAT }, full: true };
 }
 
 async function syncMdblist(key: string, apiKey: string, watermark: any): Promise<SyncOutcome> {
   const activities = await mdblistActivities(apiKey);
   if (!activities?.server_time) throw new Error('MDBList activities could not be read');
-  if (!watermark?.server_time) return mdblistFull(key, apiKey, activities);
+  if (!watermark?.server_time || watermark.format !== MDBLIST_MIRROR_FORMAT) return mdblistFull(key, apiKey, activities);
 
   const moved = (field: string) => (activities?.[field] ?? '') !== (watermark?.[field] ?? '');
   const watched = MDBLIST_WATCH_FIELDS.some(moved);
@@ -239,7 +240,7 @@ async function syncMdblist(key: string, apiKey: string, watermark: any): Promise
     const { fetchMdblistUpNext } = require('./watched');
     const upNext = await fetchMdblistUpNext(apiKey);
     if (upNext.length) await database.upsertTrackerMirror(key, [{ key: 'upnext', data: upNext }]);
-    return { changed: upNext.length > 0, watermark: { ...watermark, ...(await mdblistUpNextMark(apiKey)) }, full: false };
+    return { changed: upNext.length > 0, watermark: { ...watermark, ...(await mdblistUpNextMark(apiKey)), format: MDBLIST_MIRROR_FORMAT }, full: false };
   }
 
   const { makeRateLimitedMDBListRequest } = require('../../utils/mdbList');
@@ -267,13 +268,12 @@ async function syncMdblist(key: string, apiKey: string, watermark: any): Promise
     }
     if (backdated) return mdblistFull(key, apiKey, activities);
 
+    // A season or show is journaled as removed when it stops being complete.
     for (const row of removals) {
       const show = row?.ids?.mdblist;
       if (!show) continue;
       if (row.item_type === 'movie') await database.deleteTrackerMirror(key, [`movie:${show}`]);
       else if (row.item_type === 'episode') await database.deleteTrackerMirror(key, [`ep:${show}:${row.season}:${row.episode}`]);
-      else if (row.item_type === 'season') await database.deleteTrackerMirrorGroup(key, `show:${show}`, String(row.season));
-      else if (row.item_type === 'show') await database.deleteTrackerMirrorGroup(key, `show:${show}`);
     }
 
     const { fetchMdblistWatched, fetchMdblistUpNext } = require('./watched');
@@ -292,7 +292,7 @@ async function syncMdblist(key: string, apiKey: string, watermark: any): Promise
   const upNextMark = watched
     ? await mdblistUpNextMark(apiKey)
     : { upnext_at: watermark?.upnext_at ?? 0, upnext_next: watermark?.upnext_next ?? null };
-  return { changed: true, watermark: { ...activities, ...upNextMark }, full: false };
+  return { changed: true, watermark: { ...activities, ...upNextMark, format: MDBLIST_MIRROR_FORMAT }, full: false };
 }
 
 // --- PublicMetaDB -------------------------------------------------------------------
