@@ -798,7 +798,8 @@ class Database {
     }
 
     const newAppPassword = typeof normalizedConfig?.jellyfinAppPassword === 'string' ? normalizedConfig.jellyfinAppPassword : '';
-    const hasUsers = Array.isArray(normalizedConfig?.jellyfinUsers) && normalizedConfig.jellyfinUsers.length > 0;
+    const hasUsers = (Array.isArray(normalizedConfig?.jellyfinUsers) && normalizedConfig.jellyfinUsers.length > 0)
+      || Boolean(normalizedConfig && 'jellyfinUserPin' in normalizedConfig);
     const previousConfig = newAppPassword || hasUsers ? await this.getUserConfig(userUUID).catch(() => null) : null;
     const previousAppPassword = newAppPassword ? previousConfig?.jellyfinAppPassword : undefined;
     const pinChanged = hasUsers ? await require('./jellyfin/pins').securePins(normalizedConfig, previousConfig) : [];
@@ -852,7 +853,7 @@ class Database {
     }
     // A new or changed PIN signs that user out, so a device already signed in as them asks for it.
     for (const profileId of pinChanged) {
-      await require('./jellyfin/tokens').revokeUserTokens(userUUID, profileId).catch((error: any) => logger.warn(`Signing out ${userUUID} user ${profileId} failed: ${error.message}`));
+      await require('./jellyfin/tokens').revokeUserTokens(userUUID, profileId).catch((error: any) => logger.warn(`Signing out ${userUUID} user ${profileId ?? 'main'} failed: ${error.message}`));
     }
 
     try {
@@ -1859,7 +1860,14 @@ class Database {
     await this.runQuery(query, [userUUID]);
   }
 
-  async deleteJellyfinTokensForProfile(userUUID: string, profileId: string): Promise<void> {
+  async deleteJellyfinTokensForProfile(userUUID: string, profileId: string | null): Promise<void> {
+    if (profileId === null) {
+      const query = this.type === 'sqlite'
+        ? 'DELETE FROM jellyfin_tokens WHERE user_uuid = ? AND profile_id IS NULL'
+        : 'DELETE FROM jellyfin_tokens WHERE user_uuid = $1 AND profile_id IS NULL';
+      await this.runQuery(query, [userUUID]);
+      return;
+    }
     const query = this.type === 'sqlite'
       ? 'DELETE FROM jellyfin_tokens WHERE user_uuid = ? AND profile_id = ?'
       : 'DELETE FROM jellyfin_tokens WHERE user_uuid = $1 AND profile_id = $2';

@@ -103,7 +103,7 @@ function pinInvalid(pin?: string): boolean {
   return Boolean(pin && !SAVED_PIN.test(pin) && !PIN_PATTERN.test(pin));
 }
 
-function PinField({ name, pin, onChange }: { name: string; pin?: string; onChange: (pin: string | undefined) => void }) {
+function PinField({ name, pin, main, onChange }: { name: string; pin?: string; main?: boolean; onChange: (pin: string | undefined) => void }) {
   const [editing, setEditing] = useState(false);
   const saved = Boolean(pin && SAVED_PIN.test(pin));
   const invalid = pinInvalid(pin);
@@ -133,7 +133,9 @@ function PinField({ name, pin, onChange }: { name: string; pin?: string; onChang
       <p className={cn('text-[11px]', invalid ? 'text-destructive' : 'text-muted-foreground')}>
         {invalid
           ? 'A PIN is 4 to 12 digits.'
-          : 'Asked whenever someone switches to this user, from your own user too. To sign in as them on a client, enter the password, a slash and the PIN, like password/1234. Setting or changing it signs this user out on every device.'}
+          : main
+            ? 'Asked whenever another user switches to you. To sign in as you on a client, enter the password, a slash and the PIN, like password/1234. Setting or changing it signs you out on every device.'
+            : 'Asked whenever someone switches to this user, from your own user too. To sign in as them on a client, enter the password, a slash and the PIN, like password/1234. Setting or changing it signs this user out on every device.'}
       </p>
     </div>
   );
@@ -298,7 +300,7 @@ function UserRow({ name, avatar, main, user, allTags, catalogCount, trackerOptio
             </p>
           </div>
         )}
-        {!main && <PinField name={name} pin={user?.pin} onChange={(pin) => onChange({ pin })} />}
+        <PinField name={name} pin={user?.pin} main={main} onChange={(pin) => onChange({ pin })} />
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Skip intro and credits</Label>
           <SkipSourcePicker
@@ -534,7 +536,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
   const addCatalogs = (entries: CatalogConfig[]) =>
     setConfig(prev => ({ ...prev, catalogs: [...prev.catalogs, ...entries.filter((e) => !prev.catalogs.some((c) => c.id === e.id && c.type === e.type))] }));
   const nameClash = handoffNameClash(mainName, config.jellyfinUserHandoffNames, users);
-  const badPin = users.some((user) => pinInvalid(user.pin));
+  const badPin = pinInvalid(config.jellyfinUserPin) || users.some((user) => pinInvalid(user.pin));
   const addUser = () => {
     const clean = newUserName.trim();
     if (!clean) return;
@@ -878,6 +880,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                 skipSource: config.jellyfinSkipSource ?? 'auto',
                 watchlistServices: config.jellyfinWatchlistServices,
                 handoffNames: config.jellyfinUserHandoffNames,
+                pin: config.jellyfinUserPin,
               }}
               allTags={tags}
               catalogCount={catalogCountFor(config.jellyfinUserTags ?? [])}
@@ -896,6 +899,7 @@ export function JellyfinDialog({ open, onOpenChange, userUUID }: JellyfinDialogP
                 ...('skipSource' in patch ? { jellyfinSkipSource: patch.skipSource === 'auto' ? undefined : patch.skipSource } : {}),
                 ...('watchlistServices' in patch ? { jellyfinWatchlistServices: patch.watchlistServices } : {}),
                 ...('handoffNames' in patch ? { jellyfinUserHandoffNames: patch.handoffNames } : {}),
+                ...('pin' in patch ? { jellyfinUserPin: patch.pin } : {}),
               }))}
             />
             {users.map((user) => {

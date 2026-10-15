@@ -81,6 +81,7 @@ export function listProfiles(config: any, userUUID: string): Profile[] {
     tags: knownTags(config, config?.jellyfinUserTags),
     handoffNames: namesOf(config?.jellyfinUserHandoffNames),
     sharesHistory: true,
+    pin: isPinHash(config?.jellyfinUserPin) ? config.jellyfinUserPin : undefined,
   }];
   const seen = new Set<string>();
 

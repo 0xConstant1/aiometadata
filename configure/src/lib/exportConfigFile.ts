@@ -56,6 +56,7 @@ export function exportConfigFile(
     ...config,
     apiKeys: excludeApiKeys ? emptyApiKeys : { ...config.apiKeys },
     ...withoutManagerSecrets(config, excludeApiKeys),
+    ...(excludeApiKeys ? { jellyfinUserPin: undefined } : {}),
     ...(excludeApiKeys && config.jellyfinUsers
       ? { jellyfinUsers: config.jellyfinUsers.map(({ pin: _pin, ...user }) => (user.accounts ? { ...user, accounts: { ...user.accounts, apiKeys: {} } } : user)) }
       : {}),

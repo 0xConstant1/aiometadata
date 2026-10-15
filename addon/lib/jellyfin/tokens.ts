@@ -130,8 +130,8 @@ export async function revokeToken(token: string | undefined): Promise<void> {
   if (redis) await redis.del(`${LEGACY_PREFIX}${token}`).catch(() => undefined);
 }
 
-/** Every sign-in of the configuration, or of one of its users when `profileId` is given. */
-export async function revokeUserTokens(userUUID: string, profileId?: string): Promise<void> {
+/** Every sign-in of the configuration, or of one of its users when `profileId` is given; null is the main user. */
+export async function revokeUserTokens(userUUID: string, profileId?: string | null): Promise<void> {
   const matches = (session: TokenSession | null): boolean =>
     session?.userUUID === userUUID && (profileId === undefined || session.profileId === profileId);
   for (const [token, held] of memo.entries()) {

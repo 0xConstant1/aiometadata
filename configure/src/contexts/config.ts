@@ -453,6 +453,8 @@ export interface AppConfig {
   /** Name and picture of the main Jellyfin user, the configuration itself. */
   jellyfinUserName?: string;
   jellyfinUserAvatar?: string;
+  /** The main user's PIN: 4 to 12 digits as typed, or the hash the server saved it as. */
+  jellyfinUserPin?: string;
   jellyfinUserTags?: string[];
   jellyfinUserHandoffNames?: string[];
   jellyfinSkipSource?: SkipSource;

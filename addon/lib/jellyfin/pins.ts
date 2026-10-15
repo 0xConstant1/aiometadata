@@ -59,26 +59,37 @@ export async function pinOpens(userUUID: string, profile: { id: string | null; p
   return false;
 }
 
+/** The PIN as it should be stored: the old hash when the same PIN comes back, else a new one; null for none. */
+async function securePin(value: unknown, old: string | undefined): Promise<string | null> {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (PIN_PATTERN.test(raw)) return old && (await bcrypt.compare(raw, old)) ? old : bcrypt.hash(raw, 10);
+  return isPinHash(raw) ? raw : null;
+}
+
 /**
- * Hashes each user's PIN in place before a save, keeping the stored hash when
- * the same PIN comes back. Returns the users whose PIN was set or changed.
+ * Hashes each user's PIN in place before a save, the main user's included. Returns
+ * the users whose PIN was set or changed, null standing for the main user.
  */
-export async function securePins(config: any, previous: any): Promise<string[]> {
+export async function securePins(config: any, previous: any): Promise<Array<string | null>> {
   const before = new Map<string, string>();
   for (const user of Array.isArray(previous?.jellyfinUsers) ? previous.jellyfinUsers : []) {
     if (typeof user?.id === 'string' && isPinHash(user.pin)) before.set(user.id, user.pin);
   }
-  const changed: string[] = [];
+  const changed: Array<string | null> = [];
   for (const user of Array.isArray(config?.jellyfinUsers) ? config.jellyfinUsers : []) {
     if (!user || typeof user.id !== 'string') continue;
     const old = before.get(user.id);
-    const raw = typeof user.pin === 'string' ? user.pin.trim() : '';
-    if (PIN_PATTERN.test(raw)) {
-      user.pin = old && (await bcrypt.compare(raw, old)) ? old : await bcrypt.hash(raw, 10);
-    } else if (!isPinHash(raw)) {
-      delete user.pin;
-    }
-    if (user.pin && user.pin !== old) changed.push(user.id);
+    const pin = await securePin(user.pin, old);
+    if (pin) user.pin = pin;
+    else delete user.pin;
+    if (pin && pin !== old) changed.push(user.id);
+  }
+  if (config && 'jellyfinUserPin' in config) {
+    const old = isPinHash(previous?.jellyfinUserPin) ? previous.jellyfinUserPin : undefined;
+    const pin = await securePin(config.jellyfinUserPin, old);
+    if (pin) config.jellyfinUserPin = pin;
+    else delete config.jellyfinUserPin;
+    if (pin && pin !== old) changed.push(null);
   }
   return changed;
 }
