@@ -486,25 +486,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json({ ...systemInfo(serverIdFor(req.params.userUUID), baseFor(req)), aiostreams: extensionInfo(localAddress(req)) });
   });
 
-  // Every user of a configuration signs in with its one password. The main user sees
-  // everything, so it switches freely; any other user, who may be held to a rating or
-  // to some catalogs, gives the password again to become someone else. A user with a
-  // PIN asks for it on every switch, from the main user too.
-  type Secret = 'pin' | 'password' | 'password-pin';
-  const switchNeeds = (req: any, target: Profile): Secret | null => {
-    const callerId = req.jellyfin?.profileId ?? null;
-    if (callerId === target.id) return null;
-    if (callerId === null) return target.pin ? 'pin' : null;
-    return target.pin ? 'password-pin' : 'password';
-  };
-
-  const secretOpens = async (userUUID: string, target: Profile, needs: Secret, secret: string): Promise<boolean> => {
-    if (needs === 'pin') return pinOpens(userUUID, target, secret);
-    if (needs === 'password') return Boolean(await configForPassword(userUUID, secret));
-    const slash = secret.lastIndexOf('/');
-    if (slash <= 0) return false;
-    return Boolean(await configForPassword(userUUID, secret.slice(0, slash))) && pinOpens(userUUID, target, secret.slice(slash + 1));
-  };
+  // Every user of a configuration signs in with its one password, so a session has
+  // already proved it and only a PIN tells users apart. A user with a PIN asks for it on
+  // every switch, back to itself too, or handing over a signed-in device would hand it over.
+  type Secret = 'pin';
+  const switchNeeds = (_req: any, target: Profile): Secret | null => (target.pin ? 'pin' : null);
 
   router.get('/AIOStreams/Users', async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
@@ -531,7 +517,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return;
     }
     const needs = switchNeeds(req, profile);
-    if (needs && !(await secretOpens(userUUID, profile, needs, String(req.body?.Pw ?? '')))) {
+    if (needs && !(await pinOpens(userUUID, profile, String(req.body?.Pw ?? '')))) {
       res.status(401).json({ Message: 'Invalid password' });
       return;
     }
@@ -542,7 +528,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const config = await loadConfig(req);
     const asked = req.query.userId ?? req.query.UserId;
     const profile = (asked && profileByUserId(config, req.params.userUUID, asked)) || sessionProfile(req, config);
-    if (switchNeeds(req, profile)) {
+    if (profile.id !== (req.jellyfin?.profileId ?? null) && switchNeeds(req, profile)) {
       res.status(403).json({ Message: 'Switch to this user to approve a device for them' });
       return;
     }
