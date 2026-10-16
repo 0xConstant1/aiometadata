@@ -419,7 +419,7 @@ export async function dashboardConfiguration(userUUID: string, profile: string |
   const config = await database.getUserConfig(userUUID).catch(() => null);
   if (!config) return null;
   const names = profileNames(config, userUUID);
-  const limit = Math.min(500, Math.max(1, rows || envInt('JELLYFIN_DASHBOARD_ROWS', 50, 1)));
+  const limit = Math.min(100, Math.max(1, rows || envInt('JELLYFIN_DASHBOARD_ROWS', 30, 1)));
   const byProfile: any[] = await database.playstateForConfiguration(userUUID);
   const [counts, sync]: [Map<string, ProfileStats>, SyncRow[]] = await Promise.all([
     profileStats(userUUID, offsetMinutes, byProfile),
@@ -442,19 +442,11 @@ export async function dashboardConfiguration(userUUID: string, profile: string |
       lastActivity: Math.max(Number(p?.last_played_at) || 0, Number(p?.updated_at) || 0) || null,
     };
   });
-  const folded = async (fetch: (n: number) => Promise<any[]>): Promise<PlayRow[]> => {
-    let want = limit * 2;
-    for (;;) {
-      const rows = await fetch(want);
-      const out = await playRows(userUUID, rows, names);
-      if (out.length >= limit || rows.length < want || want >= limit * 16) return out.slice(0, limit);
-      want *= 2;
-    }
-  };
   const [inProgress, recentlyPlayed] = await Promise.all([
-    folded((n) => database.listPlaystateInProgressFor(userUUID, n, profile)),
-    folded((n) => database.listPlaystatePlayedFor(userUUID, n, profile)),
+    foldedPlays(userUUID, names, 'progress', profile, envInt('JELLYFIN_DASHBOARD_PROGRESS_MAX', 1000, 1)),
+    foldedPlays(userUUID, names, 'played', profile, limit),
   ]);
+  const shown = profiles.filter((p) => profile === null || p.key === profile);
   const sessions = (await sessionRows(userUUID, names)).filter((s) => profile === null || s.profileKey === profile);
   return {
     userUUID,
@@ -464,9 +456,39 @@ export async function dashboardConfiguration(userUUID: string, profile: string |
     profiles,
     sync,
     sessions,
-    inProgress,
-    recentlyPlayed,
+    inProgress: inProgress.rows.slice(0, limit),
+    recentlyPlayed: recentlyPlayed.rows,
+    totals: {
+      progress: inProgress.exhausted ? inProgress.rows.length : Math.max(inProgress.rows.length, shown.reduce((n, p) => n + p.inProgress, 0)),
+      played: Math.max(recentlyPlayed.rows.length, shown.reduce((n, p) => n + p.played, 0)),
+    },
   };
+}
+
+export type PlayKind = 'progress' | 'played';
+
+async function foldedPlays(userUUID: string, names: Map<string, string>, kind: PlayKind, profile: string | null, want: number): Promise<{ rows: PlayRow[]; exhausted: boolean }> {
+  const read = (n: number) => kind === 'progress'
+    ? database.listPlaystateInProgressFor(userUUID, n, profile)
+    : database.listPlaystatePlayedFor(userUUID, n, profile);
+  let ask = want * 2;
+  for (;;) {
+    const raw: any[] = await read(ask);
+    const out = await playRows(userUUID, raw, names);
+    const exhausted = raw.length < ask;
+    if (out.length >= want || exhausted || ask >= want * 16) return { rows: out.slice(0, want), exhausted: exhausted && out.length <= want };
+    ask *= 2;
+  }
+}
+
+export async function dashboardPlays(userUUID: string, profile: string | null, kind: PlayKind, offset: number, limit: number): Promise<any | null> {
+  const config = await database.getUserConfig(userUUID).catch(() => null);
+  if (!config) return null;
+  const from = Math.max(0, offset);
+  const size = Math.min(100, Math.max(1, limit));
+  const { rows, exhausted } = await foldedPlays(userUUID, profileNames(config, userUUID), kind, profile, from + size);
+  const page = rows.slice(from);
+  return { kind, profile, offset: from, rows: page, done: exhausted || page.length < size };
 }
 
 /** Every row the table holds for a configuration, as stored. */

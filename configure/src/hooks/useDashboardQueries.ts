@@ -1588,6 +1588,7 @@ export interface JellyfinConfiguration {
   rows: number;
   inProgress: JellyfinPlayRow[];
   recentlyPlayed: JellyfinPlayRow[];
+  totals: { progress: number; played: number };
 }
 
 function useJellyfinQuery<T>(key: readonly unknown[], path: string, options: DashboardQueryOptions & { enabledWhen?: boolean; poll?: boolean } = {}) {
@@ -1770,6 +1771,18 @@ export function useJellyfinShowRefresh() {
     if (!response.ok) throw new Error(`Refresh failed (${response.status})`);
     return Boolean((await response.json())?.refreshed);
   };
+}
+
+export type JellyfinPlayKind = 'progress' | 'played';
+
+export function useJellyfinPlays(userUUID: string | null, profile: string | null, kind: JellyfinPlayKind, offset: number, options: DashboardQueryOptions = {}) {
+  const params = new URLSearchParams({ kind, offset: String(offset), limit: '30' });
+  if (profile !== null) params.set('profile', profile);
+  return useJellyfinQuery<{ kind: JellyfinPlayKind; profile: string | null; offset: number; rows: JellyfinPlayRow[]; done: boolean }>(
+    ['dashboard', 'jellyfin', 'plays', userUUID, profile, kind, offset] as const,
+    `/api/dashboard/jellyfin/${encodeURIComponent(userUUID ?? '')}/plays?${params}`,
+    { ...options, enabledWhen: Boolean(userUUID) && offset > 0, poll: false }
+  );
 }
 
 export function useJellyfinExport() {

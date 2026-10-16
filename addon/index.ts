@@ -8259,6 +8259,24 @@ addon.get("/api/dashboard/jellyfin/:userUUID/export", requireDashboardAdmin, asy
   }
 });
 
+addon.get("/api/dashboard/jellyfin/:userUUID/plays", requireDashboardAdmin, async (req, res) => {
+  try {
+    const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
+    const kind = req.query.kind === 'played' ? 'played' : 'progress';
+    const offset = parseInt(String(req.query.offset ?? ''), 10);
+    const limit = parseInt(String(req.query.limit ?? ''), 10);
+    const payload = await require('./lib/jellyfin/dashboard').dashboardPlays(String(req.params.userUUID), profile, kind, Number.isFinite(offset) ? offset : 0, Number.isFinite(limit) ? limit : 30);
+    if (!payload) {
+      res.status(404).json({ error: 'No such configuration' });
+      return;
+    }
+    res.json(payload);
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to read Jellyfin plays' });
+  }
+});
+
 addon.get("/api/dashboard/jellyfin/:userUUID/shows", requireDashboardAdmin, async (req, res) => {
   try {
     const profile = typeof req.query.profile === 'string' ? req.query.profile : null;

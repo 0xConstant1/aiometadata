@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import JellyfinCalendar from "./JellyfinCalendar";
 import JellyfinLibrary from "./JellyfinLibrary";
@@ -12,6 +12,7 @@ import {
   useJellyfinConfiguration,
   useJellyfinExport,
   useJellyfinOverview,
+  useJellyfinPlays,
   useJellyfinSearch,
   useJellyfinShowRefresh,
   useJellyfinShows,
@@ -19,6 +20,7 @@ import {
   type JellyfinEpisodeRef,
   type JellyfinShowRow,
   type JellyfinConfiguration,
+  type JellyfinPlayKind,
   type JellyfinPlayRow,
   type JellyfinProfileSummary,
   type JellyfinSessionRow,
@@ -106,7 +108,64 @@ function ProgressCard({ row }: { row: JellyfinPlayRow }) {
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
+function Sentinel({ onVisible, root, margin = "600px" }: { onVisible: () => void; root?: React.RefObject<HTMLElement | null>; margin?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const latest = useRef(onVisible);
+  latest.current = onVisible;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && latest.current(), { root: root?.current ?? null, rootMargin: margin });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [root, margin]);
+  return <div ref={ref} className="h-px w-px shrink-0" />;
+}
+
+function usePagedPlays(userUUID: string, profile: string | null, kind: JellyfinPlayKind, base: JellyfinPlayRow[], total: number, activeTab: DashboardTab) {
+  const [offset, setOffset] = useState(0);
+  const [pages, setPages] = useState<Array<{ offset: number; rows: JellyfinPlayRow[] }>>([]);
+  const [done, setDone] = useState(false);
+  const { data, isFetching } = useJellyfinPlays(userUUID, profile, kind, offset, { activeTab });
+  useEffect(() => {
+    setOffset(0);
+    setPages([]);
+    setDone(false);
+  }, [profile]);
+  useEffect(() => {
+    if (!data || data.offset !== offset || offset === 0 || data.profile !== profile) return;
+    setPages((held) => (held.some((p) => p.offset === data.offset) ? held : [...held, { offset: data.offset, rows: data.rows }]));
+    if (data.done) setDone(true);
+  }, [data, offset, profile]);
+  const rows = useMemo(() => {
+    const seen = new Set<string>();
+    const out: JellyfinPlayRow[] = [];
+    for (const row of [...base, ...pages.flatMap((p) => p.rows)]) {
+      const key = `${row.profile}|${row.videoId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+    }
+    return out;
+  }, [base, pages]);
+  const more = !done && rows.length < total && base.length > 0;
+  const loading = isFetching && offset > 0;
+  const loadMore = () => {
+    if (more && !isFetching && rows.length > offset) setOffset(rows.length);
+  };
+  return { rows, more, loading, loadMore };
+}
+
+function MoreFooter({ paged }: { paged: { more: boolean; loading: boolean; loadMore: () => void } }) {
+  if (!paged.more && !paged.loading) return null;
+  return (
+    <div className="flex h-10 items-center justify-center text-xs text-muted-foreground">
+      {paged.loading ? <span className="flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading more…</span> : <button type="button" onClick={paged.loadMore} className="hover:text-foreground">Load more</button>}
+    </div>
+  );
+}
+
+function Row({ children, onEnd, loading }: { children: React.ReactNode; onEnd?: () => void; loading?: boolean }) {
   const track = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ start: true, end: false });
   const measure = () => {
@@ -123,6 +182,8 @@ function Row({ children }: { children: React.ReactNode }) {
     <div className="group/row relative -mx-4 sm:-mx-6">
       <div ref={track} onScroll={measure} className="flex snap-x gap-3 overflow-x-auto scroll-px-4 px-4 pb-2 sm:scroll-px-6 sm:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {children}
+        {loading && <div className="flex w-24 shrink-0 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
+        {onEnd && <Sentinel key={React.Children.count(children)} onVisible={onEnd} root={track} margin="0px 800px 0px 0px" />}
       </div>
       {!edges.start && <button type="button" aria-label="Scroll back" onClick={() => page(-1)} className={`${arrow} left-2`}><ChevronLeft className="h-5 w-5" /></button>}
       {!edges.end && <button type="button" aria-label="Scroll on" onClick={() => page(1)} className={`${arrow} right-2`}><ChevronRight className="h-5 w-5" /></button>}
@@ -852,16 +913,19 @@ function ConfigurationSkeleton() {
   );
 }
 
+const EMPTY_PLAYS: JellyfinPlayRow[] = [];
+
 function Configuration({ userUUID, activeTab, onClose }: { userUUID: string; activeTab: DashboardTab; onClose: () => void }) {
   const [profile, setProfile] = useRemembered<string | null>(`jellyfin.profile.${userUUID}`, null);
   const [view, setView] = useRemembered<View>("jellyfin.view", "cards");
-  const [rows, setRows] = useRemembered<number | null>("jellyfin.rows", null);
   const [exporting, setExporting] = useState(false);
   const [allProgress, setAllProgress] = useRemembered<boolean>("jellyfin.allProgress", false);
   const [foldedProgress, foldProgress] = useFolded("jellyfin.fold.progress");
   const [foldedPlayed, foldPlayed] = useFolded("jellyfin.fold.played");
   const exportJson = useJellyfinExport();
-  const { data, isLoading, isError, isFetching, isPlaceholderData } = useJellyfinConfiguration(userUUID, profile, rows, { activeTab });
+  const { data, isLoading, isError, isFetching, isPlaceholderData } = useJellyfinConfiguration(userUUID, profile, null, { activeTab });
+  const progress = usePagedPlays(userUUID, profile, "progress", data?.inProgress ?? EMPTY_PLAYS, data?.totals?.progress ?? 0, activeTab);
+  const played = usePagedPlays(userUUID, profile, "played", data?.recentlyPlayed ?? EMPTY_PLAYS, data?.totals?.played ?? 0, activeTab);
 
   const runExport = async () => {
     setExporting(true);
@@ -888,17 +952,7 @@ function Configuration({ userUUID, activeTab, onClose }: { userUUID: string; act
         <Button size="sm" variant={view === "cards" ? "secondary" : "ghost"} className="h-7 rounded-full px-2.5" onClick={() => setView("cards")} aria-label="Cards"><LayoutGrid className="h-3.5 w-3.5" /></Button>
         <Button size="sm" variant={view === "table" ? "secondary" : "ghost"} className="h-7 rounded-full px-2.5" onClick={() => setView("table")} aria-label="Table"><TableProperties className="h-3.5 w-3.5" /></Button>
       </div>
-      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {isFetching && !isLoading && !switching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Rows"}
-        <select
-          id="jellyfin-dashboard-rows"
-          value={rows ?? data.rows}
-          onChange={(event) => setRows(Number(event.target.value))}
-          className="glass h-8 rounded-full px-2.5 text-xs text-foreground"
-        >
-          {[...new Set([data.rows, 50, 100, 200, 500])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
-      </label>
+      {isFetching && !isLoading && !switching && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
       <Button size="sm" variant="ghost" className="glass h-8 gap-1 rounded-full px-3" onClick={runExport} disabled={exporting}>
         {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Export JSON
       </Button>
@@ -920,24 +974,24 @@ function Configuration({ userUUID, activeTab, onClose }: { userUUID: string; act
         <SyncStrip rows={data.sync} />
         <Shelf
           title="Continue watching"
-          count={data.inProgress.length}
+          count={progress.more ? data.totals?.progress ?? progress.rows.length : progress.rows.length}
           folded={foldedProgress}
           onFold={foldProgress}
-          action={view === "cards" && data.inProgress.length > 3 && (
+          action={view === "cards" && progress.rows.length > 3 && (
             <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => setAllProgress(!allProgress)}>
               {allProgress ? "Show as a row" : "View all"}
             </Button>
           )}
         >
-          {data.inProgress.length === 0
+          {progress.rows.length === 0
             ? <p className="text-xs text-muted-foreground">Nothing in progress.</p>
             : view === "table"
-              ? <PlayTable rows={data.inProgress} kind="progress" />
+              ? <><PlayTable rows={progress.rows} kind="progress" /><Sentinel key={progress.rows.length} onVisible={progress.loadMore} /><MoreFooter paged={progress} /></>
               : allProgress
-                ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{data.inProgress.map((row) => <ProgressCard key={`${row.profile}|${row.videoId}`} row={row} />)}</div>
+                ? <><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{progress.rows.map((row) => <ProgressCard key={`${row.profile}|${row.videoId}`} row={row} />)}</div><Sentinel key={progress.rows.length} onVisible={progress.loadMore} /><MoreFooter paged={progress} /></>
                 : (
-                  <Row>
-                    {data.inProgress.map((row) => <div key={`${row.profile}|${row.videoId}`} className="w-64 shrink-0 snap-start sm:w-80"><ProgressCard row={row} /></div>)}
+                  <Row onEnd={progress.more ? progress.loadMore : undefined} loading={progress.loading}>
+                    {progress.rows.map((row) => <div key={`${row.profile}|${row.videoId}`} className="w-64 shrink-0 snap-start sm:w-80"><ProgressCard row={row} /></div>)}
                   </Row>
                 )}
         </Shelf>
@@ -945,12 +999,13 @@ function Configuration({ userUUID, activeTab, onClose }: { userUUID: string; act
         <Shows key={`shows:${profile ?? ""}`} userUUID={userUUID} profile={profile} profileName={profileName} activeTab={activeTab} />
         <JellyfinCalendar key={`calendar:${profile ?? ""}`} userUUID={userUUID} profile={profile} profileName={profileName} activeTab={activeTab} />
         <ActivityMap activity={activity} />
-        <Shelf title="Recently played" count={data.recentlyPlayed.length} folded={foldedPlayed} onFold={foldPlayed}>
-          {data.recentlyPlayed.length === 0
+        <Shelf title="Recently played" count={played.more ? data.totals?.played ?? played.rows.length : played.rows.length} folded={foldedPlayed} onFold={foldPlayed}>
+          {played.rows.length === 0
             ? <p className="text-xs text-muted-foreground">Nothing played yet.</p>
             : view === "table"
-              ? <PlayTable rows={data.recentlyPlayed} kind="played" />
-              : <PlayedByDay rows={data.recentlyPlayed} />}
+              ? <PlayTable rows={played.rows} kind="played" />
+              : <PlayedByDay rows={played.rows} />}
+          {played.rows.length > 0 && <><Sentinel key={played.rows.length} onVisible={played.loadMore} /><MoreFooter paged={played} /></>}
         </Shelf>
       </div>
       )}

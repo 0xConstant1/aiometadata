@@ -106,7 +106,13 @@ const metaLine = (row: JellyfinLibraryRow) => [row.type === "movie" ? "Movie" : 
 function ListRow({ row, number, active, onPick }: { row: JellyfinLibraryRow; number: number; active: boolean; onPick: () => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (active) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const el = ref.current;
+    const box = el?.parentElement;
+    if (!active || !el || !box) return;
+    const row = el.getBoundingClientRect();
+    const view = box.getBoundingClientRect();
+    if (row.top < view.top) box.scrollBy({ top: row.top - view.top - 4, behavior: "smooth" });
+    else if (row.bottom > view.bottom) box.scrollBy({ top: row.bottom - view.bottom + 4, behavior: "smooth" });
   }, [active]);
   return (
     <button
@@ -152,6 +158,29 @@ function Fan({ rows }: { rows: JellyfinLibraryRow[] }) {
       ))}
     </span>
   );
+}
+
+function useSwipe(index: number, count: number, onPick: (i: number) => void) {
+  const drag = useRef<{ x: number; moved: boolean } | null>(null);
+  const current = useRef(index);
+  current.current = index;
+  return {
+    onPointerDown: (event: React.PointerEvent) => { drag.current = { x: event.clientX, moved: false }; },
+    onPointerMove: (event: React.PointerEvent) => {
+      const held = drag.current;
+      if (!held) return;
+      const dx = event.clientX - held.x;
+      if (Math.abs(dx) < 48) return;
+      held.x = event.clientX;
+      held.moved = true;
+      current.current = Math.max(0, Math.min(count - 1, current.current - Math.sign(dx)));
+      onPick(current.current);
+    },
+    onPointerUp: () => { setTimeout(() => { drag.current = null; }, 0); },
+    onPointerCancel: () => { drag.current = null; },
+    onPointerLeave: () => { if (drag.current && !drag.current.moved) drag.current = null; },
+    onClickCapture: (event: React.MouseEvent) => { if (drag.current?.moved) { event.preventDefault(); event.stopPropagation(); } },
+  };
 }
 
 function Deck({ rows, index, onPick }: { rows: JellyfinLibraryRow[]; index: number; onPick: (i: number) => void }) {
@@ -363,6 +392,7 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
     setIndex(i);
     if (i >= rows.length - 6) loadMore();
   };
+  const swipe = useSwipe(at, rows.length, pick);
   const pickTab = (next: JellyfinLibraryTab) => {
     setTab(next);
     remember("jellyfin.library.tab", next);
@@ -415,11 +445,11 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="glass flex h-9 items-center rounded-full p-0.5">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div className="glass flex h-9 w-full items-center rounded-full p-0.5 sm:w-auto">
               {TABS.map((t) => (
-                <button key={t.key} type="button" onClick={() => pickTab(t.key)} className={cx("flex h-full items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors", tab === t.key ? "bg-white/15 text-foreground" : "text-muted-foreground hover:text-foreground")}>
-                  <t.icon className="size-3.5" /> {t.label}
+                <button key={t.key} type="button" onClick={() => pickTab(t.key)} className={cx("flex h-full flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-xs font-medium transition-colors sm:flex-none sm:px-3 sm:text-sm", tab === t.key ? "bg-white/15 text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                  <t.icon className="hidden size-3.5 sm:block" /> {t.label}
                   {data && <span className="text-xs tabular-nums opacity-60">{data.counts[t.key]}</span>}
                 </button>
               ))}
@@ -457,7 +487,7 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
           )}
 
           {view === "deck" ? (
-            <div className={cx("order-first flex min-w-0 flex-col gap-4 lg:order-none")}>
+            <div {...swipe} className="order-first flex min-w-0 cursor-grab touch-pan-y select-none flex-col gap-4 active:cursor-grabbing lg:order-none">
               {firstPage ? (
                 <div className="flex h-[330px] items-center justify-center sm:h-[470px]"><Skeleton className="aspect-[2/3] w-40 rounded-xl sm:w-56" /></div>
               ) : focus ? (
