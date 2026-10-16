@@ -197,7 +197,7 @@ export function ActivityMap({ activity }: { activity: Activity }) {
       <div className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 ${folded ? "" : "mb-3"}`}>
         <ShelfTitle title="Activity" count={null} folded={folded} onFold={fold} />
         <p className="text-xs text-muted-foreground tabular-nums">
-          <span className="text-foreground">{activity.total.toLocaleString()}</span> finished in the last year · <span className="text-foreground">{activity.active}</span> active days · best streak <span className="text-foreground">{activity.best}</span>
+          <span className="text-foreground">{activity.total.toLocaleString()}</span> watched in the last year · <span className="text-foreground">{activity.active}</span> active days · best streak <span className="text-foreground">{activity.best}</span>
         </p>
       </div>
       {!folded && (
@@ -211,7 +211,7 @@ export function ActivityMap({ activity }: { activity: Activity }) {
             {weeks.map((week, w) => (
               <div key={w} className="grid gap-[3px]">
                 {week.map((day, d) => day
-                  ? <span key={day.key} title={`${day.date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}: ${day.n} finished`} className={`aspect-square w-full rounded-[3px] ${HEAT[level(day.n)]}`} />
+                  ? <span key={day.key} title={`${day.date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}: ${day.n} watched`} className={`aspect-square w-full rounded-[3px] ${HEAT[level(day.n)]}`} />
                   : <span key={`empty-${d}`} className="aspect-square w-full" />)}
               </div>
             ))}

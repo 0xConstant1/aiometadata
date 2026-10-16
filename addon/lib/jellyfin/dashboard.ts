@@ -293,7 +293,7 @@ function statsFingerprint(summary: any[]): string {
     .join('|');
 }
 
-const statsStoreKey = (key: string) => `jf:dashstats:v1:${key}`;
+const statsStoreKey = (key: string) => `jf:dashstats:v2:${key}`;
 
 async function storedStats(key: string): Promise<{ fingerprint: string; stats: Map<string, ProfileStats> } | null> {
   if (!redis) return null;
@@ -352,13 +352,17 @@ async function readProfileStats(userUUID: string, offsetMinutes: number): Promis
   const out = new Map<string, ProfileStats>();
   for (const [profile, list] of byProfile) {
     const stats: ProfileStats = { played: 0, inProgress: 0, movies: 0, episodes: 0, days: {} };
+    const watchedMs = envInt('JELLYFIN_DASHBOARD_WATCHED_MINUTES', 5, 1) * 60_000;
     for (const group of await groupBySpelling(list)) {
       if (group.some((row) => Number(row.position_ms) > 0)) stats.inProgress += 1;
-      if (!group.some((row) => Number(row.played) === 1)) continue;
-      stats.played += 1;
-      const parsed = parseStremioId(String(group[0].video_id));
-      if (parsed?.episode !== null && parsed?.episode !== undefined) stats.episodes += 1;
-      else stats.movies += 1;
+      const played = group.some((row) => Number(row.played) === 1);
+      if (played) {
+        stats.played += 1;
+        const parsed = parseStremioId(String(group[0].video_id));
+        if (parsed?.episode !== null && parsed?.episode !== undefined) stats.episodes += 1;
+        else stats.movies += 1;
+      }
+      if (!played && !group.some((row) => Number(row.position_ms) >= watchedMs)) continue;
       const at = group.reduce((max, row) => Math.max(max, Number(row.last_played_at) || 0), 0);
       if (at < since) continue;
       const day = new Date(at - offsetMinutes * 60_000).toISOString().slice(0, 10);

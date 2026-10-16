@@ -1192,6 +1192,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_DASHBOARD_WATCHED_MINUTES',
+    envVar: 'JELLYFIN_DASHBOARD_WATCHED_MINUTES',
+    label: 'Jellyfin Dashboard Watched Day (minutes)',
+    description: 'How far into a title playback must reach for its day to count on the Jellyfin tab\'s activity map and streak; a finished title always counts.',
+    category: 'Features',
+    type: 'number',
+    default: 5,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_DASHBOARD_STATS_KEEP_DAYS',
     envVar: 'JELLYFIN_DASHBOARD_STATS_KEEP_DAYS',
     label: 'Jellyfin Dashboard Stored Stats (days)',
