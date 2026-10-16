@@ -166,6 +166,7 @@ class Database {
     await this.ensurePlaystateOrigin();
     await this.ensureWatchlistMetaType();
     await this.ensureTrackerOutboxProfile();
+    await this.ensureRatingsMetaType();
   }
 
   /** The profile is part of the key, which neither dialect can add in place. */
@@ -263,6 +264,21 @@ class Database {
       } catch (error: any) {
         logger.warn(`Could not add ${table}.meta_type: ${error.message}`);
       }
+    }
+  }
+
+  async ensureRatingsMetaType(): Promise<void> {
+    try {
+      if (this.type === 'sqlite') {
+        const existing = await this.allQuery(`PRAGMA table_info(jellyfin_ratings)`);
+        if (existing.some((column: any) => column.name === 'meta_type')) return;
+        await this.runQuery(`ALTER TABLE jellyfin_ratings ADD COLUMN meta_type TEXT`);
+        logger.info('Migrated jellyfin_ratings: rows record their meta type');
+      } else {
+        await this.runQuery(`ALTER TABLE jellyfin_ratings ADD COLUMN IF NOT EXISTS meta_type TEXT`);
+      }
+    } catch (error: any) {
+      logger.warn(`Could not add jellyfin_ratings.meta_type: ${error.message}`);
     }
   }
 
@@ -1780,18 +1796,18 @@ class Database {
 
   async listProfileRatings(userUUID: string, profile: string, limit: number): Promise<any[]> {
     const query = this.type === 'sqlite'
-      ? 'SELECT meta_id, rating, updated_at FROM jellyfin_ratings WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC LIMIT ?'
-      : 'SELECT meta_id, rating, updated_at FROM jellyfin_ratings WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC LIMIT $3';
+      ? 'SELECT meta_id, rating, meta_type, updated_at FROM jellyfin_ratings WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC LIMIT ?'
+      : 'SELECT meta_id, rating, meta_type, updated_at FROM jellyfin_ratings WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC LIMIT $3';
     return (await this.allQuery(query, [userUUID, profile, limit])) || [];
   }
 
-  async setRating(userUUID: string, profile: string, metaIds: string[], rating: number | null): Promise<void> {
+  async setRating(userUUID: string, profile: string, metaIds: string[], rating: number | null, metaType: string | null = null): Promise<void> {
     for (const metaId of metaIds) {
       if (rating !== null) {
         const query = this.type === 'sqlite'
-          ? 'INSERT INTO jellyfin_ratings (user_uuid, profile, meta_id, rating, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at'
-          : 'INSERT INTO jellyfin_ratings (user_uuid, profile, meta_id, rating, updated_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET rating = EXCLUDED.rating, updated_at = EXCLUDED.updated_at';
-        await this.runQuery(query, [userUUID, profile, metaId, rating, Date.now()]);
+          ? 'INSERT INTO jellyfin_ratings (user_uuid, profile, meta_id, rating, meta_type, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET rating = excluded.rating, meta_type = COALESCE(excluded.meta_type, jellyfin_ratings.meta_type), updated_at = excluded.updated_at'
+          : 'INSERT INTO jellyfin_ratings (user_uuid, profile, meta_id, rating, meta_type, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET rating = EXCLUDED.rating, meta_type = COALESCE(EXCLUDED.meta_type, jellyfin_ratings.meta_type), updated_at = EXCLUDED.updated_at';
+        await this.runQuery(query, [userUUID, profile, metaId, rating, metaType, Date.now()]);
       } else {
         const query = this.type === 'sqlite'
           ? 'DELETE FROM jellyfin_ratings WHERE user_uuid = ? AND profile = ? AND meta_id = ?'

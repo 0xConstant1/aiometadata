@@ -1,0 +1,129 @@
+import { useEffect, useMemo, useState } from "react";
+import { useJellyfinPlays, type DashboardTab, type JellyfinPlayKind, type JellyfinPlayRow, type JellyfinProfileSummary } from "@/hooks/useDashboardQueries";
+
+export function when(value: number | null | undefined): string {
+  if (!value) return "—";
+  const diff = Date.now() - value;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} h ago`;
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} d ago`;
+  return new Date(value).toLocaleDateString();
+}
+export function clock(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+export const percentOf = (row: JellyfinPlayRow): number | null =>
+  row.runtimeMs > 0 ? Math.round((row.positionMs / row.runtimeMs) * 100) : null;
+export function duration(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes <= 0) return "";
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+export function useFolded(key: string): [boolean, () => void] {
+  const [folded, setFolded] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    setFolded(!folded);
+    try {
+      if (folded) localStorage.removeItem(key);
+      else localStorage.setItem(key, "1");
+    } catch {}
+  };
+  return [folded, toggle];
+}
+export function useRemembered<T>(key: string, initial: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = sessionStorage.getItem(key);
+      return stored === null ? initial : (JSON.parse(stored) as T);
+    } catch {
+      return initial;
+    }
+  });
+  const remember = (next: T) => {
+    setValue(next);
+    try {
+      if (next === initial) sessionStorage.removeItem(key);
+      else sessionStorage.setItem(key, JSON.stringify(next));
+    } catch {}
+  };
+  return [value, remember];
+}
+export const dayKey = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+export interface Activity {
+  days: Record<string, number>;
+  total: number;
+  active: number;
+  streak: number;
+  best: number;
+}
+export function activityOf(profiles: JellyfinProfileSummary[]): Activity {
+  const days: Record<string, number> = {};
+  for (const p of profiles) for (const [day, n] of Object.entries(p.days)) days[day] = (days[day] ?? 0) + n;
+  const cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  if (!days[dayKey(cursor)]) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (days[dayKey(cursor)]) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  let best = 0;
+  let run = 0;
+  const walk = new Date();
+  walk.setHours(12, 0, 0, 0);
+  walk.setDate(walk.getDate() - 370);
+  for (let i = 0; i <= 370; i += 1, walk.setDate(walk.getDate() + 1)) {
+    run = days[dayKey(walk)] ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  const counts = Object.values(days);
+  return { days, total: counts.reduce((a, n) => a + n, 0), active: counts.filter((n) => n > 0).length, streak, best };
+}
+export function usePagedPlays(userUUID: string, profile: string | null, kind: JellyfinPlayKind, base: JellyfinPlayRow[], total: number, activeTab: DashboardTab) {
+  const [offset, setOffset] = useState(0);
+  const [pages, setPages] = useState<Array<{ offset: number; rows: JellyfinPlayRow[] }>>([]);
+  const [done, setDone] = useState(false);
+  const { data, isFetching, isError, refetch } = useJellyfinPlays(userUUID, profile, kind, offset, { activeTab });
+  useEffect(() => {
+    setOffset(0);
+    setPages([]);
+    setDone(false);
+  }, [profile]);
+  useEffect(() => {
+    if (!data || data.offset !== offset || offset === 0 || data.profile !== profile) return;
+    setPages((held) => (held.some((p) => p.offset === data.offset) ? held : [...held, { offset: data.offset, rows: data.rows }]));
+    if (data.done) setDone(true);
+  }, [data, offset, profile]);
+  const rows = useMemo(() => {
+    const seen = new Set<string>();
+    const out: JellyfinPlayRow[] = [];
+    for (const row of [...base, ...pages.flatMap((p) => p.rows)]) {
+      const key = `${row.profile}|${row.videoId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+    }
+    return out;
+  }, [base, pages]);
+  const more = !done && rows.length < total && base.length > 0;
+  const loading = isFetching && offset > 0;
+  const loadMore = () => {
+    if (more && !isFetching && rows.length > offset) setOffset(rows.length);
+  };
+  const failed = isError && !isFetching && offset > 0;
+  return { rows, more, loading, loadMore, failed, retry: () => void refetch() };
+}

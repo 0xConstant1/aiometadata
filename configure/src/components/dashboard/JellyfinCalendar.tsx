@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJellyfinCalendar, type DashboardTab, type JellyfinCalendarRow } from "@/hooks/useDashboardQueries";
@@ -359,7 +359,17 @@ const DayPanel = ({ day, loading, onFocus }: { day: Day; loading: boolean; onFoc
 
 export default function JellyfinCalendar({ userUUID, profile, profileName, activeTab }: { userUUID: string; profile: string | null; profileName: string; activeTab: DashboardTab }) {
   const first = useMemo(() => firstWeekday(), []);
-  const [now] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const timer = setInterval(tick, 60_000);
+    const onVisible = () => { if (document.visibilityState === "visible") tick(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
   const today = dayKey(new Date(now));
   const thisWeek = useMemo(() => weekOf(new Date(now), first), [first, now]);
   const thisMonth = useMemo(() => monthOf(new Date(now)), [now]);
@@ -375,7 +385,7 @@ export default function JellyfinCalendar({ userUUID, profile, profileName, activ
   };
 
   const span = useMemo(() => (view === "month" ? monthWindow(month, first) : { start: weekStart, days: WEEK }), [view, month, first, weekStart]);
-  const { data, isLoading, isFetching } = useJellyfinCalendar(userUUID, profile, span.start, span.days, { activeTab, enabled: !folded });
+  const { data, isLoading, isFetching, isError, refetch } = useJellyfinCalendar(userUUID, profile, span.start, span.days, { activeTab, enabled: !folded });
   const days = useMemo(() => buildDays(span.start, span.days, data?.rows, now, today), [span, data, now, today]);
   const counted = view === "month" ? days.filter((day) => day.date.getMonth() === month.getMonth()) : days;
   const total = counted.reduce((sum, day) => sum + day.airings.length, 0);
@@ -466,7 +476,13 @@ export default function JellyfinCalendar({ userUUID, profile, profileName, activ
         </div>
         )}
 
-        {!folded && (
+        {!folded && isError && !isFetching && (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <p className="text-sm text-muted-foreground">Could not read this calendar.</p>
+            <button type="button" onClick={() => void refetch()} className="glass h-8 rounded-full px-4 text-xs font-medium hover:bg-white/15">Retry</button>
+          </div>
+        )}
+        {!folded && !(isError && !isFetching) && (
         <div className={cx("transition-opacity duration-300", isFetching && !isLoading && "opacity-70")}>
           {view === "month" ? (
             <div className="flex flex-col gap-8">

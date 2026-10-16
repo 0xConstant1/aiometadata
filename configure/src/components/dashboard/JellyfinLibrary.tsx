@@ -316,7 +316,7 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
   const [index, setIndex] = useState(0);
   const [offset, setOffset] = useState(0);
   const [rows, setRows] = useState<JellyfinLibraryRow[]>([]);
-  const { data, isLoading, isFetching, isPlaceholderData } = useJellyfinLibrary(userUUID, profile, tab, kind, offset, { activeTab, enabled: !folded });
+  const { data, isLoading, isFetching, isPlaceholderData, isError, refetch } = useJellyfinLibrary(userUUID, profile, tab, kind, offset, { activeTab, enabled: !folded });
   const current = Boolean(data) && !isPlaceholderData && data!.tab === tab && data!.kind === kind;
   const queryClient = useQueryClient();
   const undrop = useJellyfinUndrop();
@@ -338,7 +338,9 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
   const total = current ? data!.total : rows.length;
   const more = rows.length < total;
   const loadingMore = isFetching && offset > 0;
-  const firstPage = rows.length === 0 && (isLoading || isFetching || !current);
+  const failed = isError && !isFetching;
+  const firstPage = rows.length === 0 && !failed && (isLoading || isFetching || !current);
+  const firstFailed = rows.length === 0 && failed;
   const loadMore = () => {
     if (more && !isFetching && rows.length > offset) setOffset(rows.length);
   };
@@ -370,6 +372,7 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
       setRows((held) => held.filter((r) => r.metaId !== row.metaId));
       toast.success(`${row.title} picked back up`, { description: "It can come back to Next Up and the calendar." });
       void queryClient.invalidateQueries({ queryKey: ["dashboard", "jellyfin", "library", userUUID] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard", "jellyfin", "calendar", userUUID] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard", "jellyfin", "shows", userUUID] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not pick it back up");
@@ -421,9 +424,15 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
   }
 
   const Icon = meta.icon;
+  const failedPanel = (
+    <div className="flex h-[330px] flex-col items-center justify-center gap-3 text-center sm:h-[470px]">
+      <p className="text-sm text-muted-foreground">Could not load this list.</p>
+      <button type="button" onClick={() => void refetch()} className="glass h-8 rounded-full px-4 text-xs font-medium hover:bg-white/15">Retry</button>
+    </div>
+  );
   const more_ = (
     <div className="flex h-10 items-center justify-center text-xs text-muted-foreground">
-      {loadingMore ? <span className="flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Loading more…</span> : more ? <button type="button" onClick={loadMore} className="hover:text-foreground">Load more</button> : rows.length > JELLYFIN_LIBRARY_PAGE ? `All ${total} shown` : null}
+      {loadingMore ? <span className="flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Loading more…</span> : failed ? <button type="button" onClick={() => void refetch()} className="text-red-400 hover:text-red-300">Could not load more. Retry</button> : more ? <button type="button" onClick={loadMore} className="hover:text-foreground">Load more</button> : rows.length > JELLYFIN_LIBRARY_PAGE ? `All ${total} shown` : null}
     </div>
   );
   return (
@@ -479,7 +488,7 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
               {firstPage
                 ? Array.from({ length: 7 }, (_, i) => <Skeleton key={i} className="h-[60px] shrink-0 rounded-xl" />)
                 : rows.length === 0
-                  ? <p className="py-10 text-center text-sm text-muted-foreground">Nothing here yet.</p>
+                  ? <p className="py-10 text-center text-sm text-muted-foreground">{firstFailed ? "" : "Nothing here yet."}</p>
                   : rows.map((row, i) => <ListRow key={row.metaId} row={row} number={i + 1} active={i === at} onPick={() => pick(i)} />)}
               <div ref={listSentinel} />
               {rows.length > 0 && more_}
@@ -495,6 +504,8 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
                   <Deck rows={rows} index={at} onPick={pick} />
                   <Detail row={focus} tab={tab} action={tab === "dropped" ? pickUpButton(focus) : undefined} />
                 </>
+              ) : firstFailed ? (
+                failedPanel
               ) : (
                 <div className="flex h-[330px] flex-col items-center justify-center gap-2 text-center sm:h-[470px]">
                   <Icon className="size-8 text-muted-foreground/50" />
@@ -509,6 +520,7 @@ export default function JellyfinLibrary({ userUUID, profile, profileName, active
                   ? Array.from({ length: 16 }, (_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-xl" />)
                   : rows.map((row, i) => <TiltCard key={row.metaId} row={row} active={false} action={tab === "dropped" ? pickUpButton(row, true) : undefined} onPick={() => { setIndex(i); pickView("deck"); }} />)}
               </div>
+              {firstFailed && failedPanel}
               <div ref={wallSentinel} />
               {rows.length > 0 && more_}
             </div>

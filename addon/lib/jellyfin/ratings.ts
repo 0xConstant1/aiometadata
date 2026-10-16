@@ -73,7 +73,7 @@ export async function rateItem(userUUID: string, config: any, descriptor: Descri
   const profile = profileKey(config);
   const held: any[] = await database.listRatings(userUUID, profile, keys).catch(() => []);
   const previous = held.find((row) => row.pmdb_id)?.pmdb_id ?? null;
-  await database.setRating(userUUID, profile, keys, rating);
+  await database.setRating(userUUID, profile, keys, rating, stremioType);
 
   if (writesTrackers(config)) {
     const { enqueueTrackerWrites } = require('../trackerOutbox');

@@ -546,7 +546,7 @@ function externalUrls(ids: Record<string, string>, show: boolean): Array<{ Name:
 const CONTINUING = new Set(['continuing', 'returning series', 'running', 'ongoing', 'currently_airing', 'current']);
 const ENDED = new Set(['ended', 'canceled', 'cancelled', 'finished_airing', 'finished']);
 
-function seriesStatus(meta: any): 'Continuing' | 'Ended' | undefined {
+export function seriesStatus(meta: any): 'Continuing' | 'Ended' | undefined {
   const status = String(meta.status ?? '').trim().toLowerCase();
   if (CONTINUING.has(status)) return 'Continuing';
   if (ENDED.has(status)) return 'Ended';

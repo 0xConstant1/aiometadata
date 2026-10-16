@@ -1182,6 +1182,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 1,
   },
   {
+    key: 'JELLYFIN_DASHBOARD_RATINGS_MAX',
+    envVar: 'JELLYFIN_DASHBOARD_RATINGS_MAX',
+    label: 'Jellyfin Dashboard Ratings Shown',
+    description: 'The most rated titles the Jellyfin tab names for a profile\'s Ratings list, newest first.',
+    category: 'Features',
+    type: 'number',
+    default: 500,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_DASHBOARD_STATS_KEEP_DAYS',
     envVar: 'JELLYFIN_DASHBOARD_STATS_KEEP_DAYS',
     label: 'Jellyfin Dashboard Stored Stats (days)',

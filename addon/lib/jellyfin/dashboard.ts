@@ -6,7 +6,7 @@ import { liveSessions, type LiveSession } from './playstate';
 import { syncStatus } from './playstateSync';
 import { seenConfigurations } from './context';
 import { seriesIndex } from './episodeIndex';
-import { fetchMeta } from './items';
+import { fetchMeta, seriesStatus } from './items';
 import { groupBySpelling } from './aliases';
 import { defaultUserName, listProfiles, profileKey, scopeConfigToProfile } from './profiles';
 import { CAPABLE, credentialFor } from './trackerSource';
@@ -288,7 +288,7 @@ const statsRefreshing = new Set<string>();
 
 function statsFingerprint(summary: any[]): string {
   return summary
-    .map((row) => `${row.profile ?? ''}:${Number(row.rows_total) || 0}:${Number(row.in_progress) || 0}:${Number(row.played) || 0}:${Number(row.last_played_at) || 0}`)
+    .map((row) => `${row.profile ?? ''}:${Number(row.rows_total) || 0}:${Number(row.in_progress) || 0}:${Number(row.played) || 0}:${Number(row.last_played_at) || 0}:${Number(row.updated_at) || 0}`)
     .sort()
     .join('|');
 }
@@ -514,6 +514,56 @@ export async function dashboardExport(userUUID: string): Promise<any> {
   };
 }
 
+const TITLE_KEY = /^(tt\d+|[a-z]+:[^:#]+)$/;
+
+const keyKind = (key: string) => (key.startsWith('tt') ? 'imdb' : key.split(':')[0]);
+
+const preferredKey = (keys: string[]) => keys.find((key) => key.startsWith('tt')) ?? keys[0];
+
+function ratingTitles(rows: any[]): Array<{ key: string; rating: number; at: number; type: 'movie' | 'series' | null }> {
+  const bursts: Array<{ keys: string[]; rating: number; at: number; type: 'movie' | 'series' | null }> = [];
+  const sorted = rows.filter((row) => TITLE_KEY.test(String(row.meta_id))).sort((a, b) => Number(a.updated_at) - Number(b.updated_at));
+  for (const row of sorted) {
+    const key = String(row.meta_id);
+    const at = Number(row.updated_at) || 0;
+    const type = row.meta_type === 'movie' || row.meta_type === 'series' ? row.meta_type : null;
+    const last = bursts[bursts.length - 1];
+    if (last && last.rating === Number(row.rating) && at - last.at <= 1000 && !last.keys.some((held) => keyKind(held) === keyKind(key))) {
+      last.keys.push(key);
+      last.at = at;
+      last.type = last.type ?? type;
+      continue;
+    }
+    bursts.push({ keys: [key], rating: Number(row.rating), at, type });
+  }
+  return bursts.map((b) => ({ key: preferredKey(b.keys), rating: b.rating, at: b.at, type: b.type })).sort((a, b) => b.at - a.at);
+}
+
+const droppedMemo = new LRUCache<string, string[]>({ max: 200, ttl: envInt('JELLYFIN_DASHBOARD_STATS_TTL', 120, 10) * 1000 });
+
+async function droppedShows(userUUID: string, profile: string, ids: string[], config: any): Promise<string[]> {
+  const keys = ids.filter((id) => TITLE_KEY.test(id)).sort();
+  const memo = `${userUUID}:${profile}:${keys.join(',')}`;
+  const held = droppedMemo.get(memo);
+  if (held) return held;
+  const { showIdentity } = require('./canonicalIds');
+  const identities: string[] = await mapWithConcurrency(keys, 8, (id: string) => showIdentity(id, config).catch(() => id));
+  const groups = new Map<string, string[]>();
+  keys.forEach((id, i) => groups.set(identities[i], [...(groups.get(identities[i]) ?? []), id]));
+  const shows = [...groups.values()].map(preferredKey);
+  droppedMemo.set(memo, shows);
+  return shows;
+}
+
+function asProfile<T>(userUUID: string, profile: string | null, work: (config: any) => Promise<T>): Promise<T | null> {
+  const { runInViewerScope } = require('./viewer');
+  const { loadConfig } = require('./context');
+  return runInViewerScope(false, async () => {
+    const config = await loadConfig({ jellyfin: { userUUID, profileId: profile || null } }).catch(() => null);
+    return config ? work(config) : null;
+  });
+}
+
 export interface ShowRow {
   metaId: string;
   title: string;
@@ -547,49 +597,49 @@ export function dashboardShows(userUUID: string, profile: string | null, fresh =
 }
 
 async function readShows(userUUID: string, profile: string | null): Promise<{ rows: ShowRow[]; ms: number } | null> {
-  const stored = await require('../configApi').loadSharedConfig(userUUID).catch(() => null);
-  if (!stored) return null;
-  const config = scopeConfigToProfile({ ...stored }, userUUID, profile || null);
-  config.userUUID = userUUID;
-  const started = Date.now();
-  const events = new Map<string, { row: any; source: string; step: any }>();
-  const { explainNextUp } = require('./index');
-  const ran = await explainNextUp(userUUID, config, (row: any, source: string, step: any) => {
-    if (!row?.metaId) return;
-    const held = events.get(row.metaId);
-    if (held && step.outcome === 'shown' && held.step.outcome !== 'shown') return;
-    events.set(row.metaId, { row, source, step });
-  });
-  if (!ran) return null;
-  const ms = Date.now() - started;
-  const listed = [...events.values()].filter((e) => e.step.outcome !== 'duplicate');
-  const rows = await mapWithConcurrency(listed, envInt('JELLYFIN_DASHBOARD_DESCRIBE_CONCURRENCY', 8, 1), async ({ row, source, step }): Promise<ShowRow> => {
-    const meta = step.meta ?? (await seriesIndex(userUUID, row.metaId, { held: true }).catch(() => null))
-      ?? (await withDeadline(seriesIndex(userUUID, row.metaId).catch(() => null)));
+  return asProfile(userUUID, profile, async (config) => {
+    const started = Date.now();
+    const events = new Map<string, { row: any; source: string; step: any }>();
+    const { explainNextUp } = require('./index');
+    const ran = await explainNextUp(userUUID, config, (row: any, source: string, step: any) => {
+      if (!row?.metaId) return;
+      const held = events.get(row.metaId);
+      if (held && step.outcome === 'shown' && held.step.outcome !== 'shown') return;
+      events.set(row.metaId, { row, source, step });
+    });
+    if (!ran) return null;
+    const ms = Date.now() - started;
+    const listed = [...events.values()].filter((e) => e.step.outcome !== 'duplicate');
+    const rows = await mapWithConcurrency(listed, envInt('JELLYFIN_DASHBOARD_DESCRIBE_CONCURRENCY', 8, 1), async ({ row, source, step }): Promise<ShowRow> => {
+      const meta = step.meta ?? (await seriesIndex(userUUID, row.metaId, { held: true }).catch(() => null))
+        ?? (await withDeadline(seriesIndex(userUUID, row.metaId).catch(() => null)));
+      const ended = step.outcome === 'caught-up'
+        && seriesStatus((await withDeadline(fetchMeta(userUUID, 'series', String(meta?.id ?? row.metaId)).catch(() => null))) ?? {}) === 'Ended';
+      return {
+        metaId: String(meta?.id ?? row.metaId),
+        title: meta?.name ?? row.metaId,
+        posterUrl: meta?.poster ?? null,
+        backdropUrl: meta?.background ?? null,
+        source,
+        lastWatchedAt: Number(row.lastWatchedAt) || null,
+        outcome: ended ? 'finished' : step.outcome,
+        next: step.next ?? null,
+        from: step.from ?? null,
+        last: row.episode !== undefined && row.episode !== null ? { season: row.season ?? null, number: row.episode } : null,
+        airsAt: step.airsAt ?? null,
+        episodes: step.episodes ?? null,
+        watched: step.watched ?? null,
+        total: step.total ?? null,
+      };
+    });
+    const seen = new Set<string>();
     return {
-      metaId: String(meta?.id ?? row.metaId),
-      title: meta?.name ?? row.metaId,
-      posterUrl: meta?.poster ?? null,
-      backdropUrl: meta?.background ?? null,
-      source,
-      lastWatchedAt: Number(row.lastWatchedAt) || null,
-      outcome: step.outcome,
-      next: step.next ?? null,
-      from: step.from ?? null,
-      last: row.episode !== undefined && row.episode !== null ? { season: row.season ?? null, number: row.episode } : null,
-      airsAt: step.airsAt ?? null,
-      episodes: step.episodes ?? null,
-      watched: step.watched ?? null,
-      total: step.total ?? null,
+      ms,
+      rows: rows
+        .filter((row) => (seen.has(row.metaId) ? false : (seen.add(row.metaId), true)))
+        .sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)),
     };
   });
-  const seen = new Set<string>();
-  return {
-    ms,
-    rows: rows
-      .filter((row) => (seen.has(row.metaId) ? false : (seen.add(row.metaId), true)))
-      .sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)),
-  };
 }
 
 export async function refreshShow(userUUID: string, metaId: string): Promise<boolean> {
@@ -619,33 +669,31 @@ export interface CalendarRow {
 const CALENDAR_SPAN_DAYS = 45;
 
 export async function dashboardCalendar(userUUID: string, profile: string | null, from: number, to: number): Promise<CalendarRow[] | null> {
-  const stored = await require('../configApi').loadSharedConfig(userUUID).catch(() => null);
-  if (!stored) return null;
-  const config = scopeConfigToProfile({ ...stored }, userUUID, profile || null);
-  config.userUUID = userUUID;
-  const dayMs = 24 * 60 * 60 * 1000;
-  const end = Math.min(to, from + CALENDAR_SPAN_DAYS * dayMs);
-  const { readCalendar } = require('./index');
-  const items: any[] | null = await readCalendar(userUUID, config, from, end);
-  if (!items) return null;
-  const image = (id: unknown, type: string, tag: unknown): string | null =>
-    id && tag ? `/jellyfin/${encodeURIComponent(userUUID)}/Items/${encodeURIComponent(String(id))}/Images/${type}?tag=${encodeURIComponent(String(tag))}` : null;
-  return items
-    .filter((item) => item?.Type === 'Episode')
-    .map((item) => ({
-      id: String(item.Id),
-      seriesId: item.SeriesId ? String(item.SeriesId) : null,
-      seriesName: String(item.SeriesName ?? item.Name ?? ''),
-      name: item.Name ?? null,
-      season: Number.isFinite(item.ParentIndexNumber) ? item.ParentIndexNumber : null,
-      number: Number.isFinite(item.IndexNumber) ? item.IndexNumber : null,
-      premiereDate: item.PremiereDate ?? null,
-      played: item.UserData?.Played === true,
-      still: image(item.Id, 'Primary', item.ImageTags?.Primary),
-      thumb: image(item.ParentThumbItemId, 'Thumb', item.ParentThumbImageTag),
-      backdrop: image(item.ParentBackdropItemId, 'Backdrop', item.ParentBackdropImageTags?.[0]),
-      logo: image(item.ParentLogoItemId, 'Logo', item.ParentLogoImageTag),
-    }));
+  return asProfile(userUUID, profile, async (config) => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const end = Math.min(to, from + CALENDAR_SPAN_DAYS * dayMs);
+    const { readCalendar } = require('./index');
+    const items: any[] | null = await readCalendar(userUUID, config, from, end);
+    if (!items) return null;
+    const image = (id: unknown, type: string, tag: unknown): string | null =>
+      id && tag ? `/jellyfin/${encodeURIComponent(userUUID)}/Items/${encodeURIComponent(String(id))}/Images/${type}?tag=${encodeURIComponent(String(tag))}` : null;
+    return items
+      .filter((item) => item?.Type === 'Episode')
+      .map((item) => ({
+        id: String(item.Id),
+        seriesId: item.SeriesId ? String(item.SeriesId) : null,
+        seriesName: String(item.SeriesName ?? item.Name ?? ''),
+        name: item.Name ?? null,
+        season: Number.isFinite(item.ParentIndexNumber) ? item.ParentIndexNumber : null,
+        number: Number.isFinite(item.IndexNumber) ? item.IndexNumber : null,
+        premiereDate: item.PremiereDate ?? null,
+        played: item.UserData?.Played === true,
+        still: image(item.Id, 'Primary', item.ImageTags?.Primary),
+        thumb: image(item.ParentThumbItemId, 'Thumb', item.ParentThumbImageTag),
+        backdrop: image(item.ParentBackdropItemId, 'Backdrop', item.ParentBackdropImageTags?.[0]),
+        logo: image(item.ParentLogoItemId, 'Logo', item.ParentLogoImageTag),
+      }));
+  });
 }
 
 export interface LibraryRow {
@@ -705,83 +753,75 @@ async function describeTitle(userUUID: string, metaId: string, types: Array<'mov
 export type LibraryKind = 'all' | 'movie' | 'series';
 
 export async function dashboardLibrary(userUUID: string, profile: string | null, tab: LibraryTab, kind: LibraryKind, offset: number, limit: number): Promise<any | null> {
-  const stored = await require('../configApi').loadSharedConfig(userUUID).catch(() => null);
-  if (!stored) return null;
-  const config = scopeConfigToProfile({ ...stored }, userUUID, profile || null);
-  config.userUUID = userUUID;
-  const key = profileKey(config);
-  const cap = Math.min(200, Math.max(1, limit));
-  const from = Math.max(0, offset);
-  const { watchlistEntries } = require('./watchlist');
-  const { watchlistPicks, keepsServerWatchlist } = require('./watchlistSources');
-  const { watchedSnapshot } = require('./watched');
-  const [watchlist, ratings, snapshot] = await Promise.all([
-    watchlistEntries(userUUID, config).catch(() => ({ entries: [] as any[], complete: false })),
-    database.listProfileRatings(userUUID, key, 5000).catch(() => [] as any[]),
-    watchedSnapshot(userUUID, config).catch(() => null),
-  ]);
-  const rated = new Map<string, any>();
-  for (const row of ratings) {
-    const held = `${row.updated_at}:${row.rating}`;
-    const kept = rated.get(held);
-    if (!kept || (String(row.meta_id).startsWith('tt') && !String(kept.meta_id).startsWith('tt'))) rated.set(held, row);
-  }
-  const dropped = [...(snapshot?.dropped ?? [])];
+  return asProfile(userUUID, profile, async (config) => {
+    const key = profileKey(config);
+    const cap = Math.min(200, Math.max(1, limit));
+    const from = Math.max(0, offset);
+    const { watchlistEntries } = require('./watchlist');
+    const { watchlistPicks, keepsServerWatchlist } = require('./watchlistSources');
+    const { watchedSnapshot } = require('./watched');
+    const [watchlist, ratings, snapshot] = await Promise.all([
+      watchlistEntries(userUUID, config).catch(() => ({ entries: [] as any[], complete: false })),
+      database.listProfileRatings(userUUID, key, 5000).catch(() => [] as any[]),
+      watchedSnapshot(userUUID, config).catch(() => null),
+    ]);
+    const rated = ratingTitles(ratings);
+    const dropped = await droppedShows(userUUID, key, [...(snapshot?.dropped ?? [])].map(String), config);
 
-  type Pick = { metaId: string; types: Array<'movie' | 'series'>; at: number | null; rating: number | null };
-  const describeAll = async (picked: Pick[]): Promise<LibraryRow[]> => {
-    const described = await mapWithConcurrency(picked, envInt('JELLYFIN_DASHBOARD_DESCRIBE_CONCURRENCY', 8, 1), async (entry): Promise<LibraryRow> => {
-      const named = await describeTitle(userUUID, entry.metaId, entry.types);
-      return named
-        ? { ...named, at: entry.at, rating: entry.rating }
-        : { metaId: entry.metaId, type: entry.types[0], title: entry.metaId, year: null, posterUrl: null, backdropUrl: null, logoUrl: null, overview: null, score: null, genres: [], at: entry.at, rating: entry.rating };
-    });
-    const seen = new Set<string>();
-    return described.filter((row) => (seen.has(row.metaId) ? false : (seen.add(row.metaId), true)));
-  };
-  const [ratedRows, droppedRows] = await Promise.all([
-    describeAll([...rated.values()].slice(0, 500).map((r) => ({ metaId: String(r.meta_id), types: ['movie', 'series'], at: Number(r.updated_at) || null, rating: Number(r.rating) }))),
-    describeAll(dropped.slice(0, 500).map((metaId) => ({ metaId, types: ['series'], at: null, rating: null }))),
-  ]);
-  const isFilm = (e: any) => e.mediaType === 'movie' || Boolean(e.film);
-  const fits = (type: 'movie' | 'series') => kind === 'all' || kind === type;
-  let total: number;
-  let kinds: { movie: number; series: number };
-  let rows: LibraryRow[];
-  if (tab === 'watchlist') {
-    const films = watchlist.entries.filter(isFilm).length;
-    kinds = { movie: films, series: watchlist.entries.length - films };
-    const listed = watchlist.entries.filter((e: any) => fits(isFilm(e) ? 'movie' : 'series'));
-    total = listed.length;
-    rows = await describeAll(listed.slice(from, from + cap).map((e: any) => ({ metaId: e.metaId, types: isFilm(e) ? ['movie'] : ['series'], at: e.addedAt || null, rating: null })));
-  } else {
-    const all = tab === 'ratings' ? ratedRows : droppedRows;
-    kinds = { movie: all.filter((r) => r.type === 'movie').length, series: all.filter((r) => r.type === 'series').length };
-    const listed = all.filter((r) => fits(r.type));
-    total = listed.length;
-    rows = listed.slice(from, from + cap);
-  }
-  return {
-    tab,
-    kind,
-    offset: from,
-    total,
-    kinds,
-    counts: { watchlist: watchlist.entries.length, ratings: ratedRows.length, dropped: droppedRows.length },
-    sources: [...watchlistPicks(config).keys()].map(String).concat(keepsServerWatchlist(config) ? ['server'] : []),
-    complete: watchlist.complete !== false,
-    rows,
-  };
+    type Pick = { metaId: string; types: Array<'movie' | 'series'>; at: number | null; rating: number | null };
+    const describeAll = async (picked: Pick[]): Promise<LibraryRow[]> => {
+      const described = await mapWithConcurrency(picked, envInt('JELLYFIN_DASHBOARD_DESCRIBE_CONCURRENCY', 8, 1), async (entry): Promise<LibraryRow> => {
+        const named = await describeTitle(userUUID, entry.metaId, entry.types);
+        return named
+          ? { ...named, at: entry.at, rating: entry.rating }
+          : { metaId: entry.metaId, type: entry.types[0], title: entry.metaId, year: null, posterUrl: null, backdropUrl: null, logoUrl: null, overview: null, score: null, genres: [], at: entry.at, rating: entry.rating };
+      });
+      const seen = new Set<string>();
+      return described.filter((row) => (seen.has(row.metaId) ? false : (seen.add(row.metaId), true)));
+    };
+    const isFilm = (e: any) => e.mediaType === 'movie' || Boolean(e.film);
+    const fits = (type: 'movie' | 'series') => kind === 'all' || kind === type;
+    let total: number;
+    let kinds: { movie: number; series: number };
+    let rows: LibraryRow[];
+    if (tab === 'watchlist') {
+      const films = watchlist.entries.filter(isFilm).length;
+      kinds = { movie: films, series: watchlist.entries.length - films };
+      const listed = watchlist.entries.filter((e: any) => fits(isFilm(e) ? 'movie' : 'series'));
+      total = listed.length;
+      rows = await describeAll(listed.slice(from, from + cap).map((e: any) => ({ metaId: e.metaId, types: isFilm(e) ? ['movie'] : ['series'], at: e.addedAt || null, rating: null })));
+    } else if (tab === 'dropped') {
+      kinds = { movie: 0, series: dropped.length };
+      const listed = kind === 'movie' ? [] : dropped;
+      total = listed.length;
+      rows = await describeAll(listed.slice(from, from + cap).map((metaId) => ({ metaId, types: ['series'], at: null, rating: null })));
+    } else {
+      const all = await describeAll(rated.slice(0, envInt('JELLYFIN_DASHBOARD_RATINGS_MAX', 500, 1)).map((r) => ({ metaId: r.key, types: r.type ? [r.type] : r.key.startsWith('tt') ? ['movie', 'series'] : ['series', 'movie'], at: r.at, rating: r.rating })));
+      kinds = { movie: all.filter((r) => r.type === 'movie').length, series: all.filter((r) => r.type === 'series').length };
+      const listed = all.filter((r) => fits(r.type));
+      total = listed.length;
+      rows = listed.slice(from, from + cap);
+    }
+    return {
+      tab,
+      kind,
+      offset: from,
+      total,
+      kinds,
+      counts: { watchlist: watchlist.entries.length, ratings: rated.length, dropped: dropped.length },
+      sources: [...watchlistPicks(config).keys()].map(String).concat(keepsServerWatchlist(config) ? ['server'] : []),
+      complete: watchlist.complete !== false,
+      rows,
+    };
+  });
 }
 
 export async function undropShow(userUUID: string, profile: string | null, metaId: string): Promise<boolean | null> {
-  const stored = await require('../configApi').loadSharedConfig(userUUID).catch(() => null);
-  if (!stored) return null;
-  const config = scopeConfigToProfile({ ...stored }, userUUID, profile || null);
-  config.userUUID = userUUID;
-  const { rateSeries, clearLocalDrop } = require('./dropped');
-  const undropped = await rateSeries(userUUID, config, { k: 'series', i: metaId }, null);
-  const cleared = await clearLocalDrop(userUUID, config, metaId).catch(() => false);
-  for (const key of [...showsMemo.keys()]) if (key.startsWith(`${userUUID}:`)) showsMemo.delete(key);
-  return Boolean(undropped || cleared);
+  return asProfile(userUUID, profile, async (config) => {
+    const { rateSeries, clearLocalDrop } = require('./dropped');
+    const undropped = await rateSeries(userUUID, config, { k: 'series', i: metaId }, null);
+    const cleared = await clearLocalDrop(userUUID, config, metaId).catch(() => false);
+    for (const key of [...showsMemo.keys()]) if (key.startsWith(`${userUUID}:`)) showsMemo.delete(key);
+    return Boolean(undropped || cleared);
+  });
 }
