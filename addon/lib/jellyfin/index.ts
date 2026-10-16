@@ -218,6 +218,40 @@ function landingPage(req: any): string {
 const streamCacheKey = (userUUID: string, profile: string, type: string, id: string, client?: StreamClient): string =>
   `${userUUID}:${profile}:${type}:${id}:${client?.tag ?? ''}`;
 
+export type NextUpSource = 'server' | 'tracker' | 'sequel';
+
+export interface NextUpStep {
+  outcome: 'shown' | 'caught-up' | 'airs-later' | 'no-air-date' | 'missing-episode' | 'no-meta' | 'finished' | 'dropped' | 'not-anime' | 'rating-cap' | 'duplicate';
+  next?: { season: number | null; number: number | null; name: string | null };
+  from?: { season: number | null; number: number | null; name: string | null };
+  airsAt?: number;
+  episodes?: number;
+  watched?: number;
+  total?: number;
+  meta?: any;
+}
+
+type NextUpTrace = (row: any, source: NextUpSource, step: NextUpStep) => void;
+
+let nextUpTracer: ((userUUID: string, config: any, trace: NextUpTrace) => Promise<any[]>) | null = null;
+let calendarReader: ((userUUID: string, config: any, from: number, to: number) => Promise<any[]>) | null = null;
+
+export async function readCalendar(userUUID: string, config: any, from: number, to: number): Promise<any[] | null> {
+  return calendarReader ? calendarReader(userUUID, config, from, to) : null;
+}
+
+const episodeLabel = (episode: any) => ({
+  season: Number.isFinite(episode?.ParentIndexNumber) ? episode.ParentIndexNumber : null,
+  number: Number.isFinite(episode?.IndexNumber) ? episode.IndexNumber : null,
+  name: episode?.Name ?? null,
+});
+
+export async function explainNextUp(userUUID: string, config: any, trace: NextUpTrace): Promise<boolean> {
+  if (!nextUpTracer) return false;
+  await nextUpTracer(userUUID, config, trace);
+  return true;
+}
+
 export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): any {
   const loginRateLimit = options.loginRateLimit || ((_req: any, _res: any, next: any) => next());
   const router = express.Router({ mergeParams: true, caseSensitive: false });
@@ -699,10 +733,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return;
       }
       const withFilms = String(includeItemTypes ?? '').split(',').map((t) => t.trim()).includes('Movie');
-      const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
-      const memoKey = `${userUUID}:${profileKey(config)}:calendar:${from}:${to}:${digest}${withFilms ? ':films' : ''}`;
-      const episodes = await memoNextUp(userUUID, memoKey, () => buildCalendar(userUUID, config, from, to, withFilms), (built) =>
-        built.length === 0 ? Date.now() + envInt('JELLYFIN_CALENDAR_EMPTY_TTL', 30, 1) * 1000 : null);
+      const episodes = await heldCalendar(userUUID, config, from, to, withFilms);
       const pageSize = (req.query.Limit ?? req.query.limit) === undefined ? 500 : limit;
       res.json(itemList(episodes.slice(startIndex, startIndex + pageSize), episodes.length, startIndex));
       return;
@@ -2424,7 +2455,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     warmSeriesMetas(req, userUUID, page);
   });
 
-  const buildNextUp = async (req: any, userUUID: string, config: any, notePending: (at: number) => void = () => {}): Promise<any[]> => {
+  nextUpTracer = (userUUID, config, trace) => buildNextUp({ query: {} }, userUUID, config, undefined, trace);
+
+  const buildNextUp = async (req: any, userUUID: string, config: any, notePending: (at: number) => void = () => {}, trace?: NextUpTrace): Promise<any[]> => {
     const t0 = Date.now();
     const lap = { snapshot: 0, resumable: 0, own: 0, meta: 0, episodes: 0, state: 0 };
     const snapshot = await watchedSnapshot(userUUID, config);
@@ -2458,13 +2491,23 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     lap.resumable = Date.now() - t1;
     // The table first; a tracker adds the shows it knows that the table does not.
     const t2 = Date.now();
-    const own = (await ownNextUpRows(userUUID, profileKey(config))).filter((row) => !snapshot.dropped.has(row.metaId));
+    const ownRows = await ownNextUpRows(userUUID, profileKey(config));
+    const own = ownRows.filter((row) => !snapshot.dropped.has(row.metaId));
     lap.own = Date.now() - t2;
+    if (trace) {
+      for (const row of ownRows) if (snapshot.dropped.has(row.metaId)) trace(row, 'server', { outcome: 'dropped' });
+      for (const row of snapshot.nextUp) if (snapshot.dropped.has(row.metaId)) trace(row, 'tracker', { outcome: 'dropped' });
+    }
+    const sourceOf = (row: any): NextUpSource => (own.includes(row) ? 'server' : snapshot.nextUp.includes(row) ? 'tracker' : 'sequel');
     // One row per resolved show; the table's newest spelling first.
     const animeOnly = keepsAnimeOnly(config) && !(req.query.SeriesId ?? req.query.seriesId ?? req.query.ParentId ?? req.query.parentId);
     const sequels = (await animeSequels(snapshot)).nextUp;
     const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId)), ...sequels]
-      .filter((row) => !animeOnly || isAnimeTitle(row.metaId, 'series'));
+      .filter((row) => {
+        if (!animeOnly || isAnimeTitle(row.metaId, 'series')) return true;
+        trace?.(row, sourceOf(row), { outcome: 'not-anime' });
+        return false;
+      });
     const identities = new Map<string, string>();
     await mapWithConcurrency([...new Set(offered.map((row) => row.metaId))], shelfConcurrency(), async (metaId) => {
       identities.set(metaId, await showIdentity(metaId, config));
@@ -2482,6 +2525,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         return true;
       })
       .sort((a, b) => b.lastWatchedAt - a.lastWatchedAt);
+    const sources = new Map(offered.map((row) => [row, sourceOf(row)]));
 
     // A series page asks for its own next episode; an unplayed show starts at the first.
     const seriesParam = req.query.SeriesId ?? req.query.seriesId ?? req.query.ParentId ?? req.query.parentId;
@@ -2507,7 +2551,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const counts = counted.get(row.metaId);
         const timed = trackerTimes.get(row.metaId);
         const airedSinceCounted = Boolean(timed?.aired) || (timed?.airsAt ?? Infinity) <= listedAt;
-        if (counts && counts.total > 0 && counts.watched >= counts.total && !airedSinceCounted) return false;
+        if (counts && counts.total > 0 && counts.watched >= counts.total && !airedSinceCounted) {
+          trace?.(row, sources.get(row) ?? 'server', { outcome: 'finished', watched: counts.watched, total: counts.total });
+          return false;
+        }
       }
       return true;
     });
@@ -2539,6 +2586,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       if (!meta) {
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: no meta`);
+        trace?.(row, sources.get(row) ?? 'server', { outcome: 'no-meta' });
         return;
       }
       let seriesId = encodeJellyfinId({ k: 'series', t: row.mediaType, i: String(meta.id) });
@@ -2566,6 +2614,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       if (!target) {
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: ${row.videoId ?? `S${row.season ?? '?'}E${row.episode}`} is not among its ${episodes.length} episodes`);
+        trace?.(row, sources.get(row) ?? 'server', { outcome: 'missing-episode', episodes: episodes.length, meta });
         return;
       }
 
@@ -2595,34 +2644,53 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         : borrowedFits
           ? borrowed!.airsAt ?? Math.min(Date.parse(next.PremiereDate || '') || nowMs, nowMs)
           : Date.parse(next?.PremiereDate || '');
+      const traced = async (step: Omit<NextUpStep, 'meta' | 'watched' | 'total'>) => {
+        if (!trace) return;
+        const regular = episodes.filter((episode: any) => episode.ParentIndexNumber !== 0);
+        await applyWatchedState(regular, snapshot, userUUID, profileKey(config));
+        const aired = regular.filter((episode: any) => !(Date.parse(episode.PremiereDate || '') > nowMs));
+        trace(row, sources.get(row) ?? 'server', { ...step, meta, watched: aired.filter((episode: any) => episode.UserData?.Played === true).length, total: aired.length });
+      };
       if (!next) {
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: every episode from ${target.Name} on is played`);
+        await traced({ outcome: 'caught-up', from: episodeLabel(target) });
         return;
       }
       if (Number.isFinite(airedAt) && airedAt > nowMs) {
         notePending(airedAt);
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} airs ${next.PremiereDate}`);
+        await traced({ outcome: 'airs-later', next: episodeLabel(next), airsAt: airedAt });
         return;
       }
       if (!Number.isFinite(airedAt) && episodes.some((episode: any) => Number.isFinite(Date.parse(episode?.PremiereDate || '')))) {
         skipped += 1;
         logger.debug(`Next Up skipped ${row.metaId}: ${next.Name} has no air date`);
+        await traced({ outcome: 'no-air-date', next: episodeLabel(next) });
         return;
       }
       if (Number.isFinite(airedAt) && airedAt !== Date.parse(next.PremiereDate || '')) next.PremiereDate = new Date(airedAt).toISOString();
       items[index] = next;
+      await traced({ outcome: 'shown', next: episodeLabel(next) });
     });
 
     const shown = new Set<string>();
+    const capped = keepsUnderProfileCap(config);
     const found = items
-      .filter((item, index) => {
-        if (!item || shown.has(identity[index])) return false;
+      .map((item, index) => ({ item, row: rows[index], index }))
+      .filter(({ item, row, index }) => {
+        if (!item) return false;
+        if (shown.has(identity[index])) {
+          trace?.(row, sources.get(row) ?? 'server', { outcome: 'duplicate' });
+          return false;
+        }
         shown.add(identity[index]);
-        return true;
+        if (capped(item)) return true;
+        trace?.(row, sources.get(row) ?? 'server', { outcome: 'rating-cap' });
+        return false;
       })
-      .filter(keepsUnderProfileCap(config));
+      .map(({ item }) => item);
     logger.info(`Next Up built for ${userUUID}: ${found.length} of ${rows.length} candidates (${own.length} own, ${snapshot.nextUp.length} tracker), ${skipped} skipped, in ${Date.now() - t0}ms (snapshot ${lap.snapshot}, resumable ${lap.resumable}, own rows ${lap.own}, meta ${lap.meta}, episodes ${lap.episodes}, state ${lap.state}, summed over ${shelfConcurrency()} lanes)`);
     return found;
   };
@@ -2762,6 +2830,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     });
     return films;
   };
+
+  const heldCalendar = async (userUUID: string, config: any, from: number, to: number, withFilms = false): Promise<any[]> => {
+    const digest = (await watchedSnapshot(userUUID, config)).fingerprint;
+    const memoKey = `${userUUID}:${profileKey(config)}:calendar:${from}:${to}:${digest}${withFilms ? ':films' : ''}`;
+    return memoNextUp(userUUID, memoKey, () => buildCalendar(userUUID, config, from, to, withFilms), (built) =>
+      built.length === 0 ? Date.now() + envInt('JELLYFIN_CALENDAR_EMPTY_TTL', 30, 1) * 1000 : null);
+  };
+  calendarReader = heldCalendar;
 
   const buildCalendar = async (userUUID: string, config: any, from: number, to: number, withFilms = false): Promise<any[]> => {
     const serverId = serverIdFor(userUUID);

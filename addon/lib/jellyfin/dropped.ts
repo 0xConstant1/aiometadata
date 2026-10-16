@@ -54,6 +54,20 @@ export async function localDrops(userUUID: string, config: any): Promise<Set<str
   return drops;
 }
 
+export async function clearLocalDrop(userUUID: string, config: any, metaId: string): Promise<boolean> {
+  const { fetchMeta } = require('./items');
+  const { idsFor } = require('./watchlist');
+  const { profileKey } = require('./profiles');
+  const meta = await fetchMeta(userUUID, 'series', metaId);
+  if (!meta) return false;
+  const keys = showKeys(String(meta.id), idsFor(meta, 'series'));
+  const local = await localDrops(userUUID, config);
+  if (!keys.some((key) => local.has(key))) return false;
+  await database.setDropped(userUUID, profileKey(config), keys, false);
+  held.delete(`${userUUID}:${profileKey(config)}`);
+  return true;
+}
+
 function showKeys(metaId: string, ids: Record<string, any>): string[] {
   const keys = new Set<string>([metaId]);
   if (ids.imdb) keys.add(String(ids.imdb));

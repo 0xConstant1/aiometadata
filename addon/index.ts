@@ -6520,6 +6520,17 @@ addon.get("/poster-cache/proxy/landscape/:type/:id", streamArtWithFallback('land
 
 {
   const { posterCacheHandler } = require('./lib/posterCache/handler.js');
+  const { SIZED_WIDTH, widthStep } = require('./lib/posterCache/resize.js');
+  // In the path, since the image URL after it carries its own query.
+  addon.use(posterCacheConfig.POSTER_CACHE_ROUTE, (req, res, next) => {
+    const sized = /^\/w(\d{2,4})(\/(?!proxy\/).*)$/.exec(req.url);
+    if (!sized) return next();
+    const step = widthStep(Number(sized[1]));
+    req.url = sized[2];
+    req.originalUrl = req.originalUrl.replace(`${posterCacheConfig.POSTER_CACHE_ROUTE}/w${sized[1]}/`, `${posterCacheConfig.POSTER_CACHE_ROUTE}/`);
+    if (step) req[SIZED_WIDTH] = step;
+    next();
+  });
   addon.use(posterCacheConfig.POSTER_CACHE_ROUTE, posterCacheHandler());
 }
 
@@ -8248,11 +8259,101 @@ addon.get("/api/dashboard/jellyfin/:userUUID/export", requireDashboardAdmin, asy
   }
 });
 
+addon.get("/api/dashboard/jellyfin/:userUUID/shows", requireDashboardAdmin, async (req, res) => {
+  try {
+    const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
+    const payload = await require('./lib/jellyfin/dashboard').dashboardShows(String(req.params.userUUID), profile, req.query.fresh === '1');
+    if (!payload) {
+      res.status(404).json({ error: 'No such configuration' });
+      return;
+    }
+    res.json(payload);
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to read Jellyfin shows' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/:userUUID/calendar", requireDashboardAdmin, async (req, res) => {
+  try {
+    const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
+    const from = Number(req.query.from);
+    const to = Number(req.query.to);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) {
+      res.status(400).json({ error: 'Name the window as from and to times' });
+      return;
+    }
+    const rows = await require('./lib/jellyfin/dashboard').dashboardCalendar(String(req.params.userUUID), profile, from, to);
+    if (!rows) {
+      res.status(404).json({ error: 'No such configuration' });
+      return;
+    }
+    res.json({ rows });
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to read the Jellyfin calendar' });
+  }
+});
+
+addon.get("/api/dashboard/jellyfin/:userUUID/library", requireDashboardAdmin, async (req, res) => {
+  try {
+    const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
+    const tab = ['watchlist', 'ratings', 'dropped'].includes(String(req.query.tab)) ? String(req.query.tab) : 'watchlist';
+    const kind = ['movie', 'series'].includes(String(req.query.kind)) ? String(req.query.kind) : 'all';
+    const limit = parseInt(String(req.query.limit ?? ''), 10);
+    const offset = parseInt(String(req.query.offset ?? ''), 10);
+    const payload = await require('./lib/jellyfin/dashboard').dashboardLibrary(String(req.params.userUUID), profile, tab, kind, Number.isFinite(offset) ? offset : 0, Number.isFinite(limit) ? limit : 48);
+    if (!payload) {
+      res.status(404).json({ error: 'No such configuration' });
+      return;
+    }
+    res.json(payload);
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to read the Jellyfin library' });
+  }
+});
+
+addon.post("/api/dashboard/jellyfin/:userUUID/library/undrop", requireDashboardAdmin, async (req, res) => {
+  try {
+    const metaId = typeof req.body?.metaId === 'string' ? req.body.metaId.trim() : '';
+    const profile = typeof req.body?.profile === 'string' ? req.body.profile : null;
+    if (!metaId) {
+      res.status(400).json({ error: 'Name the show to pick back up' });
+      return;
+    }
+    const undropped = await require('./lib/jellyfin/dashboard').undropShow(String(req.params.userUUID), profile, metaId);
+    if (undropped === null) {
+      res.status(404).json({ error: 'No such configuration' });
+      return;
+    }
+    res.json({ undropped });
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to pick the show back up' });
+  }
+});
+
+addon.post("/api/dashboard/jellyfin/:userUUID/shows/refresh", requireDashboardAdmin, async (req, res) => {
+  try {
+    const metaId = typeof req.body?.metaId === 'string' ? req.body.metaId.trim() : '';
+    if (!metaId) {
+      res.status(400).json({ error: 'Name the show to refresh' });
+      return;
+    }
+    res.json({ refreshed: await require('./lib/jellyfin/dashboard').refreshShow(String(req.params.userUUID), metaId) });
+  } catch (error) {
+    consola.error('[Dashboard API] Error:', error);
+    res.status(500).json({ error: 'Failed to refresh the show' });
+  }
+});
+
 addon.get("/api/dashboard/jellyfin/:userUUID", requireDashboardAdmin, async (req, res) => {
   try {
     const profile = typeof req.query.profile === 'string' ? req.query.profile : null;
     const rows = parseInt(String(req.query.rows ?? ''), 10);
-    const payload = await require('./lib/jellyfin/dashboard').dashboardConfiguration(String(req.params.userUUID), profile, Number.isFinite(rows) ? rows : undefined);
+    const offset = parseInt(String(req.query.tz ?? ''), 10);
+    const payload = await require('./lib/jellyfin/dashboard').dashboardConfiguration(String(req.params.userUUID), profile, Number.isFinite(rows) ? rows : undefined, Number.isFinite(offset) && Math.abs(offset) <= 14 * 60 ? offset : 0);
     if (!payload) {
       res.status(404).json({ error: 'No such configuration' });
       return;

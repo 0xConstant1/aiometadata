@@ -1271,6 +1271,13 @@ class Database {
     return (await this.allQuery(query, [userUUID])) || [];
   }
 
+  async outboxForConfiguration(userUUID: string, limit = 500): Promise<any[]> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT profile, service, attempts, created_at, last_error FROM tracker_outbox WHERE user_uuid = ? AND expires_at > ? ORDER BY id LIMIT ?'
+      : 'SELECT profile, service, attempts, created_at, last_error FROM tracker_outbox WHERE user_uuid = $1 AND expires_at > $2 ORDER BY id LIMIT $3';
+    return (await this.allQuery(query, [userUUID, Date.now(), limit])) || [];
+  }
+
   async findUserUUIDsByPrefix(prefix: string, limit: number): Promise<string[]> {
     const query = this.type === 'sqlite'
       ? 'SELECT user_uuid FROM user_configs WHERE user_uuid LIKE ? LIMIT ?'
@@ -1769,6 +1776,13 @@ class Database {
       ? `SELECT meta_id, rating, pmdb_id, updated_at FROM jellyfin_ratings WHERE user_uuid = ? AND profile = ? AND meta_id IN (${marks})`
       : `SELECT meta_id, rating, pmdb_id, updated_at FROM jellyfin_ratings WHERE user_uuid = $1 AND profile = $2 AND meta_id IN (${marks})`;
     return this.allQuery(query, [userUUID, profile, ...metaIds]);
+  }
+
+  async listProfileRatings(userUUID: string, profile: string, limit: number): Promise<any[]> {
+    const query = this.type === 'sqlite'
+      ? 'SELECT meta_id, rating, updated_at FROM jellyfin_ratings WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC LIMIT ?'
+      : 'SELECT meta_id, rating, updated_at FROM jellyfin_ratings WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC LIMIT $3';
+    return (await this.allQuery(query, [userUUID, profile, limit])) || [];
   }
 
   async setRating(userUUID: string, profile: string, metaIds: string[], rating: number | null): Promise<void> {
