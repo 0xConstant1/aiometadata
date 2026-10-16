@@ -3386,21 +3386,40 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     res.json(playedState(String(req.params.itemId), false));
   });
 
-  router.get(['/UserItems/:itemId/UserData', '/Users/:userId/Items/:itemId/UserData'], async (req: any, res: any) => {
+  const userDataOf = async (req: any, itemId: string): Promise<any | null> => {
     const captured: any[] = [];
     const forged = Object.create(req, {
-      params: { value: { ...req.params, listed: true }, enumerable: true },
+      params: { value: { ...req.params, itemId, listed: true }, enumerable: true },
       query: { value: req.query, enumerable: true },
     });
     await singleItemHandler(
       forged,
       { json: (body: any) => captured.push(body), status: () => ({ json: () => undefined, end: () => undefined }) }
     );
-    if (!captured[0]?.UserData) {
+    return captured[0]?.UserData ?? null;
+  };
+
+  const announceTitle = (req: any, config: any, itemId: string): void => {
+    const userUUID = req.params.userUUID;
+    const profile = profileKey(config);
+    (async () => {
+      const { hasListeners, pushUserData } = require('./socket');
+      if (!(await hasListeners(userUUID, profile))) return;
+      const userData = await userDataOf(req, itemId);
+      if (!userData) return;
+      const { Likes, ...rest } = userData;
+      const id = dashedGuid(normaliseJellyfinId(itemId));
+      pushUserData(userUUID, profile, [{ ...rest, ...(Likes === false || !clientHasOwnWatchlist() ? { Likes } : {}), Key: id, ItemId: id }]);
+    })().catch((error: any) => logger.debug(`User data push failed for ${itemId}: ${error?.message || error}`));
+  };
+
+  router.get(['/UserItems/:itemId/UserData', '/Users/:userId/Items/:itemId/UserData'], async (req: any, res: any) => {
+    const userData = await userDataOf(req, String(req.params.itemId));
+    if (!userData) {
       res.status(404).json({ Message: 'Item not found' });
       return;
     }
-    res.json(captured[0].UserData);
+    res.json(userData);
   });
 
   router.post(['/UserItems/:itemId/UserData', '/Users/:userId/Items/:itemId/UserData'], async (req: any, res: any) => {
@@ -3434,6 +3453,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     const changed = await setWatchlisted(userUUID, config, descriptor, listed);
     res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, IsFavorite: changed && listed });
+    if (changed) announceTitle(req, config, itemId);
   };
   const ratingHandler = (clear: boolean) => async (req: any, res: any) => {
     const userUUID = req.params.userUUID;
@@ -3459,6 +3479,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       );
     }
     res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, Likes: likes });
+    announceTitle(req, config, itemId);
   };
 
   router.post(['/UserItems/:itemId/Rating', '/Users/:userId/Items/:itemId/Rating'], ratingHandler(false));
