@@ -8,6 +8,18 @@ const memo = new LRUCache<string, Record<string, any>>({
   ttl: envInt('JELLYFIN_ID_RESOLUTION_DAYS', 30, 1) * 24 * 60 * 60 * 1000,
 });
 
+function anchorOf(ids: { tvdb?: any; tmdb?: any }, kind: Kind): string | null {
+  if (kind === 'movie') return ids?.tmdb ? `tmdb:${ids.tmdb}` : null;
+  return ids?.tvdb ? `tvdb:${ids.tvdb}` : ids?.tmdb ? `tmdb:${ids.tmdb}` : null;
+}
+
+const identityKey = (kind: Kind, anchor: string): string => `${kind === 'movie' ? 'm' : 's'}|${anchor}`;
+
+export function identityFromIds(ids: { tvdb?: any; tmdb?: any }, kind: Kind): string | null {
+  const anchor = anchorOf(ids, kind);
+  return anchor ? identityKey(kind, anchor) : null;
+}
+
 async function resolve(id: string, kind: Kind, config: any, targets: string[]): Promise<Record<string, any>> {
   const key = `${kind}:${id}:${targets.join(',')}`;
   const held = memo.get(key);
@@ -25,9 +37,7 @@ async function resolve(id: string, kind: Kind, config: any, targets: string[]): 
 
 /** The tracker's ids, with the IMDb id the resolver gives its TVDB or TMDB id. */
 export async function canonicalIds(ids: Record<string, any>, kind: Kind, config: any): Promise<Record<string, any>> {
-  const anchor = kind === 'movie'
-    ? (ids?.tmdb ? `tmdb:${ids.tmdb}` : null)
-    : (ids?.tvdb ? `tvdb:${ids.tvdb}` : ids?.tmdb ? `tmdb:${ids.tmdb}` : null);
+  const anchor = anchorOf(ids, kind);
   if (!anchor) return ids ?? {};
   const resolved = await resolve(anchor, kind, config, ['imdb']);
   return {
@@ -39,6 +49,10 @@ export async function canonicalIds(ids: Record<string, any>, kind: Kind, config:
 }
 
 const ANIME_ID_TYPES = ['kitsu', 'mal', 'anilist', 'anidb'];
+
+export function isAnimeId(id: string): boolean {
+  return ANIME_ID_TYPES.includes(String(id).split(':')[0]);
+}
 
 export function isAnimeTitle(id: string, kind: 'movie' | 'series'): boolean {
   const { parseStremioId } = require('./ids');
@@ -58,8 +72,7 @@ export async function showIdentity(metaId: string, config: any): Promise<string>
   const parsed = parseStremioId(metaId);
   const base = parsed?.base ?? metaId;
   if (!parsed || ANIME_ID_TYPES.includes(parsed.idType)) return base;
-  const all = await resolve(base, 'series', config, ['tvdb', 'tmdb']);
-  return all.tvdb ? `tvdb:${all.tvdb}` : all.tmdb ? `tmdb:${all.tmdb}` : base;
+  return anchorOf(await resolve(base, 'series', config, ['tvdb', 'tmdb']), 'series') ?? base;
 }
 
 /** A video's identity across spellings; anime keeps its own ids. */
@@ -70,8 +83,7 @@ export async function titleIdentity(videoId: string, config: any): Promise<strin
   if (ANIME_ID_TYPES.includes(parsed.idType)) return videoId;
   const isEpisode = parsed.episode !== null && parsed.episode !== undefined;
   if (isEpisode) return `${await showIdentity(parsed.base, config)}:${parsed.season ?? ''}:${parsed.episode}`;
-  const all = await resolve(parsed.base, 'movie', config, ['tmdb']);
-  return all.tmdb ? `tmdb:${all.tmdb}` : parsed.base;
+  return anchorOf(await resolve(parsed.base, 'movie', config, ['tmdb']), 'movie') ?? parsed.base;
 }
 
 const ANIME_LOOKUPS: Record<string, string> = { mal: 'getMappingByMalId', kitsu: 'getMappingByKitsuId', anilist: 'getMappingByAnilistId', anidb: 'getMappingByAnidbId' };
@@ -92,12 +104,12 @@ export async function watchlistIdentity(metaId: string, mediaType: 'movie' | 'se
     if (!entry) return { key: base, anime: true };
     const movie = entry.type === 'MOVIE' || entry.themoviedb_type === 'movie';
     const tmdb = firstId(entry.themoviedb_id);
-    if (movie) return { key: tmdb ? `m|tmdb:${tmdb}` : base, anime: true };
+    if (movie) return { key: identityFromIds({ tmdb }, 'movie') ?? base, anime: true };
     const tvdb = firstId(entry.tvdb_id);
-    return { key: tvdb ? `s|tvdb:${tvdb}` : tmdb && entry.themoviedb_type === 'tv' ? `s|tmdb:${tmdb}` : base, anime: true };
+    return { key: identityFromIds({ tvdb, tmdb: entry.themoviedb_type === 'tv' ? tmdb : null }, 'series') ?? base, anime: true };
   }
   const movie = mediaType === 'movie' || (mediaType === 'anime' && idMapper.getMappingByImdbId?.(base)?.type === 'MOVIE');
   return movie
-    ? { key: `m|${await titleIdentity(base, config)}`, anime: false }
-    : { key: `s|${await showIdentity(base, config)}`, anime: false };
+    ? { key: identityKey('movie', await titleIdentity(base, config)), anime: false }
+    : { key: identityKey('series', await showIdentity(base, config)), anime: false };
 }
