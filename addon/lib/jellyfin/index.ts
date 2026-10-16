@@ -3553,6 +3553,36 @@ export function register(addon: any, options: { loginRateLimit?: any; enabled?: 
     const removed = await forgetImported(userUUID, profileKey(scoped));
     res.json({ removed });
   });
+
+  addon.post('/api/jellyfin/:userUUID/import-watchlist', gate, approveRateLimit, async (req: any, res: any) => {
+    const userUUID = String(req.params.userUUID);
+    const password = req.body?.password;
+
+    const accountId = req.session?.accountId;
+    const owns = Boolean(accountId) && (await database.ownsConfig(accountId, userUUID));
+    const verified = !owns && password ? await database.verifyUserAndGetConfig(userUUID, String(password)) : null;
+    if (!owns && !verified) {
+      res.status(401).json({ error: 'Sign in or enter the configuration password to import a watchlist' });
+      return;
+    }
+
+    const { WATCHLIST_SERVICES } = require('./watchlistSources');
+    const services = (Array.isArray(req.body?.services) ? req.body.services : []).map(String).filter((service: string) => WATCHLIST_SERVICES.includes(service));
+    if (!services.length) {
+      res.status(400).json({ error: 'Pick a service to import from' });
+      return;
+    }
+    const config = verified ?? (await database.getUserConfig(userUUID).catch(() => null));
+    const requested = typeof req.body?.profile === 'string' && req.body.profile ? req.body.profile : null;
+    const scoped = scopeConfigToProfile(config, userUUID, requested);
+    const { importWatchlist } = require('./watchlist');
+    const result = await importWatchlist(userUUID, scoped, services);
+    if (!result) {
+      res.status(409).json({ error: 'That service is not connected in the saved configuration. Save first, then import.' });
+      return;
+    }
+    res.json(result);
+  });
 }
 
 export { readToken };

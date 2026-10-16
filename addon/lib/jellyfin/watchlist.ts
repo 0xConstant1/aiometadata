@@ -2,7 +2,7 @@ import { fetchMeta, metaToBaseItem } from './items';
 import { clientHasOwnWatchlist } from './context';
 import { profileKey, writesTrackers } from './profiles';
 import { invalidateDatedShelves } from './resume';
-import { dedupeWatchlist, keepsServerWatchlist, shelfCacheWindowMs, trackerWatchlist, watchlistPicks, watchlistSlot, type WatchlistEntry, type WatchlistIds } from './watchlistSources';
+import { dedupeWatchlist, keepsServerWatchlist, shelfCacheWindowMs, trackerWatchlist, watchlistPicks, watchlistSlot, type WatchlistEntry, type WatchlistIds, type WatchlistService } from './watchlistSources';
 import { mapWithConcurrency } from '../../utils/concurrency';
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
@@ -235,4 +235,31 @@ export async function setWatchlisted(userUUID: string, config: any, descriptor: 
     })));
   }
   return true;
+}
+
+/** Copies the services' watchlists into this server's own, keeping each title's date added there. */
+export async function importWatchlist(userUUID: string, config: any, services: WatchlistService[]): Promise<{ found: number; added: number; complete: boolean } | null> {
+  const source = { ...config, jellyfinWatchlistServices: services };
+  if (!watchlistPicks(source).size) return null;
+  const { rows, complete } = await trackerWatchlist(source, userUUID);
+  const profile = profileKey(config);
+  const held: any[] = (await database.listWatchlist(userUUID, profile).catch(() => [])).filter((row: any) => Number(row.listed));
+  const heldIds = new Set(held.map((row) => String(row.meta_id)));
+  const identities: string[] = await mapWithConcurrency(held, 8, (row: any) => identityOf(String(row.meta_id), mediaTypeOf(row.media_type), config));
+  const now = Date.now();
+  let added = 0;
+  for (const [index, entry] of rows.entries()) {
+    if (heldIds.has(entry.metaId)) continue;
+    const identity = entry.identity ?? await identityOf(entry.metaId, entry.mediaType, config);
+    if (identities.some((other) => sameTitle(other, identity))) continue;
+    const metaType = entry.mediaType === 'movie' || entry.film ? 'movie' : 'series';
+    await database.setWatchlisted(userUUID, profile, entry.metaId, entry.mediaType, true, metaType, entry.addedAt > 0 ? entry.addedAt : now - index);
+    identities.push(identity);
+    added++;
+  }
+  if (added) {
+    invalidateWatchlist(userUUID);
+    invalidateDatedShelves(userUUID);
+  }
+  return { found: rows.length, added, complete };
 }

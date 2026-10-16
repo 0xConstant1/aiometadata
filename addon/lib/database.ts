@@ -1391,13 +1391,13 @@ class Database {
   }
 
   // listed=0 is a removal kept until the trackers stop listing the title.
-  async setWatchlisted(userUUID: string, profile: string, metaId: string, mediaType: string, listed: boolean, metaType: string | null = null): Promise<void> {
+  async setWatchlisted(userUUID: string, profile: string, metaId: string, mediaType: string, listed: boolean, metaType: string | null = null, updatedAt = Date.now()): Promise<void> {
     const query = this.type === 'sqlite'
       ? `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, meta_type, listed, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = excluded.media_type, meta_type = COALESCE(excluded.meta_type, jellyfin_watchlist.meta_type), listed = excluded.listed, updated_at = excluded.updated_at`
       : `INSERT INTO jellyfin_watchlist (user_uuid, profile, meta_id, media_type, meta_type, listed, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, meta_type = COALESCE(EXCLUDED.meta_type, jellyfin_watchlist.meta_type), listed = EXCLUDED.listed, updated_at = EXCLUDED.updated_at`;
-    await this.runQuery(query, [userUUID, profile, metaId, mediaType, metaType, listed ? 1 : 0, Date.now()]);
+    await this.runQuery(query, [userUUID, profile, metaId, mediaType, metaType, listed ? 1 : 0, updatedAt]);
   }
 
   async setMetaType(table: 'jellyfin_watchlist', userUUID: string, profile: string, metaId: string, metaType: string): Promise<void> {

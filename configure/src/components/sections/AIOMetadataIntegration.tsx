@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { baseCatalogs, animeCatalogs, serverWatchlistCatalogs, CatalogDefinition, isJikanCatalog } from '@/data/catalogs';
 import type { CatalogConfig } from '@/contexts/config';
 import { cn } from '@/lib/utils';
+import { ServerWatchlistImport } from './ServerWatchlistImport';
 
 interface AIOMetadataIntegrationProps {
   isOpen: boolean;
@@ -354,6 +355,7 @@ export function AIOMetadataIntegration({ isOpen, onClose }: AIOMetadataIntegrati
                         );
                       })}
                     </div>
+                    {group.source === 'aiom' && <ServerWatchlistImport />}
                   </CardContent>
                 )}
               </Card>
