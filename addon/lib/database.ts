@@ -1400,7 +1400,7 @@ class Database {
     await this.runQuery(query, [userUUID, profile, metaId, mediaType, metaType, listed ? 1 : 0, Date.now()]);
   }
 
-  async setMetaType(table: 'jellyfin_watchlist' | 'jellyfin_favourites', userUUID: string, profile: string, metaId: string, metaType: string): Promise<void> {
+  async setMetaType(table: 'jellyfin_watchlist', userUUID: string, profile: string, metaId: string, metaType: string): Promise<void> {
     const query = this.type === 'sqlite'
       ? `UPDATE ${table} SET meta_type = ? WHERE user_uuid = ? AND profile = ? AND meta_id = ?`
       : `UPDATE ${table} SET meta_type = $1 WHERE user_uuid = $2 AND profile = $3 AND meta_id = $4`;
@@ -1737,30 +1737,6 @@ class Database {
       return;
     }
     await this.runQuery(`DELETE FROM jellyfin_tracker_mirror WHERE source_key = ${sqlite ? '?' : '$1'} AND group_key = ${sqlite ? '?' : '$2'} AND sub_key = ${sqlite ? '?' : '$3'}`, [sourceKey, group, sub]);
-  }
-
-  // Favourites for a client with a watchlist of its own; only kept here, never on a tracker.
-  async listFavourites(userUUID: string, profile = ''): Promise<any[]> {
-    const query = this.type === 'sqlite'
-      ? 'SELECT meta_id, media_type, meta_type, updated_at FROM jellyfin_favourites WHERE user_uuid = ? AND profile = ? ORDER BY updated_at DESC'
-      : 'SELECT meta_id, media_type, meta_type, updated_at FROM jellyfin_favourites WHERE user_uuid = $1 AND profile = $2 ORDER BY updated_at DESC';
-    return this.allQuery(query, [userUUID, profile]);
-  }
-
-  async setFavourite(userUUID: string, profile: string, metaId: string, mediaType: string, favourite: boolean, metaType: string | null = null): Promise<void> {
-    if (favourite) {
-      const query = this.type === 'sqlite'
-        ? `INSERT INTO jellyfin_favourites (user_uuid, profile, meta_id, media_type, meta_type, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = excluded.media_type, meta_type = COALESCE(excluded.meta_type, jellyfin_favourites.meta_type), updated_at = excluded.updated_at`
-        : `INSERT INTO jellyfin_favourites (user_uuid, profile, meta_id, media_type, meta_type, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (user_uuid, profile, meta_id) DO UPDATE SET media_type = EXCLUDED.media_type, meta_type = COALESCE(EXCLUDED.meta_type, jellyfin_favourites.meta_type), updated_at = EXCLUDED.updated_at`;
-      await this.runQuery(query, [userUUID, profile, metaId, mediaType, metaType, Date.now()]);
-      return;
-    }
-    const query = this.type === 'sqlite'
-      ? 'DELETE FROM jellyfin_favourites WHERE user_uuid = ? AND profile = ? AND meta_id = ?'
-      : 'DELETE FROM jellyfin_favourites WHERE user_uuid = $1 AND profile = $2 AND meta_id = $3';
-    await this.runQuery(query, [userUUID, profile, metaId]);
   }
 
   async listDropped(userUUID: string, profile = ''): Promise<any[]> {

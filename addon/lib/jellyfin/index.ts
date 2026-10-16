@@ -42,7 +42,7 @@ import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByNa
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { personByName, personCredits, previewMeta, similarTitles } from './people';
 import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
-import { entryItemType, favouriteEntries, setFavourite, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
+import { entryItemType, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow, type UpcomingRow } from './watched';
 import { cachedArtwork } from './artwork';
 import { SIZED_WIDTH, resizeToWidth, widthStep } from '../posterCache/resize';
@@ -653,24 +653,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
     const serverId = serverIdFor(userUUID);
 
-    // The watchlist, newest first, is what a client calls favourites; a client with a
-    // watchlist of its own asks for it by likes, and its favourites are kept apart.
+    // The watchlist, newest first, is every client's favourites; older clients ask for it by likes.
     const ownWatchlist = clientHasOwnWatchlist();
     const likesFilter = filters.split(',').map((f) => f.trim()).includes('Likes');
-    if (ownWatchlist && (filters.includes('IsFavorite') || favouriteFlag)) {
-      const wanted = includeItemTypes
-        ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
-        : null;
-      const entries = (await favouriteEntries(userUUID, config)).filter((entry) =>
-        !wanted || wanted.has(entryItemType(entry))
-      );
-      const page = entries.slice(startIndex, startIndex + limit);
-      const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
-      await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
-      res.json(itemList(items, entries.length, startIndex));
-      return;
-    }
-    if (ownWatchlist ? likesFilter : filters.includes('IsFavorite') || favouriteFlag) {
+    if (filters.includes('IsFavorite') || favouriteFlag || (ownWatchlist && likesFilter)) {
       const started = Date.now();
       const wanted = includeItemTypes
         ? new Set(String(includeItemTypes).split(',').map((t) => t.trim()).filter(Boolean))
@@ -679,7 +665,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         res.json(itemList([], 0, startIndex));
         return;
       }
-      const shelved = await serverWatchlistItems(userUUID, config, serverId, wanted, ownWatchlist ? 'Likes' : 'IsFavorite');
+      const shelved = await serverWatchlistItems(userUUID, config, serverId, wanted);
       if (shelved) {
         await applyWatchedState(shelved, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
         res.json(itemList(shelved.slice(startIndex, startIndex + limit), shelved.length, startIndex));
@@ -691,7 +677,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       );
       const listed = Date.now() - started;
       const page = entries.slice(startIndex, startIndex + limit);
-      const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency(), ownWatchlist ? 'Likes' : 'IsFavorite');
+      const items = await watchlistItems(userUUID, config, serverId, page, shelfConcurrency());
       await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
       const count = read.exhausted ? entries.length : Math.max(entries.length, startIndex + items.length + limit);
       logger.debug(`Favourites for ${userUUID} from ${clientInfo(req).client}/${clientInfo(req).version}: ${items.length} of ${count}, types ${includeItemTypes ?? 'any'}, from ${startIndex}, in ${Date.now() - started}ms (entries ${listed}ms)`);
@@ -2719,7 +2705,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return out;
   };
 
-  const serverWatchlistItems = async (userUUID: string, config: any, serverId: string, wanted: Set<string> | null, mark: 'IsFavorite' | 'Likes'): Promise<any[] | null> => {
+  const serverWatchlistItems = async (userUUID: string, config: any, serverId: string, wanted: Set<string> | null): Promise<any[] | null> => {
     if (require('./watchlistSources').watchlistPicks(config).size) return null;
     const { isServerWatchlistCatalog, serverWatchlistMediaType } = require('../serverWatchlist');
     const shelves = (await getCatalogs(userUUID, config)).filter((catalog: any) => {
@@ -2737,7 +2723,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const item = metaToBaseItem(meta, serverWatchlistMediaType(catalog.id), serverId, null);
         if (seen.has(String(meta.id)) || (wanted && !wanted.has(item.Type))) continue;
         seen.add(String(meta.id));
-        item.UserData = { ...item.UserData, [mark]: true };
+        item.UserData = { ...item.UserData, IsFavorite: true, ...(clientHasOwnWatchlist() ? { Likes: true } : {}) };
         items.push(item);
       }
     }
@@ -3446,9 +3432,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       res.status(404).json({ Message: 'Item not found' });
       return;
     }
-    const changed = clientHasOwnWatchlist()
-      ? await setFavourite(userUUID, config, descriptor, listed)
-      : await setWatchlisted(userUUID, config, descriptor, listed);
+    const changed = await setWatchlisted(userUUID, config, descriptor, listed);
     res.json({ ...EMPTY_USER_DATA, Key: itemId, ItemId: itemId, IsFavorite: changed && listed });
   };
   const ratingHandler = (clear: boolean) => async (req: any, res: any) => {

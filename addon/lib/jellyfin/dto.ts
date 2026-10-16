@@ -25,6 +25,7 @@ const EXTENSIONS = {
   versions: 1,
   genreRequired: 1,
   ranked: 1,
+  watchlistFavorites: 1,
 } as const;
 
 export function extensionInfo(origin: string): any {

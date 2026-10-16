@@ -54,7 +54,7 @@ export function invalidateWatchlist(userUUID: string): void {
   }
 }
 
-async function fillMetaTypes(table: 'jellyfin_watchlist' | 'jellyfin_favourites', userUUID: string, profile: string, rows: any[]): Promise<void> {
+async function fillMetaTypes(table: 'jellyfin_watchlist', userUUID: string, profile: string, rows: any[]): Promise<void> {
   const untyped = rows.filter((row) => row.media_type === 'anime' && !row.meta_type);
   await mapWithConcurrency(untyped, 4, async (row: any) => {
     const meta = await fetchMeta(userUUID, 'series', String(row.meta_id)).catch(() => null);
@@ -95,13 +95,13 @@ export function entryItemType(entry: WatchlistEntry): 'Movie' | 'Series' {
   return entry.mediaType === 'movie' || entry.film ? 'Movie' : 'Series';
 }
 
-/** The titles of a shelf, marked as it is to the client: a favourite, or a liked title for a watchlist. */
-export async function watchlistItems(userUUID: string, config: any, serverId: string, entries: WatchlistEntry[], concurrency: number, mark: 'IsFavorite' | 'Likes' = 'IsFavorite'): Promise<any[]> {
+export async function watchlistItems(userUUID: string, config: any, serverId: string, entries: WatchlistEntry[], concurrency: number): Promise<any[]> {
+  const likes = clientHasOwnWatchlist();
   const built = await mapWithConcurrency(entries, concurrency, async (entry: WatchlistEntry) => {
     const meta = await fetchMeta(userUUID, entryItemType(entry) === 'Movie' ? 'movie' : 'series', entry.metaId);
     if (!meta) return null;
     const item = metaToBaseItem(meta, entry.mediaType, serverId, null);
-    item.UserData = { ...item.UserData, [mark]: true };
+    item.UserData = { ...item.UserData, IsFavorite: true, ...(likes ? { Likes: true } : {}) };
     if (entry.addedAt > 0) item.DateCreated = new Date(entry.addedAt).toISOString();
     return item;
   });
@@ -130,37 +130,13 @@ export async function applyWatchlistState(items: any[], userUUID: string, config
   const inSet = (set: Set<string>, item: any) =>
     set.has(String(descriptors.get(String(item.Id)).i)) || listedKeys(item).some((key) => set.has(key));
 
-  if (!clientHasOwnWatchlist()) {
-    for (const item of titles) {
-      if (inSet(listed, item)) item.UserData = { ...item.UserData, IsFavorite: true };
-    }
-    return;
-  }
-  // A dropped show keeps its dislike over the watchlist's like.
-  const favourites = new Set((await favouriteEntries(userUUID, config)).map((entry) => entry.metaId));
+  const likes = clientHasOwnWatchlist();
   for (const item of titles) {
-    if (inSet(listed, item) && item.UserData.Likes !== false) item.UserData = { ...item.UserData, Likes: true };
-    item.UserData = { ...item.UserData, IsFavorite: inSet(favourites, item) };
+    if (!inSet(listed, item)) continue;
+    item.UserData = { ...item.UserData, IsFavorite: true };
+    // A dropped show keeps its dislike over the watchlist's like.
+    if (likes && item.UserData.Likes !== false) item.UserData = { ...item.UserData, Likes: true };
   }
-}
-
-/** Favourites kept for a client with a watchlist of its own, newest first. */
-export async function favouriteEntries(userUUID: string, config: any): Promise<WatchlistEntry[]> {
-  const profile = profileKey(config);
-  const rows: any[] = await database.listFavourites(userUUID, profile).catch(() => []);
-  await fillMetaTypes('jellyfin_favourites', userUUID, profile, rows);
-  return rows.map((row) => {
-    const mediaType = row.media_type === 'movie' ? 'movie' : row.media_type === 'anime' ? 'anime' : 'series';
-    return { metaId: String(row.meta_id), mediaType, kind: mediaType === 'movie' ? 'movies' : mediaType, addedAt: Number(row.updated_at) || 0, ...(row.meta_type === 'movie' ? { film: true } : {}) };
-  });
-}
-
-export async function setFavourite(userUUID: string, config: any, descriptor: any, favourite: boolean): Promise<boolean> {
-  if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'series')) return false;
-  const meta = await fetchMeta(userUUID, descriptor.k === 'movie' ? 'movie' : 'series', descriptor.i);
-  if (!meta) return false;
-  await database.setFavourite(userUUID, profileKey(config), String(meta.id), descriptor.t, favourite, meta.type === 'movie' ? 'movie' : 'series');
-  return true;
 }
 
 export function idsFor(meta: any, stremioType: 'movie' | 'series'): WatchlistIds {
