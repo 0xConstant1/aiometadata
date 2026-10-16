@@ -170,6 +170,13 @@ async function historyOf(userUUID: string, profileId: string | null): Promise<st
  * the lifetime of the session when it is missing. It carries `UserDataChanged`
  * for each watch state written here.
  */
+function pathUser(segment: string): string {
+  const { isAliasFeatureEnabled, resolveAliasSync } = require('../aliasResolver');
+  const { looksLikeAlias } = require('../userAliases');
+  if (!isAliasFeatureEnabled() || !looksLikeAlias(segment)) return segment;
+  return resolveAliasSync(segment.toLowerCase()) ?? segment;
+}
+
 export function attachJellyfinSocket(server: any): void {
   const perUser = new Map<string, number>();
   const maxPerUser = envInt('JELLYFIN_SOCKETS_PER_USER', 16, 1);
@@ -197,7 +204,7 @@ export function attachJellyfinSocket(server: any): void {
     }
 
     const userUUID = session?.userUUID;
-    if (!session || !userUUID || userUUID !== decodeURIComponent(match[1])) {
+    if (!session || !userUUID || userUUID !== pathUser(decodeURIComponent(match[1]))) {
       reject(socket, 401, 'Unauthorized');
       return;
     }
