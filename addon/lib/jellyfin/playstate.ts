@@ -701,7 +701,15 @@ export async function recordProgress(req: any, body: any): Promise<void> {
     // Table only; a tracker still hears edges alone.
     const interval = envInt('JELLYFIN_PROGRESS_WRITE_INTERVAL', 60, 0) * 1000;
     const moved = positionMs !== (previous?.writtenMs ?? -1);
-    if (interval > 0 && !paused && moved && now - (previous?.writtenAt ?? 0) >= interval) {
+    if (paused && previous && Math.abs(positionMs - previous.positionMs) >= 1000) {
+      const config = await loadConfig(req);
+      const session = config ? await resolvePlaying(userUUID, itemId, body) : null;
+      if (session) {
+        await recordPlaystate(userUUID, profileKey(config), session, 'pause', positionMs, null, config);
+        next.writtenAt = now;
+        next.writtenMs = positionMs;
+      }
+    } else if (interval > 0 && !paused && moved && now - (previous?.writtenAt ?? 0) >= interval) {
       const config = await loadConfig(req);
       const session = config ? await resolvePlaying(userUUID, itemId, body) : null;
       if (session) {
