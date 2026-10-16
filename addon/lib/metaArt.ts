@@ -24,6 +24,8 @@ export function applyMetaArt(meta: any, config: any, type: string, userAgent: st
             const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
             if (proxyId) {
               meta.poster = buildProxyArtUrl({ base: `${host}/poster-cache/proxy`, imageClass: 'poster', type: metaType, id: proxyId, fallback: meta.poster, url: resolved });
+            } else {
+              meta.poster = resolved;
             }
           } else {
             meta.poster = resolved;

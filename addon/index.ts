@@ -5585,6 +5585,8 @@ const catalogRoute = async function (req, res) {
                 const proxyId = ids.imdbId || (ids.tmdbId ? `tmdb:${ids.tmdbId}` : (ids.tvdbId ? `tvdb:${ids.tvdbId}` : null));
                 if (proxyId) {
                   meta.poster = buildProxyArtUrl({ base: `${host}/poster-cache/proxy`, imageClass: 'poster', type: type, id: proxyId, fallback: meta.poster, url: resolved });
+                } else {
+                  meta.poster = resolved;
                 }
               } else {
                 meta.poster = resolved;
