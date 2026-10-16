@@ -1312,6 +1312,7 @@ async function buildImdbSeriesResponse(stremioId, imdbData, enrichmentData = {},
     }
   }
 
+  Object.assign(imdbData, stampIds(allIds));
   imdbData._metaProvider = 'imdb';
   return imdbData;
 }
@@ -2806,6 +2807,7 @@ async function buildSeriesResponseFromTvmaze(stremioId, tvmazeShow, episodes, la
     id: isAnime ? stremioId : imdbId || stremioId,
     type: 'series',
     _metaProvider: 'tvmaze',
+    ...stampIds({ ...allIds, imdbId, tmdbId, tvdbId }),
     keywords: tmdbKeywords,
     name: name,
     imdb_id: imdbId,
