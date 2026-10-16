@@ -1211,12 +1211,9 @@ async function getSeriesBackground(seriesId: string, config: UserConfig, isLands
     const seriesData = await getSeriesExtended(seriesId, config);
     if (seriesData && seriesData.artworks) {
       // Look for background artwork (type 3 is typically background)
-      let langCode3;
+      let langCode3: string | null = null;
       if (isLandscape) {
-        const langCode = config.language;
-        if (langCode) {
-          langCode3 = await to3LetterCode(langCode, config);
-        }
+        langCode3 = config.language ? await to3LetterCode(config.language, config) : 'eng';
       }
       const backgroundArtwork = findArtwork(seriesData.artworks, 3, langCode3, config);
       logger.debug(`Found background artwork for series ${seriesId}: ${backgroundArtwork}`);
@@ -1252,12 +1249,9 @@ async function getMovieBackground(movieId: string, config: UserConfig, isLandsca
   try {
     const movieData = await getMovieExtended(movieId, config);
     if (movieData && movieData.artworks) {
-      let langCode3;
+      let langCode3: string | null = null;
       if (isLandscape) {
-        const langCode = config.language;
-        if (langCode) {
-          langCode3 = await to3LetterCode(langCode, config);
-        }
+        langCode3 = config.language ? await to3LetterCode(config.language, config) : 'eng';
       }
       // Look for background artwork (type 15 is background for movies)
       const backgroundArtwork = findArtwork(movieData.artworks, 15, langCode3, config);
