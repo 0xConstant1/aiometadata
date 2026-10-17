@@ -699,10 +699,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         res.json(itemList([], 0, startIndex));
         return;
       }
+      const { watchlistOrigins } = require('./dashboard');
+      const origins = { WatchlistSources: watchlistOrigins(config) };
       const shelved = await serverWatchlistItems(userUUID, config, serverId, wanted);
       if (shelved) {
         await applyWatchedState(shelved, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
-        res.json(itemList(shelved.slice(startIndex, startIndex + limit), shelved.length, startIndex));
+        res.json({ ...itemList(shelved.slice(startIndex, startIndex + limit), shelved.length, startIndex), ...origins, WatchlistComplete: true });
         return;
       }
       const read = await watchlistEntries(userUUID, config);
@@ -715,7 +717,35 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
       const count = read.exhausted ? entries.length : Math.max(entries.length, startIndex + items.length + limit);
       logger.debug(`Favourites for ${userUUID} from ${clientInfo(req).client}/${clientInfo(req).version}: ${items.length} of ${count}, types ${includeItemTypes ?? 'any'}, from ${startIndex}, in ${Date.now() - started}ms (entries ${listed}ms)`);
-      res.json(itemList(items, count, startIndex));
+      res.json({ ...itemList(items, count, startIndex), ...origins, WatchlistComplete: read.complete !== false });
+      return;
+    }
+
+    // Dropped shows are the disliked ones, as a dislike drops a show. Rated is not a
+    // Jellyfin filter: it lists the titles this profile rated, newest first.
+    const filterList = filters.split(',').map((f) => f.trim());
+    const library = filterList.includes('Dislikes') ? 'dropped' : filterList.includes('Rated') ? 'ratings' : null;
+    if (library) {
+      const wanted = includeItemTypes ? String(includeItemTypes).split(',').map((t) => t.trim()) : null;
+      const fits = (type: 'movie' | 'series') => !wanted || wanted.includes(type === 'movie' ? 'Movie' : 'Series');
+      const { libraryPicks } = require('./dashboard');
+      const picks = (await libraryPicks(userUUID, config, library)).filter((pick: any) => pick.types.some(fits));
+      const page = picks.slice(startIndex, startIndex + limit);
+      const built = await mapWithConcurrency(page, shelfConcurrency(), async (pick: any) => {
+        for (const type of pick.types.filter(fits)) {
+          const meta = await fetchMeta(userUUID, type, pick.metaId).catch(() => null);
+          if (!meta) continue;
+          const item = metaToBaseItem(meta, type, serverId, null);
+          if (pick.at) item.DateCreated = new Date(pick.at).toISOString();
+          else delete item.DateCreated;
+          if (library === 'dropped') item.UserData = { ...item.UserData, Likes: false };
+          return item;
+        }
+        return null;
+      });
+      const items = built.filter(Boolean).filter(keepsUnderProfileCap(config));
+      await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config));
+      res.json(itemList(items, picks.length, startIndex));
       return;
     }
     const minPremiere = Date.parse(String(req.query.MinPremiereDate ?? req.query.minPremiereDate ?? ''));
