@@ -903,7 +903,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const asked = req.query.Limit ?? req.query.limit;
       const take = asked === undefined ? envInt('JELLYFIN_FILMOGRAPHY_PAGE', 100, 1) : limit;
       const ascending = String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase().startsWith('asc');
-      const { items, total } = await personItems(userUUID, config, serverId, personIds[0], includeItemTypes, startIndex, take, ascending);
+      const personTypes = String(req.query.PersonTypes ?? req.query.personTypes ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+      const { items, total } = await personItems(userUUID, config, serverId, personIds[0], includeItemTypes, personTypes, startIndex, take, ascending);
       res.json(itemList(items, total, startIndex));
       return;
     }
@@ -1658,6 +1659,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       PremiereDate: isoDate(person?.birthday),
       EndDate: isoDate(person?.deathday),
       ProductionLocations: person?.birthplace ? [person.birthplace] : [],
+      // Not a Jellyfin field: the PersonTypes value a filmography opens on.
+      KnownForType: person?.knownFor ?? undefined,
       ImageTags: person?.photo ? { Primary: imageTag(person.photo) } : {},
       BackdropImageTags: [],
       UserData: { ...EMPTY_USER_DATA, Key: bare, ItemId: bare },
@@ -1670,6 +1673,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     serverId: string,
     personId: string,
     includeItemTypes: any,
+    personTypes: string[],
     startIndex: number,
     take: number,
     ascending = false
@@ -1680,7 +1684,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (!person) return { items: [], total: 0 };
     const wanted = includeItemTypes ? String(includeItemTypes) : undefined;
     const newest = (await personCredits(config, person.id)).filter(
-      (meta: any) => !wanted || wanted.split(',').map((t) => t.trim()).includes(meta.type === 'movie' ? 'Movie' : 'Series')
+      (meta: any) =>
+        (!wanted || wanted.split(',').map((t) => t.trim()).includes(meta.type === 'movie' ? 'Movie' : 'Series')) &&
+        (!personTypes.length || personTypes.some((kind) => meta._personTypes.includes(kind)))
     );
     const listed = ascending
       ? [...newest.filter((meta: any) => meta.released).reverse(), ...newest.filter((meta: any) => !meta.released)]
