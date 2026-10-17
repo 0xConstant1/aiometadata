@@ -2789,6 +2789,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     });
     if (!shelves.length) return null;
     const cap = envInt('SERVER_WATCHLIST_MAX_ITEMS', 500, 1);
+    const { viewerProfile } = require('./viewer');
+    const listed: any[] = await database.listWatchlist(userUUID, viewerProfile()).catch(() => []);
+    const addedAt = new Map(listed.filter((row) => Number(row.listed)).map((row) => [String(row.meta_id), Number(row.updated_at) || 0]));
     const items: any[] = [];
     const seen = new Set<string>();
     for (const catalog of shelves) {
@@ -2798,6 +2801,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         if (seen.has(String(meta.id)) || (wanted && !wanted.has(item.Type))) continue;
         seen.add(String(meta.id));
         item.UserData = { ...item.UserData, IsFavorite: true, ...(clientHasOwnWatchlist() ? { Likes: true } : {}) };
+        const at = addedAt.get(String(meta.id));
+        if (at) item.DateCreated = new Date(at).toISOString();
         items.push(item);
       }
     }
