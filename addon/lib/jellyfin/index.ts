@@ -1221,11 +1221,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const clientFor = (req: any, config: any): StreamClient | undefined =>
     streamClient(`${req.params.userUUID}:${profileKey(config)}`, clientInfo(req), req.get?.('user-agent'));
 
+  const headerSources = new WeakSet<any>();
+
   const resolveMediaSources = async (
     req: any,
     descriptor: any,
     runtimeTicks: number | null,
-    refresh = false
+    refresh = false,
+    allowHeaders = false
   ): Promise<any[]> => {
     if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) return [];
 
@@ -1256,7 +1259,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const sources: any[] = [];
     const notices: any[] = [];
     for (const stream of streams) {
-      const playable = toPlayable(stream);
+      const playable = toPlayable(stream, allowHeaders);
       if (!playable) {
         if (!streamNoticesOffered()) continue;
         const notice = toNotice(stream);
@@ -1267,7 +1270,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       }
       if (seen.has(playable.id)) continue;
       seen.add(playable.id);
-      sources.push(mediaSourceFor(playable, runtimeTicks));
+      const source = mediaSourceFor(playable, runtimeTicks);
+      if (playable.needsHeaders) headerSources.add(source);
+      sources.push(source);
     }
 
     logger.debug(`Streams ${stremioType}/${stremioId}: ${streams.length} offered, ${sources.length} playable, ${notices.length} to read`);
@@ -1462,14 +1467,15 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
    * selectable.
    */
   const withDefaultSourceId = async (sources: any[], itemId: string): Promise<any[]> => {
-    if (!sources.length) return sources;
+    const first = sources.findIndex((source) => !headerSources.has(source));
+    if (first < 0) return sources;
     const id = normaliseJellyfinId(itemId);
     // A play report then names the item, not the hash the duration sits under.
-    const ms = await recallDuration(sources[0].Id).catch(() => null);
+    const ms = await recallDuration(sources[first].Id).catch(() => null);
     if (ms) rememberDuration(id, ms);
     else forgetDuration(id);
     return sources.map((source, index) =>
-      index === 0 ? { ...source, Id: id, ETag: id } : source
+      index === first ? { ...source, Id: id, ETag: id } : source
     );
   };
 
@@ -1495,7 +1501,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const requested = await requestedSource(req.query.MediaSourceId ?? req.body?.MediaSourceId);
     // A named version keeps the list it came from.
     const named = typeof requested === 'string' && !!requested && normaliseJellyfinId(requested) !== normaliseJellyfinId(itemId);
-    const all = await resolveMediaSources(req, descriptor, null, req.body?.Refresh === true && !named);
+    const all = await resolveMediaSources(req, descriptor, null, req.body?.Refresh === true && !named, req.body?.EnableRequiredHttpHeaders === true);
     const withIds = await withDefaultSourceId(all, itemId);
 
     let sources = withIds;
@@ -1534,7 +1540,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const index = parseInt(String(req.params.index), 10);
     const format = formatOf(String(req.params.format));
 
-    const sources = await withDefaultSourceId(await resolveMediaSources(req, descriptor, null), itemId);
+    const sources = await withDefaultSourceId(await resolveMediaSources(req, descriptor, null, false, true), itemId);
     const source = sources.find((s: any) => normaliseJellyfinId(s.Id) === normaliseJellyfinId(sourceId));
     if (!source) {
       res.status(404).end();
