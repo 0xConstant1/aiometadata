@@ -2799,6 +2799,25 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return { snapshot, caughtUp, followed, sequels };
   };
 
+  const onePerEpisode = async (episodes: any[], config: any): Promise<any[]> => {
+    const { videoIdAliases } = require('./aliases');
+    const { stremioIdFor } = require('./idsCodec');
+    const { perEntryAnime } = require('./watchlistSources');
+    const keepsAnime = perEntryAnime(config);
+    const spelled = await Promise.all(episodes.map(async (episode) => {
+      const descriptor = await decodeJellyfinId(String(episode.Id));
+      const videoId = descriptor ? stremioIdFor(descriptor) : null;
+      return { episode, anime: descriptor?.k === 'episode' && descriptor.t === 'anime', spellings: videoId ? [videoId, ...(await videoIdAliases(videoId))] : [String(episode.Id)] };
+    }));
+    const kept: typeof spelled = [];
+    for (const entry of spelled) {
+      const held = kept.findIndex((other) => other.spellings.some((spelling) => entry.spellings.includes(spelling)));
+      if (held === -1) kept.push(entry);
+      else if (kept[held].anime !== entry.anime && entry.anime === keepsAnime) kept[held] = entry;
+    }
+    return kept.map((entry) => entry.episode);
+  };
+
   const sequelPremieres = async (userUUID: string, rows: UpcomingRow[], keep: (at: number) => boolean, seen: Set<string>): Promise<any[]> => {
     const serverId = serverIdFor(userUUID);
     const out: any[] = [];
@@ -3099,7 +3118,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     premieres.push(...(await sequelPremieres(userUUID, sequels, within, seen)));
     const films = await watchlistFilms(userUUID, config, within, seen);
 
-    return [...premieres, ...films]
+    return [...(await onePerEpisode(premieres, config)), ...films]
       .filter(keepsUnderProfileCap(config))
       .sort((a, b) => premiereAt(a) - premiereAt(b));
   };
