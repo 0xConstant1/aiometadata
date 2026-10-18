@@ -186,11 +186,12 @@ async function mdblistRows(apiKey: string, config: any): Promise<ResumeRow[]> {
     }
 
     const show = entry?.show;
-    const season = Number(entry?.episode?.season);
-    const episode = Number(entry?.episode?.number);
-    if (!show || !Number.isFinite(season) || !Number.isFinite(episode)) continue;
+    const { mdblistWatchedRef } = require('../../utils/mdbList');
+    const ref = show ? await mdblistWatchedRef({ ...entry?.episode, show }, config) : null;
+    if (!ref) continue;
+    const { season, episode } = ref;
 
-    const resolved = await videoIdFor(await canonicalIds(show.ids ?? {}, 'series', config), season, episode, config);
+    const resolved = await videoIdFor(ref.tvdb ? ref.ids : await canonicalIds(ref.ids, 'series', config), season, episode, config, undefined, ref.tvdb ? 'tvdb' : 'tmdb');
     if (!resolved) {
       logger.debug(`No id for a resume row: ${show.title} S${season}E${episode}`);
       continue;

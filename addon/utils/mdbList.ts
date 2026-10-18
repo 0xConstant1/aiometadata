@@ -1193,6 +1193,14 @@ function mdblistEpisodeRef(show: any, episode: any): { ids: Record<string, any>;
   return { ids: show?.ids ?? {}, season, episode: number, tvdb: false };
 }
 
+async function mdblistWatchedRef(episode: any, config: any): Promise<{ ids: Record<string, any>; season: number; episode: number; tvdb: boolean } | null> {
+  const show = episode?.show;
+  const named = mdblistEpisodeRef(show, { season: episode?.season, episode: episode?.number, tvdb_ids: episode?.tvdb_ids });
+  if (named?.tvdb || show?.ids?.imdb || show?.ids?.tvdb || !episode?.ids?.tvdb) return named;
+  const found = await require('../lib/tvdb').getEpisodeNumbering(String(episode.ids.tvdb), config).catch(() => null);
+  return found ? { ids: { tvdb: found.seriesId }, season: found.season, episode: found.episode, tvdb: true } : named;
+}
+
 /**
  * Parse MDBList Up Next items into Stremio meta format
  * @param items - Array of MDBList up next items
@@ -1666,6 +1674,7 @@ export {
   testMdblistKey,
   fetchMDBListUpNext,
   mdblistEpisodeRef,
+  mdblistWatchedRef,
   parseMDBListUpNextItems,
   fetchMDBListUpcoming,
   fetchMdbListSearchItems,
