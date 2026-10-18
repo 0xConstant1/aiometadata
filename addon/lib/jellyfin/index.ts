@@ -320,8 +320,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     return out;
   };
-  // An Apple client opens the YouTube app's scheme, not a web link; the web client embeds the web link.
-  const APPLE_CLIENT = /swiftfin|tvos|apple ?tv|ios|ipad|iphone/i;
+  // Apple TV has no browser to open a web link, so its trailers open in the YouTube app.
+  const APPLE_TV = /tvos|apple ?tv/i;
   const appTrailers = (value: any): any => {
     if (Array.isArray(value)) return value.map(appTrailers);
     if (!value || typeof value !== 'object') return value;
@@ -348,8 +348,8 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       const from = info.client !== 'Unknown' ? `${label} (${info.version})` : `ua ${req.get('user-agent') || 'none'}`;
       logger.debug(`${req.method} ${String(req.originalUrl || '').split('?')[0]} ${res.statusCode} ${Date.now() - started}ms from ${from}`);
     });
-    const apple = APPLE_CLIENT.test(info.client) || APPLE_CLIENT.test(info.device);
-    res.json = (body: any) => json(dashIds(apple ? appTrailers(body) : body));
+    const appleTv = APPLE_TV.test(info.client) || APPLE_TV.test(info.device);
+    res.json = (body: any) => json(dashIds(appleTv ? appTrailers(body) : body));
     next();
   });
 
