@@ -98,16 +98,19 @@ export interface ResolveTrace {
   tmdbDown?: Set<string>;
 }
 
+export type EpisodeNumbering = 'tmdb' | 'tvdb';
+
 export async function videoIdFor(
   ids: Record<string, any>,
   season: number,
   episode: number,
   config: any = {},
-  trace?: ResolveTrace
+  trace?: ResolveTrace,
+  numbering: EpisodeNumbering = 'tmdb'
 ): Promise<{ metaId: string; videoId: string; mediaType: 'anime' | 'series' } | null> {
   ids = await canonicalIds(ids, 'series', config);
-  // MDBList and PublicMetaDB number episodes the way TMDB does.
-  if (ids.tmdb) {
+  // MDBList and PublicMetaDB number episodes the way TMDB does, unless they name TVDB's.
+  if (ids.tmdb && numbering === 'tmdb') {
     const viaTmdb = await fromTmdbNumbering(ids, season, episode, config, trace);
     if (viaTmdb) return viaTmdb;
   }

@@ -1179,6 +1179,20 @@ async function fetchMDBListUpcoming(apiKey: string, days: number, limit: number 
   return items;
 }
 
+function mdblistEpisodeRef(show: any, episode: any): { ids: Record<string, any>; season: number; episode: number; tvdb: boolean } | null {
+  const named = episode?.tvdb_ids;
+  const tvdbSeason = Number(named?.season);
+  const tvdbEpisode = Number(named?.episode);
+  if (named?.series && Number.isFinite(tvdbSeason) && Number.isFinite(tvdbEpisode)) {
+    const sameShow = String(show?.ids?.tvdb ?? '') === String(named.series);
+    return { ids: { tvdb: named.series, ...(sameShow && show?.ids?.imdb ? { imdb: show.ids.imdb } : {}) }, season: tvdbSeason, episode: tvdbEpisode, tvdb: true };
+  }
+  const season = Number(episode?.season);
+  const number = Number(episode?.episode);
+  if (!Number.isFinite(season) || !Number.isFinite(number)) return null;
+  return { ids: show?.ids ?? {}, season, episode: number, tvdb: false };
+}
+
 /**
  * Parse MDBList Up Next items into Stremio meta format
  * @param items - Array of MDBList up next items
@@ -1212,8 +1226,14 @@ async function parseMDBListUpNextItems(
           return null;
         }
 
+        const named = mdblistEpisodeRef(show, nextEpisode);
+        const byTvdb = named?.tvdb === true && (config.providers?.series || 'tvdb') !== 'tmdb';
+        const season = byTvdb ? named.season : nextEpisode.season;
+        const episode = byTvdb ? named.episode : nextEpisode.episode;
         let stremioId: string;
-        if (show.ids?.tmdb) {
+        if (byTvdb) {
+          stremioId = named.ids.imdb || `tvdb:${named.ids.tvdb}`;
+        } else if (show.ids?.tmdb) {
           stremioId = `tmdb:${show.ids.tmdb}`;
         } else if (show.ids?.imdb) {
           stremioId = show.ids.imdb;
@@ -1222,7 +1242,7 @@ async function parseMDBListUpNextItems(
           return null;
         }
 
-        const epIdPart = `S${nextEpisode.season}E${nextEpisode.episode}`;
+        const epIdPart = `S${season}E${episode}`;
         const cacheId = `mdblist_upnext_${stremioId}_${epIdPart}`;
 
         const getMetaStart = Date.now();
@@ -1234,8 +1254,8 @@ async function parseMDBListUpNextItems(
 
             if (metaResult?.meta?.videos && Array.isArray(metaResult.meta.videos)) {
               const upNextVideo = metaResult.meta.videos.find((v: any) =>
-                v.season === nextEpisode.season &&
-                v.episode === nextEpisode.episode
+                v.season === season &&
+                v.episode === episode
               );
 
               if (upNextVideo) {
@@ -1269,10 +1289,10 @@ async function parseMDBListUpNextItems(
                   }
                 }
 
-                metaResult.meta.name = `${metaResult.meta.name} - S${nextEpisode.season}E${nextEpisode.episode}`;
+                metaResult.meta.name = `${metaResult.meta.name} - S${season}E${episode}`;
                 metaResult.meta.id = cacheId;
               } else {
-                logger.warn(`[MDBList Up Next] Episode S${nextEpisode.season}E${nextEpisode.episode} not found in videos for ${metaResult.meta.name}`);
+                logger.warn(`[MDBList Up Next] Episode S${season}E${episode} not found in videos for ${metaResult.meta.name}`);
               }
             }
 
@@ -1645,6 +1665,7 @@ export {
   makeRateLimitedMDBListPost,
   testMdblistKey,
   fetchMDBListUpNext,
+  mdblistEpisodeRef,
   parseMDBListUpNextItems,
   fetchMDBListUpcoming,
   fetchMdbListSearchItems,

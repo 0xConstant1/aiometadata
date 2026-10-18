@@ -519,11 +519,13 @@ export async function fetchMdblistWatched(apiKey: string, mediatype: 'episode' |
 export async function assembleMdblist(data: MdblistData, config: any): Promise<RawSnapshot> {
   const { movieRows, episodeRows, showRows = [], upNext, droppedShows, droppedUnread } = data;
   const { Resolutions } = require('./resolutions');
+  const { mdblistEpisodeRef } = require('../../utils/mdbList');
   const resolutions = new Resolutions();
+  const nextRefs = upNext.map((item: any) => mdblistEpisodeRef(item?.show, item?.next_episode));
   await resolutions.preload(
     [
       ...episodeRows.map((entry: any) => [entry?.episode?.show?.ids ?? {}, Number(entry?.episode?.season), Number(entry?.episode?.number)]),
-      ...upNext.map((item: any) => [item?.show?.ids ?? {}, Number(item?.next_episode?.season), Number(item?.next_episode?.episode)]),
+      ...nextRefs.filter(Boolean).map((ref: any) => [ref.ids, ref.season, ref.episode, ref.tvdb ? 'tvdb' : 'tmdb']),
     ],
     []
   );
@@ -593,11 +595,11 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
   // history seeds it only when that call fails: the last episode watched, from
   // which the shelf moves on.
   const nextUp: NextUpRow[] = [];
-  for (const item of upNext) {
-    const season = Number(item?.next_episode?.season);
-    const number = Number(item?.next_episode?.episode);
-    if (!Number.isFinite(season) || !Number.isFinite(number)) continue;
-    const resolved = await resolutions.episode(item?.show?.ids ?? {}, season, number, config);
+  for (const [index, item] of upNext.entries()) {
+    const ref = nextRefs[index];
+    if (!ref) continue;
+    const { season, episode: number } = ref;
+    const resolved = await resolutions.episode(ref.ids, season, number, config, ref.tvdb ? 'tvdb' : 'tmdb');
     if (!resolved) continue;
     const total = Number(item?.progress?.total_episode_count) || 0;
     if (total > 0) {
@@ -656,7 +658,7 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
 type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';
 
 // Raised to rebuild indexes written in an older spelling.
-const INDEX_FORMAT = 5;
+const INDEX_FORMAT = 6;
 
 interface SummaryData {
   format?: number;
@@ -964,7 +966,7 @@ function upcomingFeedKey(config: any, days: number): string | null {
   if (!readsTrackers(config) || sourceFor(config) !== 'mdblist') return null;
   const apiKey = credentialFor(config, 'mdblist');
   if (!apiKey) return null;
-  return `jellyfin_upcoming_mdblist_v3:${createHash('sha256').update(apiKey).digest('hex').substring(0, 16)}:${days}`;
+  return `jellyfin_upcoming_mdblist_v4:${createHash('sha256').update(apiKey).digest('hex').substring(0, 16)}:${days}`;
 }
 
 export async function upcomingFollowed(config: any, days: number): Promise<UpcomingRow[]> {
@@ -977,13 +979,13 @@ export async function upcomingFollowed(config: any, days: number): Promise<Upcom
     return await cacheWrapGlobal(
       key,
       async () => {
-        const { fetchMDBListUpcoming } = require('../../utils/mdbList');
+        const { fetchMDBListUpcoming, mdblistEpisodeRef } = require('../../utils/mdbList');
         const out: UpcomingRow[] = [];
         for (const item of await fetchMDBListUpcoming(apiKey, days)) {
-          const season = Number(item?.next_episode?.season);
-          const episode = Number(item?.next_episode?.episode);
-          if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
-          const resolved = await videoIdFor(item?.show?.ids ?? {}, season, episode, config);
+          const ref = mdblistEpisodeRef(item?.show, item?.next_episode);
+          if (!ref) continue;
+          const { season, episode } = ref;
+          const resolved = await videoIdFor(ref.ids, season, episode, config, undefined, ref.tvdb ? 'tvdb' : 'tmdb');
           if (!resolved) continue;
           // Numbered as Next Up numbers them: anime by its own video, the rest by season and episode.
           out.push({
