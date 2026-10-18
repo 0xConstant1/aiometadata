@@ -37,6 +37,14 @@ export async function previewMeta(config: any, userUUID: string, type: Kind, id:
   return meta;
 }
 
+async function localizedText(config: any, row: any, kind: Kind, tmdbId: any): Promise<{ name: string; description: string } | null> {
+  const language = config?.language || 'en-US';
+  if (row._artSource !== 'simkl' || !tmdbId || language.split('-')[0] === 'en') return null;
+  const { fetchTmdbDetails, tmdbLocalizedText } = require('./getMeta');
+  const data = await fetchTmdbDetails(kind, tmdbId, language, config).catch(() => null);
+  return data ? tmdbLocalizedText(data, kind, language) : null;
+}
+
 async function titleCard(config: any, row: any, kind: Kind): Promise<any> {
   const { canonicalIds } = require('./jellyfin/canonicalIds');
   const { resolveArtworkForProfile } = require('./getMeta');
@@ -48,7 +56,7 @@ async function titleCard(config: any, row: any, kind: Kind): Promise<any> {
     metaProvider: row._artSource,
     providerArt: { poster: row.poster, background: row.background, logo: null, landscape: row.landscapePoster, originalLanguage: row._originalLanguage },
   };
-  const art = await resolveArtworkForProfile(request, config);
+  const [art, text] = await Promise.all([resolveArtworkForProfile(request, config), localizedText(config, row, kind, ids.tmdb)]);
   const missing = ART.filter(([, field]) => !art[field]).map(([name]) => name);
   if (missing.length) {
     const fallback = await resolveArtworkForProfile({ ...request, wanted: missing }, withMetaArt(config, kind));
@@ -56,6 +64,8 @@ async function titleCard(config: any, row: any, kind: Kind): Promise<any> {
   }
   const card = {
     ...row,
+    ...(text?.name ? { name: text.name } : {}),
+    ...(text?.description ? { description: text.description } : {}),
     id: ids.imdb || row.id,
     poster: art.poster || row.poster || `${host()}/missing_poster.png`,
     background: art.background || row.background,
