@@ -3594,6 +3594,12 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       logger.warn(`Rating failed for ${itemId}: ${error?.message || error}`);
       return false;
     });
+    if (clear && (await userDataOf(req, itemId).catch(() => null))?.Rating != null) {
+      const { rateItem } = require('./ratings');
+      await rateItem(userUUID, config, descriptor, null).catch((error: any) =>
+        logger.warn(`Clearing the rating failed for ${itemId}: ${error?.message || error}`)
+      );
+    }
     // A like puts the title on the watchlist and a cleared rating takes it off, for a
     // client that keeps one; a dislike stays a drop, and clearing one only undrops.
     if (clientHasOwnWatchlist() && likes !== false && !(likes === null && undropped)) {
