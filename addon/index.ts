@@ -404,10 +404,16 @@ function applyImageCachePrefix(data) {
     return posterCacheConfig.buildCachedUrl(prefix, imageClass, url);
   };
 
+  const landscapeCached = posterCacheConfig.isFieldCacheable('landscapePoster');
   const applyToMeta = (meta) => {
     if (!meta) return;
     for (const field of enabledFields) {
-      if (meta[field]) meta[field] = prefixUrl(meta[field], metaFieldClasses[field]);
+      if (!meta[field]) continue;
+      if (field === 'poster' && meta.posterShape === 'landscape') {
+        if (landscapeCached) meta.poster = prefixUrl(meta.poster, 'landscape');
+        continue;
+      }
+      meta[field] = prefixUrl(meta[field], metaFieldClasses[field]);
     }
     if (cacheThumbnails && Array.isArray(meta.videos)) {
       for (const video of meta.videos) {
