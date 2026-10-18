@@ -76,11 +76,13 @@ export async function videoIdAliases(videoId: string): Promise<string[]> {
       if (tvdbId) {
         if (parsed.idType === 'imdb') add(`tvdb:${tvdbId}:${season}:${episode}`);
         const anidb = await animeList.resolveAnidbEpisodeFromTvdbEpisode(tvdbId, season, episode);
-        const anime = anidb?.anidbId ? idMapper.getMappingByAnidbId(anidb.anidbId) : null;
-        if (anime?.kitsu_id) add(`kitsu:${anime.kitsu_id}:${anidb.anidbEpisode}`);
-        if (anime?.mal_id) add(`mal:${anime.mal_id}:${anidb.anidbEpisode}`);
+        const listed = anidb?.anidbId ? null : idMapper.resolveKitsuEpisodeFromTvdbMapping(tvdbId, season, episode);
+        const anime = anidb?.anidbId ? idMapper.getMappingByAnidbId(anidb.anidbId) : listed ? idMapper.getMappingByKitsuId(listed.kitsuId) : null;
+        const animeEpisode = anidb?.anidbId ? anidb.anidbEpisode : listed?.episodeNumber;
+        if (anime?.kitsu_id) add(`kitsu:${anime.kitsu_id}:${animeEpisode}`);
+        if (anime?.mal_id) add(`mal:${anime.mal_id}:${animeEpisode}`);
         const tmdbSeason = anime ? wholeTmdbSeason(anime) : null;
-        if (tmdbSeason !== null) add(`tmdb:${anime.themoviedb_id}:${tmdbSeason}:${anidb.anidbEpisode}`);
+        if (tmdbSeason !== null) add(`tmdb:${anime.themoviedb_id}:${tmdbSeason}:${animeEpisode}`);
       }
       if (parsed.idType === 'tvdb' && mapping?.imdb_id) add(`${mapping.imdb_id}:${season}:${episode}`);
       return [...out];

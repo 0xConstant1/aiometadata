@@ -1663,6 +1663,16 @@ function getMappingByTmdbId(tmdbId, type) {
   return allMatches[0];
 }
 
+function resolveKitsuEpisodeFromTvdbMapping(tvdbId, seasonNumber, episodeNumber) {
+  if (!isInitialized) return null;
+  const entries = (tvdbIdToAnimeListMap.get(parseInt(tvdbId, 10)) || [])
+    .filter(item => item.kitsu_id && item.type && seriesLikeTypes.has(item.type.toLowerCase()))
+    .filter(item => (item.season?.tvdb != null ? Number(item.season.tvdb) === seasonNumber : seasonNumber === 1));
+  if (entries.length !== 1) return null;
+  const kitsuEpisode = episodeNumber - (Number(entries[0].episode_offset?.tvdb) || 0);
+  return kitsuEpisode > 0 ? { kitsuId: entries[0].kitsu_id, episodeNumber: kitsuEpisode } : null;
+}
+
 function getSeriesMappingsByTmdbId(tmdbId) {
   if (!isInitialized) return [];
   const indexed = tmdbIdToAnimeListMap.get(parseInt(tmdbId, 10)) || [];
@@ -2967,6 +2977,7 @@ module.exports = {
   getMappingByMalId,
   getMappingByTmdbId,
   getSeriesMappingsByTmdbId,
+  resolveKitsuEpisodeFromTvdbMapping,
   getMappingByTvdbId,
   getMappingByImdbId,
   getMappingByKitsuId,

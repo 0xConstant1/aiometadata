@@ -147,6 +147,10 @@ export async function videoIdFor(
           mediaType: 'anime',
         };
       }
+      const listed = idMapper.resolveKitsuEpisodeFromTvdbMapping(tvdb, season, episode);
+      if (listed) {
+        return { metaId: `kitsu:${listed.kitsuId}`, videoId: `kitsu:${listed.kitsuId}:${listed.episodeNumber}`, mediaType: 'anime' };
+      }
     } catch (error: any) {
       logger.debug(`Anime resolution failed for tvdb ${tvdb} S${season}E${episode}: ${error?.message}`);
     }
