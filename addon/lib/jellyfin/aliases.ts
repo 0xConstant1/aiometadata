@@ -7,6 +7,13 @@ const idMappings: any = require('../id-mappings');
 const database: any = require('../database');
 
 // One episode is spelled differently by each provider: kitsu:50040:6 is also tt37614297:1:6.
+function wholeTmdbSeason(mapping: any): number | null {
+  const season = Number(mapping?.season?.tmdb);
+  if (!mapping?.themoviedb_id || mapping.themoviedb_type !== 'tv' || !Number.isInteger(season) || season < 1) return null;
+  const sharing = idMapper.getSeriesMappingsByTmdbId(mapping.themoviedb_id).filter((entry: any) => Number(entry?.season?.tmdb) === season);
+  return sharing.length === 1 ? season : null;
+}
+
 export async function videoIdAliases(videoId: string): Promise<string[]> {
   const parsed = parseStremioId(videoId);
   // A film's other spelling comes from its meta at write time; Wikidata's pairing is not trusted for it.
@@ -36,6 +43,20 @@ export async function videoIdAliases(videoId: string): Promise<string[]> {
         add(`tvdb:${tvdb.tvdbId}:${tvdb.tvdbSeason}:${tvdb.tvdbEpisode}`);
         if (mapping.imdb_id) add(`${mapping.imdb_id}:${tvdb.tvdbSeason}:${tvdb.tvdbEpisode}`);
       }
+      const tmdbSeason = wholeTmdbSeason(mapping);
+      if (tmdbSeason !== null) add(`tmdb:${mapping.themoviedb_id}:${tmdbSeason}:${episode}`);
+      return [...out];
+    }
+
+    if (parsed.idType === 'tmdb' && parsed.season !== null && parsed.season !== undefined) {
+      const tmdbId = parseInt(parsed.base.split(':')[1], 10);
+      const entries = idMapper.getSeriesMappingsByTmdbId(tmdbId).filter((entry: any) => wholeTmdbSeason(entry) === Number(parsed.season));
+      const entry = entries.length === 1 ? entries[0] : null;
+      const anime = entry?.kitsu_id ? `kitsu:${entry.kitsu_id}:${parsed.episode}` : entry?.mal_id ? `mal:${entry.mal_id}:${parsed.episode}` : null;
+      if (anime) {
+        add(anime);
+        for (const alias of await videoIdAliases(anime)) add(alias);
+      }
       return [...out];
     }
 
@@ -58,6 +79,8 @@ export async function videoIdAliases(videoId: string): Promise<string[]> {
         const anime = anidb?.anidbId ? idMapper.getMappingByAnidbId(anidb.anidbId) : null;
         if (anime?.kitsu_id) add(`kitsu:${anime.kitsu_id}:${anidb.anidbEpisode}`);
         if (anime?.mal_id) add(`mal:${anime.mal_id}:${anidb.anidbEpisode}`);
+        const tmdbSeason = anime ? wholeTmdbSeason(anime) : null;
+        if (tmdbSeason !== null) add(`tmdb:${anime.themoviedb_id}:${tmdbSeason}:${anidb.anidbEpisode}`);
       }
       if (parsed.idType === 'tvdb' && mapping?.imdb_id) add(`${mapping.imdb_id}:${season}:${episode}`);
       return [...out];

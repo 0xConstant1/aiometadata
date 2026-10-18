@@ -1663,6 +1663,12 @@ function getMappingByTmdbId(tmdbId, type) {
   return allMatches[0];
 }
 
+function getSeriesMappingsByTmdbId(tmdbId) {
+  if (!isInitialized) return [];
+  const indexed = tmdbIdToAnimeListMap.get(parseInt(tmdbId, 10)) || [];
+  return indexed.filter(item => tmdbNamespaceMatches(item, 'series') && item.type && seriesLikeTypes.has(item.type.toLowerCase()));
+}
+
 function getAnimeTypeFromMapping(mapping) {
   if (!mapping?.type) return null;
   return seriesLikeTypes.has(mapping.type.toLowerCase()) ? 'series' : 'movie';
@@ -2977,6 +2983,7 @@ module.exports = {
   initializeMapper,
   getMappingByMalId,
   getMappingByTmdbId,
+  getSeriesMappingsByTmdbId,
   getMappingByTvdbId,
   getMappingByImdbId,
   getMappingByKitsuId,
