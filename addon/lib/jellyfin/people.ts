@@ -14,6 +14,7 @@ export interface Person {
   birthday: string | null;
   deathday: string | null;
   birthplace: string | null;
+  imdbId?: string | null;
   /** The Jellyfin person type of what TMDB says they are known for. */
   knownFor: string | null;
 }
@@ -49,6 +50,7 @@ async function tmdbPerson(config: any, id: number, fallback: any = null): Promis
     birthday: details?.birthday || null,
     deathday: details?.deathday || null,
     birthplace: details?.place_of_birth || null,
+    imdbId: details?.imdb_id || null,
     knownFor: KNOWN_FOR[details?.known_for_department || fallback?.known_for_department] ?? null,
   };
 }
@@ -124,8 +126,13 @@ async function tvdbPerson(config: any, id: number): Promise<Person | null> {
     birthday: record.birth || null,
     deathday: record.death || null,
     birthplace: record.birthPlace || null,
+    imdbId: remoteId(record, 'IMDB'),
     knownFor,
   };
+}
+
+export function personById(config: any, source: 'tmdb' | 'tvdb', id: number): Promise<Person | null> {
+  return source === 'tvdb' ? tvdbPerson(config, id) : tmdbPerson(config, id);
 }
 
 export async function resolvePerson(config: any, ref: { n: string; s?: 'tmdb' | 'tvdb'; x?: number }): Promise<Person | null> {
@@ -311,6 +318,7 @@ async function tmdbCredits(config: any, personId: number): Promise<any[]> {
         seen.set(key, meta);
         metas.push(meta);
       }
+      meta._votes = Math.max(meta._votes || 0, Number(row.vote_count) || 0);
       for (const kind of creditTypes(row, credit, type)) {
         if (!meta._personTypes.includes(kind)) meta._personTypes.push(kind);
       }

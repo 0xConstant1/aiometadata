@@ -1768,7 +1768,7 @@ async function getManifest(config: any, opts: { tags?: string[] } = {}): Promise
           playback: { version: 1, events: PLAYBACK_MANIFEST_EVENTS },
         }
       : {}),
-    types: ["movie", "series", "anime.movie", "anime.series", "anime", "Trakt", "collection"],
+    types: ["movie", "series", "anime.movie", "anime.series", "anime", "Trakt", "collection", ...(config.catalogModeOnly ? [] : ["person"])],
     idPrefixes: ["tmdb:", "tt", "tvdb:", "mal:", "tvmaze:", "kitsu:", "anidb:", "anilist:", "tvdbc:", "upnext_", "unwatched_", "mdblist_upnext_", "pmdb_resume_", "simkl_upnext_", "aiom.error.", ...(collectionsServed(config) ? [COLLECTION_META_PREFIX] : [])],
     stremioAddonsConfig: {
       "issuer": "https://stremio-addons.net",

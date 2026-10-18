@@ -5708,6 +5708,14 @@ const metaRoute = async function (req, res) {
   config.userUUID = userUUID;
   config.addonIdentifier = req.addonIdentifier || userUUID;
 
+  if (type === 'person') {
+    const { personMeta } = require('./lib/personMeta');
+    const meta = await personMeta(config, stremioId).catch(() => null);
+    if (!meta) return res.status(404).send({ error: "Person not found" });
+    req.userConfig = config;
+    return respond(req, res, { meta });
+  }
+
   {
     const { collectionMeta, COLLECTION_META_PREFIX } = require('./lib/collectionBuilder/aiostreamsCollections');
     if (stremioId.startsWith(COLLECTION_META_PREFIX)) {
