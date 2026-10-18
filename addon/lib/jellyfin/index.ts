@@ -343,6 +343,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       seenClients.add(label);
       logger.info(`Client seen: ${label} (${info.version})`);
     }
+    const started = Date.now();
+    res.on('finish', () => {
+      const from = info.client !== 'Unknown' ? `${label} (${info.version})` : `ua ${req.get('user-agent') || 'none'}`;
+      logger.debug(`${req.method} ${String(req.originalUrl || '').split('?')[0]} ${res.statusCode} ${Date.now() - started}ms from ${from}`);
+    });
     const apple = APPLE_CLIENT.test(info.client) || APPLE_CLIENT.test(info.device);
     res.json = (body: any) => json(dashIds(apple ? appTrailers(body) : body));
     next();
