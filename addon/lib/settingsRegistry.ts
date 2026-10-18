@@ -464,6 +464,17 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 0,
   },
   {
+    key: 'JELLYFIN_MIN_RESUME_PERCENT',
+    envVar: 'JELLYFIN_MIN_RESUME_PERCENT',
+    label: 'Jellyfin Minimum Resume (%)',
+    description: 'Playback stopped before this share of the runtime keeps no resume point, so the title stays out of Continue Watching. A resume point read from a tracker is held to the lower of this and 2%. 0 keeps every position.',
+    category: 'Features',
+    type: 'number',
+    default: 0,
+    min: 0,
+    max: 49,
+  },
+  {
     key: 'JELLYFIN_PLAYED_THRESHOLD',
     envVar: 'JELLYFIN_PLAYED_THRESHOLD',
     label: 'Jellyfin Played Threshold (%)',
