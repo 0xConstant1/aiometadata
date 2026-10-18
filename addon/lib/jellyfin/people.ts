@@ -161,28 +161,9 @@ export function metaFromTmdbRow(row: any, type: 'movie' | 'series'): any | null 
     imdbRating: row.vote_average ? String(Math.round(row.vote_average * 10) / 10) : undefined,
     genres: [],
     _tmdbId: String(row.id),
+    _artSource: 'tmdb',
+    ...(row.original_language ? { _originalLanguage: row.original_language } : {}),
   };
-}
-
-export async function previewMeta(config: any, userUUID: string, type: 'movie' | 'series', id: string): Promise<any | null> {
-  const { cacheWrapMetaSmart } = require('../getCache');
-  const { getMeta } = require('../getMeta');
-  const { applyMetaArt } = require('../metaArt');
-  const scoped = { ...config, userUUID };
-  const language = config?.language || 'en-US';
-  const result = await cacheWrapMetaSmart(
-    userUUID,
-    id,
-    () => getMeta(type, language, id, scoped, userUUID, false),
-    undefined,
-    { enableErrorCaching: true, maxRetries: 2, config: scoped },
-    type,
-    false
-  );
-  if (!result?.meta) return null;
-  const meta = { ...result.meta };
-  applyMetaArt(meta, scoped, type, '');
-  return meta;
 }
 
 const simklImage = (path: string | null | undefined, kind: 'posters' | 'fanart', size: string): string | null =>
@@ -208,6 +189,8 @@ function metaFromSimklRow(row: any): any | null {
     year,
     genres: [],
     ...(ids.tmdb ? { _tmdbId: String(ids.tmdb) } : {}),
+    ...(/^tt\d+$/.test(String(ids.imdb || '')) ? { _imdbId: String(ids.imdb) } : {}),
+    _artSource: 'simkl',
   };
 }
 
@@ -286,6 +269,7 @@ async function tvdbCredits(config: any, personId: number): Promise<any[]> {
         year,
         genres: [],
         _tvdbId: String(titleId),
+        _artSource: 'tvdb',
         _personTypes: [],
       };
       seen.set(key, meta);

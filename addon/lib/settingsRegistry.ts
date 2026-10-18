@@ -3295,6 +3295,17 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 1800,
   },
   {
+    key: 'TITLE_CARD_CONCURRENCY',
+    envVar: 'TITLE_CARD_CONCURRENCY',
+    label: 'Title Card Concurrency',
+    description: 'How many title cards a filmography or similar titles list builds at once. A card is a title\'s ids and art, without its full metadata.',
+    category: 'Features',
+    type: 'number',
+    default: 8,
+    min: 1,
+    max: 32,
+  },
+  {
     key: 'SIMILAR_CATALOG_SIZE',
     envVar: 'SIMILAR_CATALOG_SIZE',
     label: 'More Like This Size',

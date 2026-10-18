@@ -40,7 +40,8 @@ import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, scopeConfigToProfile, type Profile } from './profiles';
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
-import { hasCreditDate, personByName, personCredits, previewMeta, resolvePerson, similarTitles } from './people';
+import { hasCreditDate, personByName, personCredits, resolvePerson, similarTitles } from './people';
+import { titleCards } from '../titleCards';
 import { allBoxSets, boxSetGenres, boxSetMembers, boxSetsDeep, boxSetsFor, boxSetsUnder, collectionById, collectionView, folderById } from './collections';
 import { entryItemType, setWatchlisted, watchlistEntries, watchlistItems } from './watchlist';
 import { applyRatings, applyWatchedState, finishedSeries, ownNextUpRows, seriesCountsAmong, upcomingFollowed, watchedAmong, watchedHistory, watchedSnapshot, type NextUpRow, type UpcomingRow } from './watched';
@@ -1732,11 +1733,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const listed = ascending
       ? [...newest.filter(hasCreditDate).reverse(), ...newest.filter((meta: any) => !hasCreditDate(meta))]
       : newest;
-    const page = await mapWithConcurrency(listed.slice(startIndex, startIndex + take), shelfConcurrency(), async (meta: any) => {
-      const card = await previewMeta(config, userUUID, meta.type, meta.id).catch(() => null);
-      return metaToBaseItem(card ?? meta, meta.type, serverId, null);
-    });
-    const items = page.filter(keepsUnderProfileCap(config));
+    const page = listed.slice(startIndex, startIndex + take);
+    const cards = await titleCards(config, userUUID, page);
+    const items = cards.map((card: any, i: number) => metaToBaseItem(card, page[i].type, serverId, null)).filter(keepsUnderProfileCap(config));
     await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
     return { items, total: listed.length };
   };
@@ -3124,11 +3123,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const serverId = serverIdFor(userUUID);
     const rows = await similarTitles(config, meta, descriptor.k);
     const capped = hasAgeRatingCap(config);
-    const built = await mapWithConcurrency(capped ? rows : rows.slice(0, limit), shelfConcurrency(), async (row: any) => {
-      const full = await previewMeta(config, userUUID, row.type, row.id).catch(() => null);
-      return metaToBaseItem(full ?? row, row.type, serverId, null);
-    });
-    const items = built
+    const picked = capped ? rows : rows.slice(0, limit);
+    const cards = await titleCards(config, userUUID, picked);
+    const items = cards.map((card: any, i: number) => metaToBaseItem(card, picked[i].type, serverId, null))
       .filter(keepsUnderProfileCap(config))
       .slice(0, limit);
     await applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);

@@ -1,6 +1,5 @@
 import consola from 'consola';
 import { allowsUnrated, hasAgeRatingCap, passesAgeRating } from '../utils/ageRating';
-import { mapWithConcurrency } from '../utils/concurrency';
 
 // Titles like a given one, for apps that ask a catalog with a required `similar` extra:
 // https://docs.aiostreams.viren070.me/reference/addon-protocol/similar/
@@ -25,7 +24,8 @@ export function similarCatalogs(config: any): any[] {
 
 export async function similarCatalogMetas(userUUID: string, config: any, type: string, sourceId: string): Promise<any[]> {
   if (type !== 'movie' && type !== 'series') return [];
-  const { previewMeta, similarTitles } = require('./jellyfin/people');
+  const { similarTitles } = require('./jellyfin/people');
+  const { previewMeta, titleCards } = require('./titleCards');
   const { projectMetaForCatalogCache } = require('./getCache');
   const source = await previewMeta(config, userUUID, type, sourceId).catch(() => null);
   if (!source) return [];
@@ -37,9 +37,7 @@ export async function similarCatalogMetas(userUUID: string, config: any, type: s
   const size = Number(getSetting('SIMILAR_CATALOG_SIZE')) || 20;
   const capped = hasAgeRatingCap(config);
   const unrated = allowsUnrated(config);
-  const built = await mapWithConcurrency(capped ? rows : rows.slice(0, size), 6, async (row: any) =>
-    (await previewMeta(config, userUUID, row.type, row.id).catch(() => null)) ?? row
-  );
+  const built = await titleCards(config, userUUID, capped ? rows : rows.slice(0, size));
   return built
     .filter((meta: any) => meta?.id && meta.id !== source.id)
     .filter((meta: any) => !capped || passesAgeRating(meta.app_extras?.certification || meta.certification || null, meta.type || type, String(config.ageRating), unrated))
