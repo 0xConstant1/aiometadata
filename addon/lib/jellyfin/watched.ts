@@ -180,11 +180,12 @@ function parseNextToWatch(value: any): { season: number | null; episode: number 
 function collectShow(entry: any, snapshot: Collecting, isAnime: boolean, history: Map<string, HistoryEntry>): void {
   const ids = entry?.show?.ids ?? {};
   const keys = seriesKeys(ids);
+  const film = isAnime && entry?.anime_type === 'movie';
 
   const metaId = isAnime && ids.kitsu
     ? `kitsu:${ids.kitsu}`
     : (ids.imdb ? String(ids.imdb) : ids.tvdb ? `tvdb:${ids.tvdb}` : null);
-  if (metaId && entry?.status === 'watching') {
+  if (metaId && entry?.status === 'watching' && !film) {
     snapshot.following.push({ metaId, mediaType: isAnime && ids.kitsu ? 'anime' : 'series' });
   }
   if (ids.mal) snapshot.listedAnime?.add(`mal:${ids.mal}`);
@@ -199,6 +200,18 @@ function collectShow(entry: any, snapshot: Collecting, isAnime: boolean, history
   }
   // An older Simkl app is sent `notinteresting` where a newer one gets `dropped`.
   if (entry?.status === 'dropped' || entry?.status === 'notinteresting') for (const key of seriesKeysWithKitsu(ids)) snapshot.dropped.add(key);
+
+  if (film) {
+    if (entry?.status !== 'completed') return;
+    const at = Date.parse(entry?.last_watched_at ?? '') || 0;
+    const spellings = [ids.imdb ? String(ids.imdb) : null, ids.tmdb ? `tmdb:${ids.tmdb}` : null, ids.kitsu ? `kitsu:${ids.kitsu}` : null, ids.mal ? `mal:${ids.mal}` : null].filter(Boolean) as string[];
+    for (const id of spellings) {
+      snapshot.movies.add(id);
+      if (at) snapshot.at.set(id, at);
+    }
+    if (spellings.length) recordWatch(history, { kind: 'movie', id: spellings[0], mediaType: 'movie', at });
+    return;
+  }
 
   // Simkl names a next episode for every listed show, a planned or dropped one
   // included; only a show being watched belongs on the shelf.
@@ -643,7 +656,7 @@ export async function assembleMdblist(data: MdblistData, config: any): Promise<R
 type MirroredService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';
 
 // Raised to rebuild indexes written in an older spelling.
-const INDEX_FORMAT = 4;
+const INDEX_FORMAT = 5;
 
 interface SummaryData {
   format?: number;
