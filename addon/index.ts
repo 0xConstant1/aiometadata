@@ -4927,6 +4927,16 @@ const catalogRoute = async function (req, res) {
     }
   }
 
+  {
+    const { SIMILAR_CATALOG_ID, similarCatalogMetas } = require('./lib/similarCatalog');
+    if (id === SIMILAR_CATALOG_ID) {
+      const sourceId = new URLSearchParams(extra || '').get('similar') || '';
+      const metas = sourceId ? await similarCatalogMetas(userUUID, config, type, sourceId) : [];
+      req.userConfig = config;
+      return respond(req, res, { metas });
+    }
+  }
+
   // Handle calendar-videos catalog
   if (id === 'calendar-videos' && type === 'series' && extra) {
     const logger = consola.withTag('Calendar');
