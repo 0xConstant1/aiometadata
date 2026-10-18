@@ -1729,6 +1729,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 10,
   },
   {
+    key: 'JELLYFIN_WATCHLIST_HOLD',
+    envVar: 'JELLYFIN_WATCHLIST_HOLD',
+    label: 'Watchlist Hold (seconds)',
+    description: 'How long a title added to or removed from the watchlist in a client is shown that way at least, while the tracker has yet to report the change.',
+    category: 'Features',
+    type: 'number',
+    default: 600,
+    min: 10,
+  },
+  {
     key: 'JELLYFIN_USERDATA_PUSH_DELAY_MS',
     envVar: 'JELLYFIN_USERDATA_PUSH_DELAY_MS',
     label: 'Watch State Push Delay (ms)',
