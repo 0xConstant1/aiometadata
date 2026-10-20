@@ -2,7 +2,7 @@ import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import { parseStremioId } from './idsCodec';
 import { decodeJellyfinId, stremioIdFor } from './ids';
-import { liveSessions, type LiveSession } from './playstate';
+import { liveSessions, liveSessionsFor, type LiveSession } from './playstate';
 import { syncStatus } from './playstateSync';
 import { seenConfigurations } from './context';
 import { seriesIndex } from './episodeIndex';
@@ -205,7 +205,7 @@ async function playRows(userUUID: string, rows: any[], names: Map<string, string
   return out;
 }
 async function sessionRows(userUUID: string, names: Map<string, string>): Promise<SessionRow[]> {
-  const own = (await liveSessions()).filter((s) => s.userUUID === userUUID);
+  const own = await liveSessionsFor(userUUID);
   return mapWithConcurrency(own, 2, async (s) => {
     const descriptor = await decodeJellyfinId(s.itemId);
     const videoId = descriptor ? stremioIdFor(descriptor) : null;

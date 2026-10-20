@@ -49,7 +49,7 @@ import { cachedArtwork } from './artwork';
 import { SIZED_WIDTH, resizeToWidth, widthStep } from '../posterCache/resize';
 import { IMAGE_CSP } from '../posterCache/proxyResponse';
 import { registerStubs } from './stubs';
-import { forgetUserSettings, recordPlayed, recordPlayedUpTo, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions } from './playstate';
+import { forgetUserSettings, liveSessionsFor, recordPlayed, recordPlayedUpTo, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions, type LiveSession } from './playstate';
 
 const database: any = require('../database');
 
@@ -127,6 +127,56 @@ async function seriesForEpisode(userUUID: string, config: any, descriptor: any):
   }
   const meta = await fetchMeta(userUUID, 'series', descriptor.i);
   return meta ? { meta, seriesId: encodeSeriesId(descriptor) } : null;
+}
+
+async function nowPlayingItem(userUUID: string, config: any, serverId: string, itemId: string): Promise<any | null> {
+  const descriptor = await decodeJellyfinId(itemId);
+  if (descriptor?.k === 'movie') {
+    const meta = await fetchMeta(userUUID, 'movie', descriptor.i);
+    if (!meta) return null;
+    const item = metaToBaseItem(meta, descriptor.t, serverId, null);
+    item.Id = normaliseJellyfinId(itemId);
+    return item;
+  }
+  if (descriptor?.k !== 'episode') return null;
+  const found = await seriesForEpisode(userUUID, config, descriptor);
+  if (!found) return null;
+  const episodes = buildEpisodes(found.meta, descriptor.t, found.seriesId, serverId, null);
+  const wanted = normaliseJellyfinId(itemId);
+  return episodes.find((e: any) => e.Id === wanted) ?? episodes.find((e: any) => e.IndexNumber === descriptor.e && e.ParentIndexNumber === descriptor.s) ?? null;
+}
+
+/** What each device is playing, from its last progress report, as a Jellyfin session carries it. */
+async function withNowPlaying(userUUID: string, config: any, serverId: string, sessions: any[]): Promise<void> {
+  const profile = profileKey(config);
+  const window = envInt('JELLYFIN_DASHBOARD_LIVE_SECONDS', 120, 10) * 1000;
+  const now = Date.now();
+  const playing = new Map<string, LiveSession>();
+  for (const live of await liveSessionsFor(userUUID)) {
+    if (live.profile !== profile || !live.device || now - live.at > window) continue;
+    if (!playing.has(live.device)) playing.set(live.device, live);
+  }
+  await Promise.all(sessions.map(async (session) => {
+    const live = playing.get(String(session.DeviceId));
+    if (!live) return;
+    const item = await nowPlayingItem(userUUID, config, serverId, live.itemId).catch(() => null);
+    if (!item) return;
+    session.NowPlayingItem = item;
+    session.PlayState = playStateOf(live);
+  }));
+}
+
+function playStateOf(live: LiveSession): any {
+  return {
+    PositionTicks: live.positionMs * 10000,
+    CanSeek: true,
+    IsPaused: live.paused,
+    IsMuted: false,
+    PlayMethod: 'DirectStream',
+    RepeatMode: 'RepeatNone',
+    PlaybackOrder: 'Default',
+    ...(live.playSession ? { PlaySessionId: live.playSession } : {}),
+  };
 }
 
 /** An episode its meta does not list yet, built from the tracker's air date. */
@@ -3409,7 +3459,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const serverId = serverIdFor(userUUID);
     const config = await database.getUserConfig(userUUID);
     const profile = sessionProfile(req, config);
-    res.json([sessionInfo(profile.userId, serverId, profile.name, clientInfo(req))]);
+    const scoped = await loadConfig(req);
+    const sessions = [sessionInfo(profile.userId, serverId, profile.name, clientInfo(req))];
+    if (scoped) await withNowPlaying(userUUID, scoped, serverId, sessions);
+    res.json(sessions);
   });
 
   router.post(['/Sessions/Capabilities', '/Sessions/Capabilities/Full'], (_req: any, res: any) => {
