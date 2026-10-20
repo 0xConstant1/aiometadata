@@ -358,6 +358,23 @@ function profileStats(userUUID: string, offsetMinutes: number, summary: any[]): 
   return work;
 }
 
+/** Each history's titles played and in progress, a title's spellings counted once, and its latest play. */
+export async function playCounts(userUUID: string): Promise<Map<string, { played: number; movies: number; episodes: number; inProgress: number; lastAt: number | null }>> {
+  const byProfile: any[] = await database.playstateForConfiguration(userUUID);
+  const stats = await profileStats(userUUID, 0, byProfile);
+  return new Map(byProfile.map((row: any) => {
+    const key = String(row.profile ?? '');
+    const titles = stats.get(key);
+    return [key, {
+      played: titles?.played ?? 0,
+      movies: titles?.movies ?? 0,
+      episodes: titles?.episodes ?? 0,
+      inProgress: titles?.inProgress ?? 0,
+      lastAt: Number(row.last_played_at) || null,
+    }];
+  }));
+}
+
 async function readProfileStats(userUUID: string, offsetMinutes: number): Promise<Map<string, ProfileStats>> {
   const rows: any[] = await database.watchedRowsForConfiguration(userUUID);
   const byProfile = new Map<string, any[]>();
