@@ -67,6 +67,11 @@ function encodeSeriesId(descriptor: any): string {
   return encodeJellyfinId({ k: 'series', t: descriptor.t, i: descriptor.i });
 }
 
+/** A show's episodes from the meta in hand, for seasons counted before the show is indexed. */
+function seriesVideosOf(meta: any): Map<string, any[]> {
+  return new Map(meta?.id && Array.isArray(meta.videos) ? [[String(meta.id), meta.videos]] : []);
+}
+
 /**
  * The episode a tracker row names, among a meta's episodes: by the row's own
  * id, by its aliases, by the meta's own id with the row's numbering, and last
@@ -1072,7 +1077,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const sortBy = String(req.query.SortBy ?? req.query.sortBy ?? '');
         const descending = String(req.query.SortOrder ?? req.query.sortOrder ?? '').toLowerCase() === 'descending';
         const applyState = async (items: any[]) =>
-          applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
+          applyWatchedState(items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config, {
+            seriesVideos: seriesVideosOf(meta),
+          });
 
         // Filtering on played judges every child, so only an unfiltered page is built alone.
         if (wantsEpisodes && !filters.includes('IsPlayed') && !filters.includes('IsUnplayed')) {
@@ -2423,7 +2430,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     const seasons = await withSeasonAnimeIds(found.meta, buildSeasons(found.meta, found.descriptor.t, String(req.params.seriesId), serverIdFor(req.params.userUUID)));
     const seasonsConfig = await loadConfig(req);
-    if (seasonsConfig) await applyRatings(seasons, req.params.userUUID, profileKey(seasonsConfig));
+    if (seasonsConfig) {
+      await applyWatchedState(seasons, await watchedSnapshot(req.params.userUUID, seasonsConfig), req.params.userUUID, profileKey(seasonsConfig), seasonsConfig, {
+        seriesVideos: seriesVideosOf(found.meta),
+      });
+    }
     res.json(itemList(seasons, seasons.length, 0));
   });
 
@@ -3308,7 +3319,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
       const seasonConfig = await loadConfig(req);
       if (seasonConfig) {
-        await applyWatchedState([season], await watchedSnapshot(userUUID, seasonConfig), userUUID, profileKey(seasonConfig));
+        await applyWatchedState([season], await watchedSnapshot(userUUID, seasonConfig), userUUID, profileKey(seasonConfig), seasonConfig, {
+          seriesVideos: seriesVideosOf(meta),
+        });
       }
 
       res.json(season);
