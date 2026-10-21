@@ -1,4 +1,5 @@
 import { LRUCache } from 'lru-cache';
+import { envInt } from '../utils/envNumber';
 import { withEpisodeOrder } from '../utils/episodeOrder';
 
 export interface AnimeEpisode {
@@ -7,14 +8,14 @@ export interface AnimeEpisode {
   episode: number;
 }
 
-const tmdbEpisodes = new LRUCache<string, { kitsuId: number; episodeNumber: number } | false>({ max: 20000, ttl: 60 * 60 * 1000 });
+const tmdbEpisodes = new LRUCache<string, { kitsuId: number; episodeNumber: number } | false>({ max: envInt('ANIME_TMDB_EPISODE_CACHE_MAX', 20000, 1) });
 
 async function kitsuEpisodeFromTmdb(tmdbId: number, season: number, episode: number, config: any) {
   const key = `${tmdbId}:${season}:${episode}`;
   const held = tmdbEpisodes.get(key);
   if (held !== undefined) return held || null;
   const found = await require('./id-mapper').resolveKitsuEpisodeFromTmdb(tmdbId, season, episode, config).catch(() => null);
-  tmdbEpisodes.set(key, found || false);
+  tmdbEpisodes.set(key, found || false, { ttl: envInt('ANIME_TMDB_EPISODE_CACHE_TTL', 3600, 60) * 1000 });
   return found;
 }
 
