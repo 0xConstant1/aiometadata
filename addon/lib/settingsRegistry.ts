@@ -634,6 +634,17 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     max: 3600,
   },
   {
+    key: 'TRACKER_OUTBOX_SEND_TIMEOUT',
+    envVar: 'TRACKER_OUTBOX_SEND_TIMEOUT',
+    label: 'Tracker Write Timeout',
+    description: 'How long, in seconds, one tracker write may take before its account is freed for the next write and it is tried again later.',
+    category: 'Features',
+    type: 'number',
+    default: 120,
+    min: 10,
+    max: 600,
+  },
+  {
     key: 'JELLYFIN_WATCHED_REFRESH',
     envVar: 'JELLYFIN_WATCHED_REFRESH',
     label: 'Jellyfin Watched State Refresh',
