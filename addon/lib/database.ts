@@ -1439,7 +1439,7 @@ class Database {
     if (watch.kind === 'first' && wasPlayed) return false;
     const sqlite = this.type === 'sqlite';
     if (watch.kind !== 'first') {
-      const since = watch.kind === 'dated' ? 0 : watch.at - Math.max(0, watch.gapMs ?? 0);
+      const since = watch.kind === 'dated' ? 0 : Math.round(watch.at - Math.max(0, watch.gapMs ?? 0));
       const held = await this.getQuery(
         sqlite
           ? 'SELECT 1 AS held FROM jellyfin_watches WHERE user_uuid = ? AND profile = ? AND video_id = ? AND watched_at >= ? LIMIT 1'
