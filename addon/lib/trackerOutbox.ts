@@ -275,6 +275,9 @@ function judge(calls: TrackerCall[], error: any): Outcome {
   if (status === 400 && last.host === 'api.simkl.com' && /rate_limit/i.test(body ?? '')) {
     return { kind: 'retry', at: Date.now() + 5000 + Math.random() * 5000, reason: 'Simkl write lock' };
   }
+  if (status === 403 && last.host === 'graphql.anilist.co' && /temporarily disabled/i.test(body ?? '')) {
+    return { kind: 'retry', at: last.retryAt, reason: 'AniList API disabled' };
+  }
   if (status === 0 || status === 408 || status === 429 || status >= 500) {
     return { kind: 'retry', at: last.retryAt, reason: status === 0 ? `${last.host} did not answer` : `${last.host} answered ${status}` };
   }
