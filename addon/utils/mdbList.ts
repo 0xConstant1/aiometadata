@@ -1396,6 +1396,45 @@ async function addToHistory(
   return historySync('watched', idInput, apiKey, season, episode, episodes);
 }
 
+export interface MdblistPlay {
+  play_id: number;
+  watched_at: string | null;
+  season_num?: number;
+  episode_num?: number;
+}
+
+async function historyPlays(kind: 'movie' | 'show', tmdbId: number, apiKey: string): Promise<MdblistPlay[] | null> {
+  try {
+    const response: any = await makeRateLimitedRequest(
+      () => httpGet(`https://api.mdblist.com/sync/history/${kind}/tmdb/${tmdbId}?apikey=${apiKey}`, { timeout: 10000, dispatcher: mdblistDispatcher }),
+      apiKey,
+      `MDBList /sync/history/${kind}/tmdb/${tmdbId}`
+    );
+    return Array.isArray(response?.data?.plays) ? response.data.plays : [];
+  } catch (error: any) {
+    logger.error(`[MDBList] Reading the plays of ${kind} ${tmdbId} failed: ${error.message}`);
+    return null;
+  }
+}
+
+async function removePlays(playIds: number[], apiKey: string): Promise<boolean> {
+  try {
+    await makeRateLimitedRequest(
+      () => httpPost(`https://api.mdblist.com/sync/watched/plays/remove?apikey=${apiKey}`, { play_ids: playIds }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000,
+        dispatcher: mdblistDispatcher,
+      }),
+      apiKey,
+      'MDBList /sync/watched/plays/remove'
+    );
+    return true;
+  } catch (error: any) {
+    logger.error(`[MDBList] Removing plays ${playIds.join(',')} failed: ${error.message}`);
+    return false;
+  }
+}
+
 async function removeFromHistory(
   idInput: Record<string, string | number>,
   apiKey: string,
@@ -1403,7 +1442,14 @@ async function removeFromHistory(
   episode?: number,
   episodes?: EpisodeRef[]
 ): Promise<boolean> {
-  return historySync('watched/remove', idInput, apiKey, season, episode, episodes);
+  const removed = await historySync('watched/remove', idInput, apiKey, season, episode, episodes);
+  const tmdbId = Number(idInput.tmdb);
+  if (!tmdbId) return removed;
+  const refs: EpisodeRef[] = episodes?.length ? episodes : season != null && episode != null ? [{ season, episode }] : [];
+  const plays = await historyPlays(refs.length ? 'show' : 'movie', tmdbId, apiKey);
+  const left = (plays ?? []).filter((play) => !refs.length || refs.some((ref) => !ref.ids && play.season_num === ref.season && play.episode_num === ref.episode));
+  if (left.length) await removePlays(left.map((play) => play.play_id), apiKey);
+  return removed;
 }
 
 // A resume point is held separately from watched status, so clearing a watch
