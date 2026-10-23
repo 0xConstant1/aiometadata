@@ -388,6 +388,17 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 86400,
   },
   {
+    key: 'ID_CACHE_RECHECK_DAYS',
+    envVar: 'ID_CACHE_RECHECK_DAYS',
+    label: 'ID Cache TMDB Recheck (days)',
+    description: 'How old a cached link from an IMDb or TVDB id to a TMDB id gets before its TMDB id is checked again; one TMDB has since deleted is dropped and looked up afresh.',
+    category: 'Cache',
+    type: 'number',
+    default: 7,
+    min: 1,
+    max: 90,
+  },
+  {
     key: 'ANILIST_CATALOG_TTL',
     envVar: 'ANILIST_CATALOG_TTL',
     label: 'AniList Catalog TTL',
