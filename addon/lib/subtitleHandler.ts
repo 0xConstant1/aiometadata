@@ -387,11 +387,15 @@ async function resolveSeriesIds(parsedId: ParsedMediaId, config: any = {}, isSim
           config
         );
 
-        if (resolved?.isFranchiseFallback) {
-          const anidbId = idMapper.getMappingByKitsuId(parseInt(parsedId.id, 10))?.anidb_id;
+        const kitsuMapping = idMapper.getMappingByKitsuId(parseInt(parsedId.id, 10));
+        const tmdbGone = !resolved && kitsuMapping?.themoviedb_id
+          ? !(await require('./getTmdb').tvInfo({ id: kitsuMapping.themoviedb_id }, config).catch(() => true))
+          : false;
+        if (tmdbGone || resolved?.isFranchiseFallback) {
+          const anidbId = kitsuMapping?.anidb_id;
           const tvdbInfo = anidbId ? resolveTvdbEpisodeFromAnidbEpisode(anidbId, 1, parseInt(String(parsedId.episode), 10)) : null;
-          if (tvdbInfo && (Number(tvdbInfo.tvdbSeason) !== Number(resolved.seasonNumber) || Number(tvdbInfo.tvdbEpisode) !== Number(resolved.episodeNumber))) {
-            logger.debug(`[Watch Tracking] Kitsu ${parsedId.id} counted as TMDB S${resolved.seasonNumber}E${resolved.episodeNumber} but sits at TVDB S${tvdbInfo.tvdbSeason}E${tvdbInfo.tvdbEpisode}`);
+          if (tvdbInfo && (!resolved || Number(tvdbInfo.tvdbSeason) !== Number(resolved.seasonNumber) || Number(tvdbInfo.tvdbEpisode) !== Number(resolved.episodeNumber))) {
+            logger.debug(`[Watch Tracking] Kitsu ${parsedId.id} sent by its TVDB episode S${tvdbInfo.tvdbSeason}E${tvdbInfo.tvdbEpisode}`);
             return byTvdbEpisode(Number(tvdbInfo.tvdbId), Number(tvdbInfo.tvdbSeason), Number(tvdbInfo.tvdbEpisode), config);
           }
         }
