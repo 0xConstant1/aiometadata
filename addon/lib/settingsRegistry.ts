@@ -399,6 +399,15 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     max: 90,
   },
   {
+    key: 'MDBLIST_TVDB_MAP_TTL',
+    envVar: 'MDBLIST_TVDB_MAP_TTL',
+    label: 'MDBList TVDB Map Cache TTL',
+    description: 'How long, in seconds, the TMDB episode for each TVDB-numbered episode of a show is kept, as MDBList maps them. Used to send watches from TVDB-numbered shows to MDBList and PublicMetaDB.',
+    category: 'Cache',
+    type: 'number',
+    default: 604800,
+  },
+  {
     key: 'ANILIST_CATALOG_TTL',
     envVar: 'ANILIST_CATALOG_TTL',
     label: 'AniList Catalog TTL',

@@ -306,6 +306,24 @@ async function byTvdbEpisode(tvdbId: number, season: number, episode: number, co
   return { ids: { tvdb: tvdbId }, season, episode, ...(found?.id ? { episodeIds: { tvdb: Number(found.id) } } : {}) };
 }
 
+async function inTmdbNumbers(resolution: ResolvedSeriesIds, config: any, provider: string): Promise<ResolvedSeriesIds> {
+  const apiKey = config?.apiKeys?.mdblist;
+  if (!apiKey || (provider === 'imdb' && config?.providers?.series !== 'tvdb')) return resolution;
+  let tmdb = Number(resolution.ids.tmdb) || null;
+  let tvdb = Number(resolution.ids.tvdb) || null;
+  if (!tmdb) {
+    const seed = resolution.ids.imdb ? String(resolution.ids.imdb) : tvdb ? `tvdb:${tvdb}` : null;
+    const all = seed ? await require('./id-resolver').resolveAllIds(seed, 'series', config, {}, ['tmdb', 'tvdb']).catch(() => null) : null;
+    tmdb = Number(all?.tmdbId) || null;
+    tvdb = tvdb || Number(all?.tvdbId) || null;
+  }
+  if (!tmdb) return resolution;
+  const { withEpisodeOrder } = require('../utils/episodeOrder');
+  if ((withEpisodeOrder(config, tvdb).tvdbSeasonType || 'default') !== 'default') return resolution;
+  const moved = await require('../utils/mdbList').tmdbEpisodeFromTvdb(tmdb, resolution.season, resolution.episode, apiKey).catch(() => null);
+  return moved ? { ...resolution, ids: { ...resolution.ids, tmdb }, season: moved.season, episode: moved.episode } : resolution;
+}
+
 async function resolveSeriesIds(parsedId: ParsedMediaId, config: any = {}, isSimkl: boolean = false): Promise<ResolvedSeriesIds | null> {
   switch (parsedId.provider) {
     case 'imdb': {
@@ -348,18 +366,13 @@ async function resolveSeriesIds(parsedId: ParsedMediaId, config: any = {}, isSim
           logger.debug(`[Watch Tracking] Anime IMDB resolution failed for ${parsedId.id}: ${error.message}`);
         }
       }
-      return {
-        ids: { imdb: parsedId.id },
-        season: parsedId.season!,
-        episode: parsedId.episode!
-      };
+      const byImdb = { ids: { imdb: parsedId.id }, season: parsedId.season!, episode: parsedId.episode! };
+      return isSimkl ? byImdb : inTmdbNumbers(byImdb, config, 'imdb');
     }
-    case 'tvdb':
-      return {
-        ids: { tvdb: parseInt(parsedId.id, 10) },
-        season: parsedId.season!,
-        episode: parsedId.episode!
-      };
+    case 'tvdb': {
+      const byTvdb = { ids: { tvdb: parseInt(parsedId.id, 10) }, season: parsedId.season!, episode: parsedId.episode! };
+      return isSimkl ? byTvdb : inTmdbNumbers(byTvdb, config, 'tvdb');
+    }
     case 'tmdb': {
       const mapping = idMapper.getMappingByTmdbId(parsedId.id, 'series');
       if (!mapping) {
