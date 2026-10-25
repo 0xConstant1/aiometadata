@@ -4,6 +4,7 @@ import { normaliseJellyfinId } from './idsCodec';
 import { isPinHash } from './pins';
 import { ACCOUNT_SERVICES, ACCOUNT_SERVICE_LIST, AccountService, accountOwner, credentialOf, trackerConfig, withAccountOwner } from '../accounts';
 import { viewingWindowOf, type ViewingWindow } from './viewingHours';
+import { withTagExclusions } from '../../utils/tagExclusions';
 
 /** The main user is the configuration itself, under the id it always had. */
 export interface Profile {
@@ -199,7 +200,7 @@ export function scopeConfigToProfile(config: any, userUUID: string, id: string |
     if (ageRating) scoped.ageRating = ageRating;
     if (allowUnrated === false) scoped.allowUnratedContent = false;
   }
-  return scoped;
+  return withTagExclusions(scoped, profile.tags);
 }
 
 /** The tags a scoped configuration lists catalogs for; none means all of them. */

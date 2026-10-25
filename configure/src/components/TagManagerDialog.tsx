@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, Clock, DownloadCloud, ShieldCheck } from 'lucide-react';
+import { Ban, ChevronDown, Clock, DownloadCloud, ShieldCheck } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -24,21 +24,24 @@ import { TAG_COLORS } from '@/lib/tagColors';
 import { useConfig } from '@/contexts/ConfigContext';
 import { TagRulesPanel } from '@/components/TagRulesPanel';
 import type { TagDef } from '@/contexts/config';
+import { hiddenCount } from '@/lib/tagRules';
 
 interface TagManagerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-function ruleChips(tag: TagDef): Array<{ icon: 'rating' | 'hours' | 'downloads'; label: string }> {
+function ruleChips(tag: TagDef): Array<{ icon: 'rating' | 'hidden' | 'hours' | 'downloads'; label: string }> {
+  const hidden = hiddenCount(tag);
   return [
     ...(tag.ageRating && tag.ageRating !== 'None' ? [{ icon: 'rating' as const, label: `${tag.ageRating}${tag.allowUnratedContent === false ? ', rated only' : ''}` }] : []),
+    ...(hidden ? [{ icon: 'hidden' as const, label: `${hidden} hidden` }] : []),
     ...(tag.viewingHours ? [{ icon: 'hours' as const, label: `${tag.viewingHours.start}-${tag.viewingHours.end}` }] : []),
     ...(tag.allowDownloads === false ? [{ icon: 'downloads' as const, label: 'No downloads' }] : []),
   ];
 }
 
-const CHIP_ICONS = { rating: ShieldCheck, hours: Clock, downloads: DownloadCloud };
+const CHIP_ICONS = { rating: ShieldCheck, hidden: Ban, hours: Clock, downloads: DownloadCloud };
 
 export function TagManagerDialog({ open, onOpenChange }: TagManagerDialogProps) {
   const { tags, tagCounts, renameTag, recolorTag, setTagFilters, setTagRules, deleteTag } = useCatalogTags();

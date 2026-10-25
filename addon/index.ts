@@ -18,6 +18,7 @@ const anilist = require("./lib/anilist");
 const { getSearch } = require("./lib/getSearch");
 const { getManifest, resolveManifestTags, DEFAULT_LANGUAGE } = require("./lib/getManifest");
 const { resolveInstallFilters, uniformTagRating, allowsUnrated, scopeTagsToCatalog } = require("./utils/ageRating");
+const { withTagExclusions } = require("./utils/tagExclusions");
 const { getMeta } = require("./lib/getMeta");
 const { cacheWrapMetaSmart, cacheWrapCatalog, cacheWrapSearch, cacheWrapJikanApi, cacheWrapGlobal, classifyResultAllowEmpty, getCacheHealth, clearCacheHealth, logCacheHealth, stableStringify, deleteKeysByPattern, scanKeys } = require("./lib/getCache");
 const { hasPermission } = require("./lib/authSession");
@@ -532,9 +533,10 @@ function applyRatingOverrides(config, req, userUUID) {
 
   const hidesUnrated = allowUnrated === false && allowsUnrated(config);
   const showsUnrated = allowUnrated === true && !allowsUnrated(config);
-  if (!ageRating && !hidesUnrated && !showsUnrated) return config;
+  const excluded = withTagExclusions(config, tags);
+  if (!ageRating && !hidesUnrated && !showsUnrated) return excluded;
 
-  const next = { ...config };
+  const next = { ...excluded };
   if (ageRating) {
     next.ageRating = ageRating;
     next._ratingOverride = ageRating;

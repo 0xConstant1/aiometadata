@@ -15,6 +15,9 @@ export interface TagDef {
   allowUnratedContent?: boolean;
   viewingHours?: { start: string; end: string };
   allowDownloads?: boolean;
+  hideKeywords?: string[];
+  hideWords?: string[];
+  hideGenres?: string[];
 }
 
 export type CardService = 'simkl' | 'mdblist' | 'publicmetadb' | 'anilist' | 'mal';

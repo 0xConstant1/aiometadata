@@ -1,6 +1,6 @@
 import type { TagDef } from '@/contexts/config';
 
-export type TagRules = Partial<Pick<TagDef, 'viewingHours' | 'allowDownloads'>>;
+export type TagRules = Partial<Pick<TagDef, 'viewingHours' | 'allowDownloads' | 'hideKeywords' | 'hideWords' | 'hideGenres'>>;
 export type ViewingHours = NonNullable<TagDef['viewingHours']>;
 
 export const HOUR_PRESETS: Array<{ label: string; hours: ViewingHours | null }> = [
@@ -48,4 +48,22 @@ export function nowMinute(timeZone: string): number {
 export function samePreset(a: ViewingHours | null | undefined, b: ViewingHours | null): boolean {
   if (!a || !b) return !a && !b;
   return a.start === b.start && a.end === b.end;
+}
+
+export const QUICK_HIDE_KEYWORDS = ['violence', 'graphic violence', 'gore', 'nudity', 'sexual content', 'drug use', 'suicide', 'self-harm', 'torture'];
+
+export function hiddenCount(tag: TagDef): number {
+  return (tag.hideKeywords?.length ?? 0) + (tag.hideWords?.length ?? 0) + (tag.hideGenres?.length ?? 0);
+}
+
+export function hiddenSummary(tag: TagDef): string {
+  const keywords = tag.hideKeywords?.length ?? 0;
+  const words = tag.hideWords?.length ?? 0;
+  const genres = tag.hideGenres ?? [];
+  const parts = [
+    keywords ? `${keywords} ${keywords === 1 ? 'keyword' : 'keywords'}` : null,
+    words ? `${words} ${words === 1 ? 'word' : 'words'}` : null,
+    genres.length ? (genres.length > 2 ? `${genres.slice(0, 2).join(', ')} +${genres.length - 2}` : genres.join(', ')) : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Nothing extra';
 }

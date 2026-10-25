@@ -1,19 +1,20 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronRight, Clock, Download, Minus, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { Ban, ChevronRight, Clock, Download, Minus, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { TmdbKeywordPicker } from '@/components/settings/TmdbKeywordPicker';
 import { cn } from '@/lib/utils';
 import { AGE_RATING_ORDER } from '@/lib/ageRatings';
 import { TAG_COLORS, TAG_COLOR_KEYS } from '@/lib/tagColors';
-import { HOUR_PRESETS, inWindow, nowMinute, samePreset, stepTime, type TagRules, type ViewingHours } from '@/lib/tagRules';
+import { HOUR_PRESETS, QUICK_HIDE_KEYWORDS, hiddenSummary, inWindow, nowMinute, samePreset, stepTime, type TagRules, type ViewingHours } from '@/lib/tagRules';
 import { MAX_TAG_NAME_LENGTH, type TagColorKey, type TagDef } from '@/contexts/config';
 
 const RATINGS = ['None', ...AGE_RATING_ORDER];
 const SEGMENTS = Array.from({ length: 48 }, (_, i) => i);
 
-type Section = 'rating' | 'hours';
+type Section = 'rating' | 'hide' | 'hours';
 
 interface TagRulesPanelProps {
   tag: TagDef;
@@ -168,6 +169,77 @@ function ViewingHoursEditor({ hours, color, now, timezone, onChange }: { hours?:
   );
 }
 
+function ListField({ id, label, placeholder, value, onChange }: { id: string; label: string; placeholder: string; value: string[]; onChange: (next: string[]) => void }) {
+  const [draft, setDraft] = useState(value.join(', '));
+  useEffect(() => setDraft(value.join(', ')), [value]);
+  const commit = () => {
+    const next = [...new Set(draft.split(',').map((item) => item.trim()).filter(Boolean))];
+    if (next.join(',') !== value.join(',')) onChange(next);
+  };
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-semibold">{label}</Label>
+      <Input
+        id={id}
+        value={draft}
+        placeholder={placeholder}
+        className="h-9 bg-card"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+      />
+    </div>
+  );
+}
+
+function HideTitlesEditor({ tag, onRules }: { tag: TagDef; onRules: (patch: TagRules) => void }) {
+  const keywords = tag.hideKeywords ?? [];
+  const missing = QUICK_HIDE_KEYWORDS.filter((keyword) => !keywords.some((held) => held.toLowerCase() === keyword));
+  const listOrNothing = (list: string[]) => (list.length ? list : undefined);
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor={`hide-keywords-${tag.name}`} className="text-xs font-semibold">TMDB keywords</Label>
+        <TmdbKeywordPicker id={`hide-keywords-${tag.name}`} value={keywords} onChange={(next) => onRules({ hideKeywords: listOrNothing(next) })} />
+        {missing.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[11px] text-muted-foreground">Common for kids:</span>
+            {missing.map((keyword) => (
+              <button
+                key={keyword}
+                type="button"
+                onClick={() => onRules({ hideKeywords: [...keywords, keyword] })}
+                className="h-6 rounded-full border border-dashed border-muted-foreground/40 px-2.5 text-[11px] text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
+              >
+                + {keyword}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <ListField
+          id={`hide-words-${tag.name}`}
+          label="Words in title or description"
+          placeholder="naked, slasher"
+          value={tag.hideWords ?? []}
+          onChange={(next) => onRules({ hideWords: listOrNothing(next) })}
+        />
+        <ListField
+          id={`hide-genres-${tag.name}`}
+          label="Genres"
+          placeholder="Horror, Thriller"
+          value={tag.hideGenres ?? []}
+          onChange={(next) => onRules({ hideGenres: listOrNothing(next) })}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Hidden on top of what Filters hides for everyone, on installs naming this tag and on Jellyfin. Titles TMDB has not tagged yet, mostly new anime, are only caught by the word list.
+      </p>
+    </>
+  );
+}
+
 export function TagRulesPanel({ tag, timezone, profiles, onRename, onRecolor, onFilters, onRules, onDelete }: TagRulesPanelProps) {
   const [draft, setDraft] = useState(tag.name);
   const [open, setOpen] = useState<Section | null>(null);
@@ -256,6 +328,16 @@ export function TagRulesPanel({ tag, timezone, profiles, onRename, onRecolor, on
         <p className="text-xs text-muted-foreground">
           {rating === 'None' ? 'Every title, whatever its rating.' : `Titles rated ${rating} and lower, in catalogs and search.`}
         </p>
+      </RuleRow>
+
+      <RuleRow
+        icon={<Ban className="h-3.5 w-3.5" />}
+        title="Hide titles"
+        summary={hiddenSummary(tag)}
+        open={open === 'hide'}
+        onToggle={() => toggle('hide')}
+      >
+        <HideTitlesEditor tag={tag} onRules={onRules} />
       </RuleRow>
 
       <RuleRow
