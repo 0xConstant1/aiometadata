@@ -1104,6 +1104,7 @@ class Database {
     await this.runQuery(query, [userUUID]);
     await this.unlinkConfigFromAllAccounts(userUUID);
     await require('./configCache').del(userUUID).catch(() => undefined);
+    await require('./jellyfin/context').forgetSeen([userUUID]).catch(() => undefined);
   }
 
   async deleteUser(userUUID: string): Promise<boolean> {
@@ -1119,6 +1120,7 @@ class Database {
         : 'DELETE FROM trusted_uuids WHERE user_uuid = $1';
       await this.runQuery(deleteTrustedQuery, [userUUID]);
       await require('./jellyfin/tokens').revokeUserTokens(userUUID).catch(() => undefined);
+      await require('./jellyfin/context').forgetSeen([userUUID]).catch(() => undefined);
 
       const deleteAliasQuery = this.type === 'sqlite'
         ? 'DELETE FROM user_aliases WHERE user_uuid = ?'
@@ -2502,8 +2504,12 @@ class Database {
       const query = this.type === 'sqlite'
         ? 'DELETE FROM user_configs WHERE updated_at < ?'
         : 'DELETE FROM user_configs WHERE updated_at < $1';
+      const doomed = await this.allQuery(this.type === 'sqlite'
+        ? 'SELECT user_uuid FROM user_configs WHERE updated_at < ?'
+        : 'SELECT user_uuid FROM user_configs WHERE updated_at < $1', [cutoffDateStr]);
 
       const result = await this.runQuery(query, [cutoffDateStr]);
+      await require('./jellyfin/context').forgetSeen((doomed || []).map((row: any) => String(row.user_uuid))).catch(() => undefined);
 
       await this.runAliasCleanup(
         'DELETE FROM user_aliases WHERE user_uuid NOT IN (SELECT user_uuid FROM user_configs)'
