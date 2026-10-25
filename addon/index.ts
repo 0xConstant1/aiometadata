@@ -2629,7 +2629,8 @@ addon.get("/api/tmdb/collections/resolve", async (req, res) => {
 });
 
 // AI-powered catalog creation
-const aiCatalogRateLimit = new Map();
+const { LRUCache: AiRateCache } = require('lru-cache');
+const aiCatalogRateLimit = new AiRateCache({ max: 10000, ttl: 60000 });
 addon.post("/api/ai/create-catalog", async (req, res) => {
   try {
     const { userUUID, password, query, provider, generationMode, model: requestedModel, geminiKey: clientGeminiKey, openrouterKey: clientOpenrouterKey } = req.body;

@@ -1399,6 +1399,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 500,
   },
   {
+    key: 'JELLYFIN_SOCKET_MAX_MESSAGE_KB',
+    envVar: 'JELLYFIN_SOCKET_MAX_MESSAGE_KB',
+    label: 'Jellyfin Socket Message Limit (KB)',
+    description: 'The largest message a client may send over its live connection. Clients send small keep-alive and session messages; a connection that sends more is closed instead of being buffered.',
+    category: 'Features',
+    type: 'number',
+    default: 64,
+    min: 1,
+  },
+  {
     key: 'JELLYFIN_IMAGE_REDIRECT',
     envVar: 'JELLYFIN_IMAGE_REDIRECT',
     label: 'Jellyfin Image Redirect',
