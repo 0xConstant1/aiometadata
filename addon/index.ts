@@ -428,6 +428,9 @@ function applyImageCachePrefix(data) {
   };
 
   applyToMeta(data.meta);
+  if (Array.isArray(data.meta?.credits)) {
+    for (const credit of data.meta.credits) applyToMeta(credit);
+  }
   if (Array.isArray(data.metas)) {
     for (const meta of data.metas) applyToMeta(meta);
   }
