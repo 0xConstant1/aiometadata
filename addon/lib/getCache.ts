@@ -1661,6 +1661,10 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     cacheLogger.debug(`[Catalog] Skipping outer cache for merged catalog ${idOnly} (sources cache internally)`);
   }
 
+  // Rows built from one account's history or picks: equal settings must not share a page.
+  const isUserBuiltCatalog = idOnly.includes('stremthru.') || idOnly.startsWith('custom.') || idOnly.startsWith('letterboxd.')
+    || idOnly.startsWith('recommendations.');
+
   let key: string;
   if (isAuthCatalog) {
     const sessionId = config.sessionId || '';
@@ -1672,13 +1676,13 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
     const day = String(now.getDate()).padStart(2, '0');
     const today = `${year}-${month}-${day}`;
     key = `catalog:${today}:${configHash}:${cacheTTL}:${catalogKey}`;
-  } else if (idOnly.includes('stremthru.') || idOnly.startsWith('custom.') || idOnly.startsWith('letterboxd.')) {
+  } else if (isUserBuiltCatalog) {
     key = `catalog:${userUUID}:${configHash}:${cacheTTL}:${catalogKey}`;
   } else {
     key = `catalog:${configHash}:${cacheTTL}:${catalogKey}`;
   }
 
-  const isUserScopedCatalog = isAuthCatalog || idOnly.includes('stremthru.') || idOnly.startsWith('custom.') || idOnly.startsWith('letterboxd.');
+  const isUserScopedCatalog = isAuthCatalog || isUserBuiltCatalog;
   const cacheKeyIdentifier = isAuthCatalog ? (config.sessionId || 'no-session') : (isUserScopedCatalog ? (userUUID || '') : '');
   const catalogSig = shortSignature(`${cacheKeyIdentifier}|${idOnly}|${configHash}|ttl:${cacheTTL}`);
   cacheLogger.debug(`[Catalog] Key detail (${idOnly}) [sig:${catalogSig}] scope:${contentScope} userScoped:${isUserScopedCatalog} ttl:${cacheTTL}s catalogConfig:${catalogConfigShown} catalogKey:${catalogKey}`);
