@@ -38,7 +38,7 @@ const { supportsMdblistScoreFilters } = require("./utils/mdbList");
 
 const configApi = require('./lib/configApi');
 const database = require('./lib/database');
-const { loadConfigFromDatabase } = require('./lib/configApi');
+const { loadConfigFromDatabase, loadRouteConfig } = require('./lib/configApi');
 const { getTrending } = require("./lib/getTrending");
 const { resolveProxyRatingPosterUrl, parseAnimeCatalogMetaBatch } = require("./utils/parseProps");
 const { extractIdsFromMeta, extractCanonicalIdFromDynamicUpNextId } = require("./utils/metaIds");
@@ -4763,6 +4763,7 @@ addon.delete("/api/cache/clear/:key", requireDashboardAdmin, async (req, res) =>
     } else {
       // Clear specific key
       const result = await redis.del(key);
+      require('./lib/metaMemory').forgetAllHeld();
       consola.info(`[Cache] Cleared cache key: ${key} (result: ${result})`);
       res.json({
         success: true,
@@ -4917,7 +4918,7 @@ addon.get("/stremio/:userUUID/manifest.json", async function (req, res) {
 // --- Catalog Route under /stremio/:userUUID prefix ---
 const catalogRoute = async function (req, res) {
   const { userUUID, type, id, extra } = req.params;
-  const storedConfig = await loadConfigFromDatabase(userUUID);
+  const storedConfig = await loadRouteConfig(userUUID);
   
   if (!storedConfig) {
     return res.status(404).send({ error: "User configuration not found" });
@@ -5711,7 +5712,7 @@ const metaRoute = async function (req, res) {
   }
   
   // Load config from database
-  const config = await loadConfigFromDatabase(userUUID);
+  const config = await loadRouteConfig(userUUID);
   if (!config) {
     return res.status(404).send({ error: "User configuration not found" });
   }

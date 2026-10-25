@@ -38,7 +38,7 @@ const database = require('./database.js');
 import redis from './redisClient.js';
 
 const logger = consola.withTag('Catalog');
-import { cacheWrapMetaSmart } from './getCache.js';
+import { cacheWrapMetaSmart, readCatalogItemsPage } from './getCache.js';
 // @ts-ignore
 import { anilistListAccess, getAnilistAccessToken } from '../utils/anilistUtils';
 import { anilistRequiresAuth } from '../utils/anilistAccess';
@@ -1949,7 +1949,9 @@ async function getExternalAddonCatalog(type: string, catalogId: string, genre: s
 
       for (let i = 0; i < items.length; i += batchSize) {
         const chunk = items.slice(i, i + batchSize);
-        let metas = await parseStremThruItems(chunk, type, genre, language, config, includeVideos, { upstreamArt: userCatalog.metadata?.useUpstreamArt === true });
+        const upstreamArt = userCatalog.metadata?.useUpstreamArt === true;
+        const parse = () => parseStremThruItems(chunk, type, genre, language, config, includeVideos, { upstreamArt });
+        let metas = includeVideos ? await parse() : await readCatalogItemsPage(config, chunk, `${language}:${upstreamArt ? 'upstreamArt' : 'art'}`, parse);
         metas = await applyCatalogFilters(metas, { type, config, catalogConfig: userCatalog, cleanId: catalogId });
         for (const meta of metas) {
           const id = meta?.id;

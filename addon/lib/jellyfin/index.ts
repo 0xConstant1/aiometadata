@@ -419,34 +419,30 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   // A media source's Id stays bare, as a real server sends it: a client reads it up to the first dash.
   const ID_FIELD = /^(Id|ItemId|ParentId|SeriesId|SeasonId|UserId|ServerId|AlbumId|ChannelId|ParentLogoItemId|ParentBackdropItemId|ParentThumbItemId|ParentPrimaryImageItemId|Key|DisplayPreferencesId|PlaylistItemId)$/;
   const BARE_GUID = /^[0-9a-f]{32}$/i;
-  const dashIds = (value: any, source = false): any => {
-    if (Array.isArray(value)) return value.map((v) => dashIds(v, source));
-    if (!value || typeof value !== 'object') return value;
-    const out: any = {};
-    for (const [k, v] of Object.entries(value)) {
-      if (typeof v === 'string' && BARE_GUID.test(v) && !(source && k === 'Id') && (ID_FIELD.test(k) || k.endsWith('Ids'))) out[k] = dashedGuid(v);
-      else if (Array.isArray(v) && k.endsWith('Ids')) out[k] = v.map((x) => (typeof x === 'string' && BARE_GUID.test(x) ? dashedGuid(x) : x));
-      else out[k] = dashIds(v, k === 'MediaSources');
-    }
-    return out;
-  };
   // Apple TV has no browser to open a web link, so its trailers open in the YouTube app.
   const APPLE_TV = /tvos|apple ?tv/i;
-  const appTrailers = (value: any): any => {
-    if (Array.isArray(value)) return value.map(appTrailers);
-    if (!value || typeof value !== 'object') return value;
-    const out: any = {};
-    for (const [k, v] of Object.entries(value)) {
-      out[k] = k === 'RemoteTrailers' && Array.isArray(v)
-        ? v.map((t: any) => (typeof t?.Url === 'string' ? { ...t, Url: t.Url.replace(/^https?:\/\/(www\.)?youtube\.com\//i, 'youtube://www.youtube.com/') } : t))
-        : appTrailers(v);
-    }
-    return out;
+  const youtubeApp = (trailer: any): any =>
+    typeof trailer?.Url === 'string' ? { ...trailer, Url: trailer.Url.replace(/^https?:\/\/(www\.)?youtube\.com\//i, 'youtube://www.youtube.com/') } : trailer;
+  const jsonReplacer = (appleTv: boolean) => {
+    const sources = new WeakSet<object>();
+    return function (this: any, key: string, value: any): any {
+      if (typeof value === 'string') {
+        return BARE_GUID.test(value) && (ID_FIELD.test(key) || key.endsWith('Ids')) && !(key === 'Id' && sources.has(this)) ? dashedGuid(value) : value;
+      }
+      if (!value || typeof value !== 'object') return value;
+      if (key === 'MediaSources') {
+        for (const source of Array.isArray(value) ? value : [value]) if (source && typeof source === 'object') sources.add(source);
+        return value;
+      }
+      if (!Array.isArray(value)) return value;
+      if (key.endsWith('Ids')) return value.map((x) => (typeof x === 'string' && BARE_GUID.test(x) ? dashedGuid(x) : x));
+      if (appleTv && key === 'RemoteTrailers') return value.map(youtubeApp);
+      return value;
+    };
   };
 
   const seenClients = new Set<string>();
   router.use((req: any, res: any, next: any) => {
-    const json = res.json.bind(res);
     const info = clientInfo(req);
     const label = `${info.client} | ${info.device}`;
     if (!seenClients.has(label) && info.client !== 'Unknown') {
@@ -459,7 +455,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       logger.debug(`${req.method} ${String(req.originalUrl || '').split('?')[0]} ${res.statusCode} ${Date.now() - started}ms from ${from}`);
     });
     const appleTv = APPLE_TV.test(info.client) || APPLE_TV.test(info.device);
-    res.json = (body: any) => json(dashIds(appleTv ? appTrailers(body) : body));
+    res.json = (body: any) => {
+      if (!res.get('Content-Type')) res.set('Content-Type', 'application/json');
+      return res.send(JSON.stringify(body, jsonReplacer(appleTv)));
+    };
     next();
   });
 
@@ -2141,7 +2140,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return (found ?? []).map((title: any) => {
       const item = metaToBaseItem({ id: title.imdbId, type: title.kind, name: title.title, releaseInfo: title.year ? String(title.year) : undefined }, title.kind, serverId, null);
       const poster = `https://images.metahub.space/poster/medium/${title.imdbId}/img`;
-      rememberArt(serverId, poster);
+      rememberArt(poster);
       item.ImageTags = { ...item.ImageTags, Primary: imageTag(poster) };
       return item;
     });
@@ -2269,6 +2268,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   const imagesFor = async (req: any, itemId: string): Promise<any | undefined> => {
     const userUUID = req.params.userUUID;
     const scope = serverIdFor(userUUID);
+    await loadConfig(req).catch(() => null);
 
     const known = await recallImages(scope, itemId);
     if (known) return known;
@@ -2358,7 +2358,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       : undefined;
     const named = tag ? artTag(tag) : '';
     if (named && (!url || imageTag(url) !== named)) {
-      url = (await recallArt(serverIdFor(req.params.userUUID), named)) ?? url;
+      url = (await recallArt(named)) ?? url;
     }
 
     if (!url) {
