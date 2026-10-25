@@ -3963,6 +3963,57 @@ export function register(addon: any, options: { loginRateLimit?: any; enabled?: 
     res.json({ approved: true, device: request.deviceName, app: request.appName, profile: profile.name });
   });
 
+  addon.post('/api/jellyfin/:userUUID/played-thresholds', gate, approveRateLimit, async (req: any, res: any) => {
+    const userUUID = String(req.params.userUUID);
+    const password = req.body?.password;
+
+    const accountId = req.session?.accountId;
+    const owns = Boolean(accountId) && (await database.ownsConfig(accountId, userUUID));
+    const verified = !owns && password ? await database.verifyUserAndGetConfig(userUUID, String(password)) : null;
+    if (!owns && !verified) {
+      res.status(401).json({ error: 'Sign in or enter the configuration password to read the watched points' });
+      return;
+    }
+
+    const config = verified ?? (await database.getUserConfig(userUUID).catch(() => null));
+    const { serverPlayedThreshold, storedPlayedThreshold } = require('./playstate');
+    const profiles = await Promise.all(listProfiles(config, userUUID).map(async (profile) => ({
+      profile: profile.id,
+      percent: await storedPlayedThreshold(userUUID, profile.id),
+    })));
+    res.json({ serverDefault: serverPlayedThreshold(), profiles });
+  });
+
+  addon.post('/api/jellyfin/:userUUID/played-threshold', gate, approveRateLimit, async (req: any, res: any) => {
+    const userUUID = String(req.params.userUUID);
+    const password = req.body?.password;
+
+    const accountId = req.session?.accountId;
+    const owns = Boolean(accountId) && (await database.ownsConfig(accountId, userUUID));
+    const verified = !owns && password ? await database.verifyUserAndGetConfig(userUUID, String(password)) : null;
+    if (!owns && !verified) {
+      res.status(401).json({ error: 'Sign in or enter the configuration password to change the watched point' });
+      return;
+    }
+
+    const { savePlayedThreshold, validPlayedThreshold } = require('./playstate');
+    const requested = req.body?.percent ?? null;
+    const percent = requested === null ? null : validPlayedThreshold(requested);
+    if (requested !== null && percent === null) {
+      res.status(400).json({ error: 'The watched point is a percentage from 50 to 100' });
+      return;
+    }
+    const config = verified ?? (await database.getUserConfig(userUUID).catch(() => null));
+    const wanted = typeof req.body?.profile === 'string' && req.body.profile ? req.body.profile : null;
+    const profile = profileById(config, userUUID, wanted);
+    if (wanted && profile.id !== wanted) {
+      res.status(404).json({ error: 'Save the configuration first, so this user exists on the server' });
+      return;
+    }
+    await savePlayedThreshold(userUUID, profile.id, percent);
+    res.json({ profile: profile.id, percent });
+  });
+
   addon.post('/api/jellyfin/:userUUID/forget-imported', gate, approveRateLimit, async (req: any, res: any) => {
     const userUUID = String(req.params.userUUID);
     const password = req.body?.password;

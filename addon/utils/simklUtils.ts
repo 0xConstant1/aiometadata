@@ -50,10 +50,10 @@ function withAppParams(url: string): string {
 }
 
 /** Simkl counts a stop as watched from AIOM's own played threshold on; it accepts 50 to 100. */
-function scrobbleUrl(action: string): string {
+function scrobbleUrl(action: string, minProgress?: number): string {
   const url = `${SIMKL_BASE_URL}/scrobble/${action}`;
   if (action === 'pause') return url;
-  const threshold = Math.min(100, Math.max(50, envInt('JELLYFIN_PLAYED_THRESHOLD', 80, 1)));
+  const threshold = Math.min(100, Math.max(50, minProgress ?? envInt('JELLYFIN_PLAYED_THRESHOLD', 80, 1)));
   return `${url}?min_progress=${threshold}`;
 }
 
@@ -982,6 +982,7 @@ export interface SimklScrobbleOptions {
   action?: 'checkin' | 'start' | 'pause' | 'stop';
   /** 0-100. Simkl marks an item watched on stop at the played threshold or above. */
   progress?: number;
+  minProgress?: number;
 }
 
 async function checkinMovie(
@@ -1003,7 +1004,7 @@ async function checkinMovie(
 
   try {
 
-    const url = scrobbleUrl(action);
+    const url = scrobbleUrl(action, options.minProgress);
     const watchedAt = new Date().toISOString();
 
     const payload = {
@@ -1088,7 +1089,7 @@ async function checkinSeries(
   };
 
   const doCheckin = async (ids: Record<string, string | number>, attemptLabel: string, seasonNumber: number, episodeNumber:number) => {
-      const url = withAppParams(scrobbleUrl(action));
+      const url = withAppParams(scrobbleUrl(action, options.minProgress));
       const payload = {
         progress,
         show: { ids: ids },
