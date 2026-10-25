@@ -49,6 +49,16 @@ function profileFailure(config: any, rows: any[]): string {
     : 'The model returned no usable profile';
 }
 
+/** An empty row is almost always a reply spent on thinking before any title was written. */
+function picksFailure(config: any): string {
+  const { reasoningEffort }: any = require('./provider');
+  const effort = reasoningEffort(config);
+  if (effort === 'none') return 'The model returned no usable picks';
+  return effort === 'minimal'
+    ? 'The model returned no usable picks. It may have spent the reply thinking, so try turning thinking off.'
+    : `The model returned no usable picks. Thinking takes a share of the reply at ${effort}, so try a lower level.`;
+}
+
 /** One catalog end to end, reporting progress: profile, picks, and a pass of art
  *  fetching so the first open is a cache read. */
 export function startJob(config: any, userUUID: string, catalogId: string): Job {
@@ -76,6 +86,7 @@ export function startJob(config: any, userUUID: string, catalogId: string): Job 
       job.stage = 'choosing';
       const picks = await recommend(config, userUUID, profile, entry.kind);
       job.picks = picks.length;
+      if (!picks.length) throw new Error(picksFailure(config));
 
       // Warms the meta caches the row will read, so the first open is not the
       // first time every poster and rating is fetched.

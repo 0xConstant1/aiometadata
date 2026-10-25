@@ -3711,6 +3711,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     requiresRestart: true,
   },
   {
+    key: 'RECOMMENDATION_MAX_TOKENS',
+    envVar: 'RECOMMENDATION_MAX_TOKENS',
+    label: 'Recommendations Max Reply (tokens)',
+    description: 'The most any recommendations call may ask the model for, thinking included. OpenRouter holds the cost of this many tokens against the balance while a call runs and refuses a call that does not fit, so raising it needs the credit to cover it, and it should stay within what the model can write in one reply. A model that thinks at length regardless of the thinking level needs this and the tokens per pick raised together.',
+    category: 'Features',
+    type: 'number',
+    default: 16384,
+    min: 2048,
+  },
+  {
     key: 'RECOMMENDATION_PROFILE_TTL',
     envVar: 'RECOMMENDATION_PROFILE_TTL',
     label: 'Recommendations Profile Lifetime (seconds)',
