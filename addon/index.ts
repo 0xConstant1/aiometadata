@@ -6461,8 +6461,8 @@ const handlePosterProxy = async function (req, res) {
       imageClass: 'poster',
       url: posterUrl,
       bypassed,
-      open: async (validators) => {
-        const imageResponse = await openUpstream(validators);
+      open: async (validators, signal) => {
+        const imageResponse = await openUpstream(validators, signal);
         if (bypassed && posterCacheConfig.isBuiltinPosterCacheEnabled()) {
           require('./lib/posterCache/handler.js').recordServe('poster', 'BYPASS', 0, req.method, posterUrl);
         }
@@ -6517,8 +6517,8 @@ function streamArtWithFallback(assetName) {
         imageClass: assetName,
         url: customUrl,
         bypassed,
-        open: async (validators) => {
-          const imageResponse = await openUpstream(validators);
+        open: async (validators, signal) => {
+          const imageResponse = await openUpstream(validators, signal);
           if (bypassed && posterCacheConfig.isBuiltinPosterCacheEnabled()) {
             require('./lib/posterCache/handler.js').recordServe(assetName, 'BYPASS', 0, req.method, customUrl);
           }
