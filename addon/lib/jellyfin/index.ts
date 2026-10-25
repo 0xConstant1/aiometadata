@@ -39,6 +39,7 @@ import { isAnimeTitle, showIdentity } from './canonicalIds';
 import { keepsAnimeOnly, sourceFor } from './trackerSource';
 import { refreshSeriesIndex, seriesIndex, warmSeriesIndex } from './episodeIndex';
 import { authorizeQuickConnect, claimQuickConnect, initiateQuickConnect, quickConnectResult, readQuickConnect } from './quickConnect';
+import { playbackAllowed, viewingTimeZone } from './viewingHours';
 import { avatarTag, keepsUnderProfileCap, listProfiles, profileById, profileByName, profileByUserId, profileKey, profileTags, scopeConfigToProfile, type Profile } from './profiles';
 import { malEpisodeFor, segmentId, segmentsFor, type SegmentType } from './segments';
 import { hasCreditDate, personByName, personCredits, resolvePerson, similarTitles } from './people';
@@ -283,6 +284,7 @@ async function playedPick(req: any, userUUID: string, config: any, type: string,
 function userFor(profile: Profile, serverId: string, configuration?: any): any {
   const user = userDto(profile.userId, serverId, profile.name, avatarTag(profile));
   if (configuration && typeof configuration === 'object') user.Configuration = { ...user.Configuration, ...configuration };
+  if (profile.downloads === false) user.Policy = { ...user.Policy, EnableContentDownloading: false };
   return user;
 }
 
@@ -1757,11 +1759,22 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     return (await decodeJellyfinId(value))?.k === 'marker' ? undefined : value;
   };
 
+  const outsideViewingHours = async (req: any): Promise<boolean> => {
+    const config = await loadConfig(req);
+    if (!config) return false;
+    return !playbackAllowed(sessionProfile(req, config).viewingHours, viewingTimeZone(config));
+  };
+
   const playbackHandler = async (req: any, res: any) => {
     const { itemId, descriptor } = await unwrapMarker(String(req.params.itemId));
 
     if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) {
       res.status(404).json({ MediaSources: [], PlaySessionId: '', ErrorCode: 'NotAllowed' });
+      return;
+    }
+
+    if (await outsideViewingHours(req)) {
+      res.json({ MediaSources: [], PlaySessionId: randomUUID(), ErrorCode: 'NotAllowed' });
       return;
     }
 
@@ -1850,6 +1863,18 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const { itemId, descriptor } = await unwrapMarker(String(req.params.itemId));
     if (!descriptor || (descriptor.k !== 'movie' && descriptor.k !== 'episode')) {
       res.status(404).json({ Message: 'Item not found' });
+      return;
+    }
+
+    if (/\/Download$/i.test(String(req.path))) {
+      const config = await loadConfig(req);
+      if (config && sessionProfile(req, config).downloads === false) {
+        res.status(403).json({ Message: 'Downloads are turned off for this user' });
+        return;
+      }
+    }
+    if (await outsideViewingHours(req)) {
+      res.status(403).json({ Message: 'Outside this user\'s viewing hours' });
       return;
     }
 
