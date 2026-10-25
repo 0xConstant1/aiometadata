@@ -357,7 +357,7 @@ export interface AppConfig {
      * counted against the same reply budget as the answer, so a high setting
      * can leave a long list with no room to finish. OpenRouter only.
      */
-    reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high';
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
     /**
      * How much a series left unfinished counts against it. Stalling is weak
      * evidence: people stop because a season ended or they forgot, not only

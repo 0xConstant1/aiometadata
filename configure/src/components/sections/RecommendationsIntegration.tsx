@@ -434,6 +434,7 @@ export function RecommendationsIntegration({ isOpen, onClose }: { isOpen: boolea
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="none">Off</SelectItem>
                         <SelectItem value="minimal">Minimal</SelectItem>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
@@ -445,6 +446,11 @@ export function RecommendationsIntegration({ isOpen, onClose }: { isOpen: boolea
                     <Callout variant="warn" className="text-xs">
                       A long list can come back unfinished at this setting, because the thinking
                       uses up the reply before the recommendations are written.
+                    </Callout>
+                  ) : thinking === 'none' ? (
+                    <Callout variant="info" className="text-xs">
+                      A few models cannot turn thinking off and will refuse the request. If that
+                      happens, pick the lowest level instead.
                     </Callout>
                   ) : undefined}
                 />
