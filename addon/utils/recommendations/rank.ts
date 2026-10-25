@@ -40,13 +40,15 @@ async function fetchRecent(profile: TasteProfile, kind: RecommendKind, chosen: a
   return cacheWrapGlobal(key, async () => {
     const { generateContent } = require(chosen.clientPath);
     try {
-      const { reasoningEffort }: any = require('./provider');
+      const { reasoningEffort, budgetFor }: any = require('./provider');
       const result = await generateContent({
         apiKey: chosen.apiKey,
         model: chosen.model,
         prompt: question,
         useGrounding: true,
         reasoningEffort: reasoningEffort(config),
+        // Floored at the client's own default, which this call used to get.
+        maxTokens: budgetFor(2048, reasoningEffort(config), 8192),
         timeout: 60000,
       });
       const queries = result?.groundingMetadata?.webSearchQueries;
@@ -57,6 +59,7 @@ async function fetchRecent(profile: TasteProfile, kind: RecommendKind, chosen: a
         + (usage?.promptTokens ? `${usage.promptTokens} prompt tokens, ` : '')
         + (usage?.cost ? `$${Number(usage.cost).toFixed(4)}, ` : '')
         + `${(result?.text || '').length} chars back`
+        + (!result?.text && result?.finishReason ? `, finish_reason=${result.finishReason}` : '')
       );
       return (result?.text || '').slice(0, 6000);
     } catch (error: any) {

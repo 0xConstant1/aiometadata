@@ -1,3 +1,5 @@
+import { envInt } from '../envNumber';
+
 export type AiProvider = 'gemini' | 'openrouter';
 
 export interface ResolvedProvider {
@@ -57,9 +59,12 @@ export function refreshTtl(config: any): number {
 
 const REASONING_SHARE: Record<string, number> = { high: 0.8, medium: 0.5, low: 0.2, minimal: 0.1 };
 
-export function budgetFor(replyTokens: number, effort: string, ceiling = 16384): number {
+/** OpenRouter holds the cost of this many tokens against the balance while a call runs. */
+const maxReplyTokens = (): number => envInt('RECOMMENDATION_MAX_TOKENS', 16384, 2048);
+
+export function budgetFor(replyTokens: number, effort: string, floor = 2048): number {
   const share = REASONING_SHARE[effort] ?? 0.2;
-  return Math.min(ceiling, Math.max(2048, Math.ceil(replyTokens / (1 - share))));
+  return Math.min(maxReplyTokens(), Math.max(floor, Math.ceil(replyTokens / (1 - share))));
 }
 
 /** Thinking is billed and drawn from the reply budget, and some models refuse to
