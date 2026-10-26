@@ -21,6 +21,26 @@ export function isWatched(row: WatchedRow): boolean {
   return row.status !== 'plantowatch';
 }
 
+/** Only Simkl files anime apart. MDBList and plays under IMDb or TMDB ids say film or series, so the anime list decides. */
+export function isAnimeRow(row: { kind: string; imdbId?: string; tmdbId?: number }): boolean {
+  if (row.kind === 'anime') return true;
+  const idMapper: any = require('../../lib/id-mapper');
+  try {
+    if (row.imdbId && idMapper.getMappingByImdbId(row.imdbId)) return true;
+    if (!row.tmdbId) return false;
+    return row.kind === 'movie'
+      ? !!idMapper.filmMappingFor({ tmdbId: row.tmdbId })
+      : idMapper.getSeriesMappingsByTmdbId(row.tmdbId).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** The row a title belongs in: anime wherever it was filed, otherwise its own kind. */
+export function rowKind(row: WatchedRow): WatchedKind {
+  return isAnimeRow(row) ? 'anime' : row.kind;
+}
+
 /** One watched title, flattened across services. Shallow on purpose: everything
  *  here arrives with the history payload. */
 export interface WatchedRow {
@@ -386,4 +406,4 @@ export async function watchedIndex(config: any, userUUID: string): Promise<{ row
   return { rows, keys };
 }
 
-module.exports = { collectWatchedRows, isWatched, resolveSources, viewerKey, viewerOf, trackerAvailability, runAsProfile, canReadHistory, titleKeys, watchedIndex };
+module.exports = { collectWatchedRows, isWatched, isAnimeRow, rowKind, resolveSources, viewerKey, viewerOf, trackerAvailability, runAsProfile, canReadHistory, titleKeys, watchedIndex };

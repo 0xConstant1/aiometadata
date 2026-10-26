@@ -87,6 +87,8 @@ function byRecency(a: WatchedRow, b: WatchedRow): number {
 }
 
 export function summarise(rows: WatchedRow[], tuning: Tuning = DEFAULT_TUNING): HistoryStats {
+  const { rowKind }: any = require('./history');
+  const kinds: string[] = rows.map(row => rowKind(row));
   const decades: Record<string, number> = {};
   let ratingSum = 0;
   let rated = 0;
@@ -101,9 +103,9 @@ export function summarise(rows: WatchedRow[], tuning: Tuning = DEFAULT_TUNING): 
 
   return {
     total: rows.length,
-    movies: rows.filter(row => row.kind === 'movie').length,
-    series: rows.filter(row => row.kind === 'series').length,
-    anime: rows.filter(row => row.kind === 'anime').length,
+    movies: kinds.filter(kind => kind === 'movie').length,
+    series: kinds.filter(kind => kind === 'series').length,
+    anime: kinds.filter(kind => kind === 'anime').length,
     rated,
     dropped: rows.filter(row => row.status === 'dropped').length,
     abandoned: rows.filter(row => {
