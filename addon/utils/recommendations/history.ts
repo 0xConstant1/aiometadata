@@ -91,6 +91,8 @@ function rowFromSimkl(entry: any, kind: WatchedKind, status: string): WatchedRow
 
 async function collectSimklRows(config: any, tokenId: string): Promise<WatchedRow[]> {
   const { getSimklToken, fetchSimklWatchlistItems }: any = require('../simklUtils');
+  const { trackerConfig }: any = require('../../lib/accounts');
+  const reader = trackerConfig(config, 'simkl');
   const token = await getSimklToken(tokenId);
   const accessToken = token?.access_token;
   if (!accessToken) return [];
@@ -118,7 +120,7 @@ async function collectSimklRows(config: any, tokenId: string): Promise<WatchedRo
   const batches = await Promise.all(wanted.map(async ([type, kind, status]) => {
     try {
       // Every status comes from the one watch mirror, so this is one sync, not a call per list.
-      const { items } = await fetchSimklWatchlistItems(accessToken, type, status, undefined, config);
+      const { items } = await fetchSimklWatchlistItems(accessToken, type, status, undefined, reader);
       return (items || []).map((entry: any) => rowFromSimkl(entry, kind, status)).filter(Boolean) as WatchedRow[];
     } catch (error: any) {
       logger.debug(`Simkl ${type}/${status} unavailable: ${error.message}`);
@@ -313,7 +315,7 @@ export async function collectWatchedRows(config: any, userUUID?: string, options
 
   const { cacheWrapGlobal }: any = require('../../lib/getCache');
   return cacheWrapGlobal(
-    `recommendations:history:v2:${viewerKey(config, userUUID)}:${sources.choice}${fingerprint ? `:${fingerprint}` : ''}`,
+    `recommendations:history:v3:${viewerKey(config, userUUID)}:${sources.choice}${fingerprint ? `:${fingerprint}` : ''}`,
     () => readWatchedRows(config, userUUID, everything),
     fingerprint ? HISTORY_TTL : UNWATCHED_TTL,
     { sourceList: true }
