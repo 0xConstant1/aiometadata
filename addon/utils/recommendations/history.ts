@@ -364,24 +364,35 @@ async function readWatchedRows(config: any, userUUID?: string, everything = fals
       : Promise.resolve([] as WatchedRow[]),
   ]);
 
+  // Keyed by imdb id where there is one, so a title without one is matched on
+  // any id the rows share. Titles are left out: Simkl spells anime in romaji.
   const merged = new Map<string, WatchedRow>();
+  const holder = new Map<string, string>();
+  const idsOf = (row: WatchedRow) => titleKeys(row).filter(key => !key.startsWith('title:'));
   for (const row of [...local, ...mdblist, ...simkl]) {
-    const existing = merged.get(row.key);
-    if (!existing) { merged.set(row.key, row); continue; }
-    if (!isWatched(row) && isWatched(existing)) {
-      merged.set(row.key, { ...existing, imdbId: existing.imdbId ?? row.imdbId, tmdbId: existing.tmdbId ?? row.tmdbId });
-      continue;
+    const at = merged.has(row.key) ? row.key : idsOf(row).map(key => holder.get(key)).find(Boolean) ?? row.key;
+    const existing = merged.get(at);
+    let next: WatchedRow;
+    if (!existing) {
+      next = row;
+    } else if (!isWatched(row) && isWatched(existing)) {
+      next = { ...existing, imdbId: existing.imdbId ?? row.imdbId, tmdbId: existing.tmdbId ?? row.tmdbId };
+    } else {
+      const newest = isWatched(existing) && String(existing.watchedAt || '') > String(row.watchedAt || '') ? existing.watchedAt : row.watchedAt;
+      next = {
+        ...existing,
+        ...row,
+        key: at,
+        watchedAt: newest,
+        rating: row.rating ?? existing.rating,
+        imdbId: row.imdbId ?? existing.imdbId,
+        tmdbId: row.tmdbId ?? existing.tmdbId,
+        watchedEpisodes: row.watchedEpisodes ?? existing.watchedEpisodes,
+        totalEpisodes: row.totalEpisodes ?? existing.totalEpisodes,
+      };
     }
-    const newest = isWatched(existing) && String(existing.watchedAt || '') > String(row.watchedAt || '') ? existing.watchedAt : row.watchedAt;
-    merged.set(row.key, {
-      ...existing,
-      ...row,
-      watchedAt: newest,
-      rating: row.rating ?? existing.rating,
-      tmdbId: row.tmdbId ?? existing.tmdbId,
-      watchedEpisodes: row.watchedEpisodes ?? existing.watchedEpisodes,
-      totalEpisodes: row.totalEpisodes ?? existing.totalEpisodes,
-    });
+    merged.set(at, next);
+    for (const key of idsOf(next)) if (!holder.has(key)) holder.set(key, at);
   }
 
   const rows = [...merged.values()];

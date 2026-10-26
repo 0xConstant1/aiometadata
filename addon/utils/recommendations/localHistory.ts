@@ -24,27 +24,49 @@ export async function localPlayVersion(userUUID: string, profile: string): Promi
   return database.playstateVersion(userUUID, profile);
 }
 
-/** Every title the profile played, keyed as titleKeys keys a pick. Read off the ids alone, so a title is never looked up. */
-export async function localWatchedKeys(userUUID: string, profile: string): Promise<string[]> {
-  const database: any = require('../../lib/database');
-  const { parseStremioId }: any = require('../../lib/jellyfin/ids');
+/** A play's IMDb and TMDB ids, from its own id and the mapping tables already in memory. */
+function mappedIds(parsed: any, series: boolean): { imdb?: string; tmdb?: string } {
+  if (!parsed?.base) return {};
   const idMapper: any = require('../../lib/id-mapper');
   const idMappings: any = require('../../lib/id-mappings');
-  const mapped = (idType: string, id: string, type: 'movie' | 'series') => {
+  const id = parsed.idType === 'imdb' ? parsed.base : String(parsed.base).split(':')[1];
+  if (parsed.idType === 'imdb' || parsed.idType === 'tmdb' || parsed.idType === 'tvdb') {
+    let ids: any;
     try {
-      return idType === 'imdb' ? idMappings.getByImdbId(id, type)
-        : idType === 'tmdb' ? idMappings.getByTmdbId(id, type)
+      const type = series ? 'series' : 'movie';
+      ids = parsed.idType === 'imdb' ? idMappings.getByImdbId(id, type)
+        : parsed.idType === 'tmdb' ? idMappings.getByTmdbId(id, type)
         : idMappings.getByTvdbId(id, type);
-    } catch {
-      return undefined;
-    }
-  };
+    } catch { /* the mapping file is not loaded yet */ }
+    return {
+      imdb: parsed.idType === 'imdb' ? id : ids?.imdbId || undefined,
+      tmdb: parsed.idType === 'tmdb' ? id : ids?.tmdbId || undefined,
+    };
+  }
   const anime: Record<string, (id: number) => any> = {
     kitsu: idMapper.getMappingByKitsuId,
     mal: idMapper.getMappingByMalId,
     anilist: idMapper.getMappingByAnilistId,
     anidb: idMapper.getMappingByAnidbId,
   };
+  if (!anime[parsed.idType]) return {};
+  const numeric = parseInt(id, 10);
+  const mapping = anime[parsed.idType](numeric) ?? (parsed.idType === 'mal' && !series ? { type: 'MOVIE', mal_id: numeric } : null);
+  if (series) {
+    return {
+      imdb: typeof mapping?.imdb_id === 'string' ? mapping.imdb_id : undefined,
+      tmdb: mapping?.themoviedb_type === 'tv' && mapping.themoviedb_id ? String(mapping.themoviedb_id) : undefined,
+    };
+  }
+  if (!mapping) return {};
+  const film = idMapper.filmIdsFor(mapping);
+  return { imdb: film.imdbId || undefined, tmdb: film.tmdbId || undefined };
+}
+
+/** Every title the profile played, keyed as titleKeys keys a pick. Read off the ids alone, so a title is never looked up. */
+export async function localWatchedKeys(userUUID: string, profile: string): Promise<string[]> {
+  const database: any = require('../../lib/database');
+  const { parseStremioId }: any = require('../../lib/jellyfin/ids');
 
   const keys = new Set<string>();
   for (const row of (await database.listPlayedForProfile(userUUID, profile)) as any[]) {
@@ -52,25 +74,7 @@ export async function localWatchedKeys(userUUID: string, profile: string): Promi
     const parsed = parseStremioId(String(row.video_id));
     if (!parsed?.base) continue;
     const series = parsed.episode !== null && parsed.episode !== undefined;
-    const id = parsed.idType === 'imdb' ? parsed.base : String(parsed.base).split(':')[1];
-    let imdb: string | undefined;
-    let tmdb: string | undefined;
-    if (parsed.idType === 'imdb' || parsed.idType === 'tmdb' || parsed.idType === 'tvdb') {
-      const ids = mapped(parsed.idType, id, series ? 'series' : 'movie');
-      imdb = parsed.idType === 'imdb' ? id : ids?.imdbId;
-      tmdb = parsed.idType === 'tmdb' ? id : ids?.tmdbId;
-    } else if (anime[parsed.idType]) {
-      const numeric = parseInt(id, 10);
-      const mapping = anime[parsed.idType](numeric) ?? (parsed.idType === 'mal' && !series ? { type: 'MOVIE', mal_id: numeric } : null);
-      if (series) {
-        imdb = typeof mapping?.imdb_id === 'string' ? mapping.imdb_id : undefined;
-        tmdb = mapping?.themoviedb_type === 'tv' && mapping.themoviedb_id ? String(mapping.themoviedb_id) : undefined;
-      } else if (mapping) {
-        const film = idMapper.filmIdsFor(mapping);
-        imdb = film.imdbId || undefined;
-        tmdb = film.tmdbId || undefined;
-      }
-    }
+    const { imdb, tmdb } = mappedIds(parsed, series);
     if (imdb) keys.add(`imdb:${imdb}`);
     if (tmdb) keys.add(`${series ? 'tv' : 'movie'}:${tmdb}`);
   }
@@ -156,9 +160,11 @@ export async function collectLocalRows(config: any, userUUID: string, profile: s
       const bases = [...title.bases];
       const anime = bases.some((id) => ANIME_IDS.test(id));
       const kind: WatchedKind = anime ? 'anime' : title.episode ? 'series' : 'movie';
+      const mapped = bases.map((id) => mappedIds(parseStremioId(id), title.episode));
       const imdbId = bases.find((id) => id.startsWith('tt'))
-        ?? [meta?.imdb_id, meta?._imdbId].find((id) => typeof id === 'string' && id.startsWith('tt'));
-      const tmdbId = Number(bases.find((id) => id.startsWith('tmdb:'))?.slice(5) ?? meta?._tmdbId);
+        ?? [meta?.imdb_id, meta?._imdbId].find((id) => typeof id === 'string' && id.startsWith('tt'))
+        ?? mapped.find((ids) => ids.imdb)?.imdb;
+      const tmdbId = Number(bases.find((id) => id.startsWith('tmdb:'))?.slice(5) ?? meta?._tmdbId ?? mapped.find((ids) => ids.tmdb)?.tmdb);
       const hasTmdb = Number.isFinite(tmdbId) && tmdbId > 0;
       const key = imdbId || (hasTmdb ? `local:${kind}:tmdb:${tmdbId}` : `local:${meta?.id || preferredBase(bases)}`);
       const rating = [...bases, meta?.id, imdbId].map((id) => (id ? ratings.get(String(id)) : undefined)).find((value) => Number.isFinite(value) && value! > 0);
