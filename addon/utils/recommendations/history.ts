@@ -259,10 +259,14 @@ export function runAsProfile<T>(config: any, userUUID: string, profileId: string
   });
 }
 
-export function canReadHistory(config: any): boolean {
-  if (config?.apiKeys?.simklTokenId || config?.apiKeys?.mdblist) return true;
+export async function canReadHistory(config: any, userUUID: string): Promise<boolean> {
+  const hasTracker = (keys: any) => !!(keys?.simklTokenId || keys?.mdblist);
+  if (hasTracker(config?.apiKeys)) return true;
+  if ((Array.isArray(config?.jellyfinUsers) ? config.jellyfinUsers : []).some((user: any) => hasTracker(user?.accounts?.apiKeys))) return true;
   const { getSetting }: any = require('../../lib/settingsService');
-  return String(getSetting('JELLYFIN_API_ENABLED') || '').trim().toLowerCase() === 'true';
+  if (!userUUID || String(getSetting('JELLYFIN_API_ENABLED') || '').trim().toLowerCase() !== 'true') return false;
+  const database: any = require('../../lib/database');
+  return database.hasPlays(userUUID).catch(() => false);
 }
 
 type Sources = { simkl: boolean; mdblist: boolean; local: boolean; choice: HistorySource | 'all' };

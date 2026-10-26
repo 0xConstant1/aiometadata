@@ -40,11 +40,10 @@ export async function bumpRowStamp(viewer: string): Promise<void> {
   }
 }
 
-function usable(config: any): boolean {
-  const hasHistory = require('./history').canReadHistory(config);
+async function usable(config: any, userUUID: string): Promise<boolean> {
   const hasModel = !!(config?.apiKeys?.gemini || config?.apiKeys?.openrouter
     || process.env.GEMINI_API_KEY || process.env.BUILT_IN_GEMINI_API_KEY || process.env.OPENROUTER_API_KEY);
-  return hasHistory && hasModel;
+  return hasModel && require('./history').canReadHistory(config, userUUID);
 }
 
 export async function sweepRecommendations(): Promise<{ checked: number; refreshed: number }> {
@@ -83,7 +82,7 @@ export async function sweepRecommendations(): Promise<{ checked: number; refresh
       const wanted = (config?.catalogs || [])
         .filter((catalog: any) => catalog?.enabled && isRecommendationCatalog(catalog.id))
         .map((catalog: any) => catalog.id);
-      if (!wanted.length || !usable(config)) continue;
+      if (!wanted.length || !(await usable(config, user.id))) continue;
 
       await runAsProfile(config, user.id, profileId || null, async (viewerConfig: any) => {
         let profile: any = null;
