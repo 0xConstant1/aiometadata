@@ -35,6 +35,8 @@ export async function bumpRowStamp(viewer: string): Promise<void> {
   if (!redis) return;
   try {
     await redis.set(`recommendations:stamp:${viewer}`, String(Date.now()), 'EX', 90 * 24 * 60 * 60);
+    const [userUUID, profile = ''] = viewer.split('#');
+    await require('../../lib/jellyfin/items').forgetRecommendationLengths(userUUID, profile);
   } catch (error: any) {
     logger.debug(`Could not mark rows of ${viewer} as rebuilt: ${error?.message || error}`);
   }

@@ -324,6 +324,22 @@ const lengthTtl = (): number => envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60);
 const catalogLengthRedisKey = (key: string): string => `jf:len:v3:catalog:${key}`;
 const pageLengthRedisKey = (key: string): string => `jf:len:v2:page:${key}`;
 
+/** A rebuilt recommendation row can change length, and the stamp it was rebuilt under is not in the key. */
+export async function forgetRecommendationLengths(userUUID: string, profile: string): Promise<void> {
+  const matches = (key: string) => key.startsWith(`${userUUID}|`) && key.includes('|recommendations.')
+    && (key.match(/\|#([^|]*)$/)?.[1] ?? '') === profile;
+  for (const key of [...catalogLengths.keys()]) if (matches(key)) catalogLengths.delete(key);
+  if (!redis) return;
+  const prefix = catalogLengthRedisKey('');
+  let cursor = '0';
+  do {
+    const [next, keys]: [string, string[]] = await redis.scan(cursor, 'MATCH', `${prefix}${userUUID}|*|recommendations.*`, 'COUNT', 500);
+    cursor = next;
+    const stale = keys.filter((key) => matches(key.slice(prefix.length)));
+    if (stale.length) await redis.del(...stale);
+  } while (cursor !== '0');
+}
+
 function rememberLength(kind: 'catalog' | 'page', key: string, value: number): void {
   (kind === 'catalog' ? catalogLengths : pageLengths).set(key, value);
   if (!redis) return;
