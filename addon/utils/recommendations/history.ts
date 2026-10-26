@@ -441,7 +441,7 @@ export async function watchedIndex(config: any, userUUID: string): Promise<{ row
   const { localWatchedKeys }: any = require('./localHistory');
   const [rows, local] = await Promise.all([
     collectWatchedRows(config, userUUID, { everything: true }),
-    localWatchedKeys(userUUID, viewerOf(config, userUUID).profile).catch(() => [] as string[]),
+    localWatchedKeys(config, userUUID, viewerOf(config, userUUID).profile).catch(() => [] as string[]),
   ]);
   const keys = new Set<string>(local);
   for (const row of rows) for (const key of titleKeys(row)) keys.add(key);

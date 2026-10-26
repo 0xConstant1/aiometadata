@@ -64,10 +64,17 @@ function mappedIds(parsed: any, series: boolean): { imdb?: string; tmdb?: string
   return { imdb: film.imdbId || undefined, tmdb: film.tmdbId || undefined };
 }
 
-/** Every title the profile played, keyed as titleKeys keys a pick. Read off the ids alone, so a title is never looked up. */
-export async function localWatchedKeys(userUUID: string, profile: string): Promise<string[]> {
+/** Metadata only if it is already cached; nothing is fetched to answer. */
+async function cachedMeta(config: any, userUUID: string, type: string, id: string): Promise<any> {
+  const { cacheWrapMetaSmart }: any = require('../../lib/getCache');
+  return (await cacheWrapMetaSmart(userUUID, id, async () => ({ meta: null }), undefined, { config }, type, false))?.meta ?? null;
+}
+
+/** Every title the profile played, keyed as titleKeys keys a pick. Read off the ids and the caches, so nothing is asked upstream. */
+export async function localWatchedKeys(config: any, userUUID: string, profile: string): Promise<string[]> {
   const database: any = require('../../lib/database');
   const { parseStremioId }: any = require('../../lib/jellyfin/ids');
+  const { mapWithConcurrency }: any = require('../concurrency');
 
   const keys = new Set<string>();
   const unmapped = new Map<string, { parsed: any; series: boolean; imdb?: string; tmdb?: string }>();
@@ -82,9 +89,11 @@ export async function localWatchedKeys(userUUID: string, profile: string): Promi
     if ((!imdb || !tmdb) && !ANIME_IDS.test(parsed.base)) unmapped.set(`${series}|${parsed.base}`, { parsed, series, imdb, tmdb });
   }
 
-  // What the mapping file lacks, the id resolver's cache may hold for any title it has resolved.
+  // What the mapping file lacks, the id resolver's cache may hold for any title it
+  // has resolved, and failing that the title's cached metadata. That cache only
+  // keeps mappings that have a TMDB id, so an IMDb-only title is read from the metadata.
   const redisIdCache: any = require('../../lib/redis-id-cache');
-  await Promise.all([...unmapped.values()].map(async ({ parsed, series, imdb, tmdb }) => {
+  await mapWithConcurrency([...unmapped.values()], envInt('RECOMMENDATION_ENRICH_CONCURRENCY', 6, 1), async ({ parsed, series, imdb, tmdb }: any) => {
     const id = parsed.idType === 'imdb' ? parsed.base : String(parsed.base).split(':')[1];
     const cached = await redisIdCache.getCachedIdMapping(
       series ? 'series' : 'movie',
@@ -93,9 +102,17 @@ export async function localWatchedKeys(userUUID: string, profile: string): Promi
       imdb ?? null,
       parsed.idType === 'tvmaze' ? id : null,
     ).catch(() => null);
-    if (cached?.imdb_id) keys.add(`imdb:${cached.imdb_id}`);
-    if (cached?.tmdb_id) keys.add(`${series ? 'tv' : 'movie'}:${cached.tmdb_id}`);
-  }));
+    imdb ??= cached?.imdb_id || undefined;
+    tmdb ??= cached?.tmdb_id ? String(cached.tmdb_id) : undefined;
+    if (!imdb || !tmdb) {
+      const meta = await cachedMeta(config, userUUID, series ? 'series' : 'movie', parsed.base).catch(() => null);
+      imdb ??= [meta?._imdbId, meta?.imdb_id].find((value) => typeof value === 'string' && value.startsWith('tt'));
+      const fromMeta = Number(meta?._tmdbId);
+      tmdb ??= Number.isFinite(fromMeta) && fromMeta > 0 ? String(fromMeta) : undefined;
+    }
+    if (imdb) keys.add(`imdb:${imdb}`);
+    if (tmdb) keys.add(`${series ? 'tv' : 'movie'}:${tmdb}`);
+  });
   return [...keys];
 }
 
@@ -103,9 +120,7 @@ export async function collectLocalRows(config: any, userUUID: string, profile: s
   const database: any = require('../../lib/database');
   const { groupBySpelling }: any = require('../../lib/jellyfin/aliases');
   const { parseStremioId }: any = require('../../lib/jellyfin/ids');
-  const { cacheWrapMetaSmart }: any = require('../../lib/getCache');
-  const lookup = async (type: string, id: string) => (await cacheWrapMetaSmart(userUUID, id,
-    async () => ({ meta: null }), undefined, { config }, type, false))?.meta ?? null;
+  const lookup = (type: string, id: string) => cachedMeta(config, userUUID, type, id);
   const { mapWithConcurrency }: any = require('../concurrency');
 
   const plays = (await database.listPlayedForProfile(userUUID, profile)) as any[];
