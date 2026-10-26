@@ -3318,8 +3318,12 @@ addon.post("/api/recommendations/generate", async (req: any, res: any) => {
     }
 
     const { startJob }: any = require('./utils/recommendations/jobs');
-    const { runAsProfile }: any = require('./utils/recommendations/history');
-    const job = runAsProfile(config, userUUID, String(req.body?.profile || ''), (viewerConfig: any) => startJob(viewerConfig, userUUID, catalogId, req.body?.force === true));
+    const { hasOwnHistory, runAsProfile }: any = require('./utils/recommendations/history');
+    const profileId = String(req.body?.profile || '');
+    if (profileId && !hasOwnHistory(config, userUUID, profileId)) {
+      return res.status(404).json({ error: "This profile no longer has a history of its own" });
+    }
+    const job = runAsProfile(config, userUUID, profileId, (viewerConfig: any) => startJob(viewerConfig, userUUID, catalogId, req.body?.force === true));
     return res.json({ job });
   } catch (error: any) {
     return res.status(400).json({ error: error.message });

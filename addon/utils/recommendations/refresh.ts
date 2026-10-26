@@ -57,7 +57,7 @@ export async function sweepRecommendations(): Promise<{ checked: number; refresh
     const { RECOMMENDATION_CATALOGS, isRecommendationCatalog }: any = require('./catalog');
     const { picksKey, recommend }: any = require('./rank');
     const { getTasteProfile }: any = require('./profile');
-    const { runAsProfile }: any = require('./history');
+    const { hasOwnHistory, runAsProfile }: any = require('./history');
     const leadMs = envInt('RECOMMENDATION_REFRESH_LEAD', 3600, 60) * 1000;
 
     const seen: string[] = [];
@@ -78,6 +78,11 @@ export async function sweepRecommendations(): Promise<{ checked: number; refresh
         continue;
       }
       if (!config) continue;
+      // Deleted, or now reading the main user's history: refreshing it would refresh the main user's rows.
+      if (profileId && !hasOwnHistory(config, userId, profileId)) {
+        await redis.del(seenKey(viewer)).catch(() => undefined);
+        continue;
+      }
       const user = { id: userId };
       const wanted = (config?.catalogs || [])
         .filter((catalog: any) => catalog?.enabled && isRecommendationCatalog(catalog.id))

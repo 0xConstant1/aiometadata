@@ -266,6 +266,12 @@ export function trackerAvailability(config: any): { simkl: boolean; mdblist: boo
   return { simkl: !!keys.simkl, mdblist: !!keys.mdblist };
 }
 
+/** A profile that keeps its own history; one that shares the main user's is read as the main user. */
+export function hasOwnHistory(config: any, userUUID: string, profileId: string): boolean {
+  const { listProfiles }: any = require('../../lib/jellyfin/profiles');
+  return listProfiles(config, userUUID).some((profile: any) => profile.id === profileId && !profile.sharesHistory);
+}
+
 export function runAsProfile<T>(config: any, userUUID: string, profileId: string | null | undefined, fn: (viewerConfig: any) => T): T {
   const { runInViewerScope, noteProfile }: any = require('../../lib/jellyfin/viewer');
   const { listProfiles, profileKey, scopeConfigToProfile }: any = require('../../lib/jellyfin/profiles');
@@ -406,4 +412,4 @@ export async function watchedIndex(config: any, userUUID: string): Promise<{ row
   return { rows, keys };
 }
 
-module.exports = { collectWatchedRows, isWatched, isAnimeRow, rowKind, resolveSources, viewerKey, viewerOf, trackerAvailability, runAsProfile, canReadHistory, titleKeys, watchedIndex };
+module.exports = { collectWatchedRows, isWatched, isAnimeRow, rowKind, resolveSources, viewerKey, viewerOf, trackerAvailability, hasOwnHistory, runAsProfile, canReadHistory, titleKeys, watchedIndex };
