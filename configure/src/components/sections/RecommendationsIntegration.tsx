@@ -195,7 +195,9 @@ export function RecommendationsIntegration({ isOpen, onClose }: { isOpen: boolea
     const tick = () => {
       for (const key of keys) {
         fetch(`/api/recommendations/jobs?userUUID=${encodeURIComponent(configId)}`
-          + (key ? `&profile=${encodeURIComponent(key)}` : ''))
+          + (key ? `&profile=${encodeURIComponent(key)}` : ''), {
+          headers: auth.password ? { 'x-config-password': auth.password } : undefined,
+        })
           .then(response => (response.ok ? response.json() : null))
           .then(payload => {
             if (cancelled || !payload?.jobs) return;
@@ -217,7 +219,7 @@ export function RecommendationsIntegration({ isOpen, onClose }: { isOpen: boolea
     const timer = setInterval(tick, 1500);
     tick();
     return () => { cancelled = true; clearInterval(timer); };
-  }, [isOpen, configId, polled]);
+  }, [isOpen, configId, polled, auth.password]);
 
   // A build carries the settings it was started with, so changing them retires
   // its result without throwing away a run that is still going.

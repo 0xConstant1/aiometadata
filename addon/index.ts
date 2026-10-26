@@ -3330,9 +3330,16 @@ addon.post("/api/recommendations/generate", async (req: any, res: any) => {
   }
 });
 
-addon.get("/api/recommendations/jobs", (req: any, res: any) => {
+addon.get("/api/recommendations/jobs", async (req: any, res: any) => {
   const userUUID = String(req.query.userUUID || '').trim();
   if (!userUUID) return res.status(400).json({ error: "userUUID is required" });
+  try {
+    if (!(await resolveConfigAccess(req, userUUID, req.get('x-config-password')))) {
+      return res.status(401).json({ error: "Invalid UUID or password" });
+    }
+  } catch {
+    return res.status(500).json({ error: "Could not read recommendation jobs" });
+  }
   const { listJobs, pruneJobs }: any = require('./utils/recommendations/jobs');
   pruneJobs();
   const profile = String(req.query.profile || '').trim();
