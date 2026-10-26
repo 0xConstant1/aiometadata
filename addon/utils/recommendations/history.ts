@@ -334,7 +334,7 @@ async function readWatchedRows(config: any, userUUID?: string, everything = fals
     sources.simkl ? collectSimklRows(config, keys.simkl!).catch(() => [] as WatchedRow[]) : Promise.resolve([] as WatchedRow[]),
     sources.mdblist ? collectMdblistRows(config, keys.mdblist!).catch(() => [] as WatchedRow[]) : Promise.resolve([] as WatchedRow[]),
     sources.local && userUUID
-      ? collectLocalRows(config, userUUID, viewerOf(config, userUUID).profile, everything ? Infinity : undefined).catch(() => [] as WatchedRow[])
+      ? collectLocalRows(config, userUUID, viewerOf(config, userUUID).profile).catch(() => [] as WatchedRow[])
       : Promise.resolve([] as WatchedRow[]),
   ]);
 
@@ -374,9 +374,14 @@ export function titleKeys(entry: { kind: string; tmdbId?: number; imdbId?: strin
   return keys;
 }
 
+/** Rows are capped for the prompt; the keys cover every play, so the filter does not depend on a title being named. */
 export async function watchedIndex(config: any, userUUID: string): Promise<{ rows: WatchedRow[]; keys: Set<string> }> {
-  const rows = await collectWatchedRows(config, userUUID, { everything: true });
-  const keys = new Set<string>();
+  const { localWatchedKeys }: any = require('./localHistory');
+  const [rows, local] = await Promise.all([
+    collectWatchedRows(config, userUUID, { everything: true }),
+    localWatchedKeys(userUUID, viewerOf(config, userUUID).profile).catch(() => [] as string[]),
+  ]);
+  const keys = new Set<string>(local);
   for (const row of rows) for (const key of titleKeys(row)) keys.add(key);
   return { rows, keys };
 }
