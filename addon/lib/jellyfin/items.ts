@@ -309,10 +309,26 @@ const catalogLengths = new LRUCache<string, number>({
   ttl: envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60) * 1000,
 });
 
+// A rebuilt recommendation row can change length and order, so its lengths and
+// walk positions are keyed by the rebuild it was served from. Read before the
+// keys are built, so every process moves to a rebuild on its next request.
+const rowGenerations = new LRUCache<string, string>({ max: envInt('JELLYFIN_PAGE_LENGTH_CACHE_MAX', 2000, 1) });
+const isRecommendationRow = (catalog: CatalogRef): boolean => catalog.id.startsWith('recommendations.');
+const rowViewer = (userUUID: string): string => (viewerProfile() ? `${userUUID}#${viewerProfile()}` : userUUID);
+
+async function readRowGeneration(userUUID: string, catalogs: CatalogRef[]): Promise<void> {
+  if (!catalogs.some(isRecommendationRow)) return;
+  const viewer = rowViewer(userUUID);
+  const stamp = await require('../../utils/recommendations/refresh').rowStamp(viewer).catch(() => '');
+  rowGenerations.set(viewer, stamp);
+}
+
 function lengthKeyFor(userUUID: string, catalog: CatalogRef, extras: Record<string, string>, tags: string[], keepKey = ''): string {
   const owner = viewerAccountOwner();
-  const viewer = catalog.id.startsWith(SERVER_WATCHLIST_PREFIX) || catalog.id.startsWith('recommendations.') ? viewerProfile() : '';
-  return `${userUUID}|${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}|${keepKey}${owner ? `|@${owner}` : ''}${viewer ? `|#${viewer}` : ''}`;
+  const row = isRecommendationRow(catalog);
+  const viewer = catalog.id.startsWith(SERVER_WATCHLIST_PREFIX) || row ? viewerProfile() : '';
+  const generation = row ? rowGenerations.get(rowViewer(userUUID)) : '';
+  return `${userUUID}|${catalog.type}|${catalog.id}|${extras.genre ?? ''}|${extras.search ?? ''}|${tags.join(',')}|${keepKey}${owner ? `|@${owner}` : ''}${viewer ? `|#${viewer}` : ''}${generation ? `|g${generation}` : ''}`;
 }
 
 export function knownCatalogLength(userUUID: string, catalog: CatalogRef, extras: Record<string, string> = {}, tags: string[] = [], keepKey = ''): number | undefined {
@@ -324,22 +340,6 @@ const lengthTtl = (): number => envInt('JELLYFIN_CATALOG_LENGTH_TTL', 3600, 60);
 const catalogLengthRedisKey = (key: string): string => `jf:len:v3:catalog:${key}`;
 const pageLengthRedisKey = (key: string): string => `jf:len:v2:page:${key}`;
 
-/** A rebuilt recommendation row can change length, and the stamp it was rebuilt under is not in the key. */
-export async function forgetRecommendationLengths(userUUID: string, profile: string): Promise<void> {
-  const matches = (key: string) => key.startsWith(`${userUUID}|`) && key.includes('|recommendations.')
-    && (key.match(/\|#([^|]*)$/)?.[1] ?? '') === profile;
-  for (const key of [...catalogLengths.keys()]) if (matches(key)) catalogLengths.delete(key);
-  if (!redis) return;
-  const prefix = catalogLengthRedisKey('');
-  let cursor = '0';
-  do {
-    const [next, keys]: [string, string[]] = await redis.scan(cursor, 'MATCH', `${prefix}${userUUID}|*|recommendations.*`, 'COUNT', 500);
-    cursor = next;
-    const stale = keys.filter((key) => matches(key.slice(prefix.length)));
-    if (stale.length) await redis.del(...stale);
-  } while (cursor !== '0');
-}
-
 function rememberLength(kind: 'catalog' | 'page', key: string, value: number): void {
   (kind === 'catalog' ? catalogLengths : pageLengths).set(key, value);
   if (!redis) return;
@@ -349,6 +349,7 @@ function rememberLength(kind: 'catalog' | 'page', key: string, value: number): v
 
 export async function warmCatalogLengths(userUUID: string, catalogs: CatalogRef[], extras: Record<string, string> = {}, tags: string[] = [], keepKey = ''): Promise<void> {
   if (!redis || catalogs.length === 0) return;
+  await readRowGeneration(userUUID, catalogs);
   const wanted: Array<{ kind: 'catalog' | 'page'; key: string; at: string }> = [];
   for (const catalog of catalogs) {
     const lengthKey = lengthKeyFor(userUUID, catalog, extras, tags, keepKey);
@@ -406,6 +407,7 @@ export async function fetchWindow(
   pick?: (metas: any[]) => Promise<any[]>
 ): Promise<Window> {
   const filtering = !!keep || !!pick;
+  await readRowGeneration(userUUID, [catalog]);
   const lengthKey = lengthKeyFor(userUUID, catalog, extras, tags, keepKey);
   const pageKey = lengthKeyFor(userUUID, catalog, extras, tags);
   let pageLength = pageLengths.get(pageKey);
