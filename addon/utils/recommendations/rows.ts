@@ -161,7 +161,7 @@ export function formatRow(row: WatchedRow, facts?: FactMap, tuning: Tuning = DEF
 
   const parts = [row.title];
   if (row.year) parts.push(`(${row.year})`);
-  if (row.kind === 'anime') parts.push('[anime]');
+  if (require('./history').isAnimeRow(row)) parts.push('[anime]');
 
   if (row.watchedEpisodes && total) {
     parts.push(`${row.watchedEpisodes}/${total} eps`);
