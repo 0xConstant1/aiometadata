@@ -30,13 +30,14 @@ function mappedIds(parsed: any, series: boolean): { imdb?: string; tmdb?: string
   const idMapper: any = require('../../lib/id-mapper');
   const idMappings: any = require('../../lib/id-mappings');
   const id = parsed.idType === 'imdb' ? parsed.base : String(parsed.base).split(':')[1];
-  if (parsed.idType === 'imdb' || parsed.idType === 'tmdb' || parsed.idType === 'tvdb') {
+  if (parsed.idType === 'imdb' || parsed.idType === 'tmdb' || parsed.idType === 'tvdb' || parsed.idType === 'tvmaze') {
     let ids: any;
     try {
       const type = series ? 'series' : 'movie';
       ids = parsed.idType === 'imdb' ? idMappings.getByImdbId(id, type)
         : parsed.idType === 'tmdb' ? idMappings.getByTmdbId(id, type)
-        : idMappings.getByTvdbId(id, type);
+        : parsed.idType === 'tvdb' ? idMappings.getByTvdbId(id, type)
+        : idMappings.getSeriesByTvmaze(id);
     } catch { /* the mapping file is not loaded yet */ }
     return {
       imdb: parsed.idType === 'imdb' ? id : ids?.imdbId || undefined,
@@ -69,6 +70,7 @@ export async function localWatchedKeys(userUUID: string, profile: string): Promi
   const { parseStremioId }: any = require('../../lib/jellyfin/ids');
 
   const keys = new Set<string>();
+  const unmapped = new Map<string, { parsed: any; series: boolean; imdb?: string; tmdb?: string }>();
   for (const row of (await database.listPlayedForProfile(userUUID, profile)) as any[]) {
     if (Number(row.played) !== 1) continue;
     const parsed = parseStremioId(String(row.video_id));
@@ -77,7 +79,23 @@ export async function localWatchedKeys(userUUID: string, profile: string): Promi
     const { imdb, tmdb } = mappedIds(parsed, series);
     if (imdb) keys.add(`imdb:${imdb}`);
     if (tmdb) keys.add(`${series ? 'tv' : 'movie'}:${tmdb}`);
+    if ((!imdb || !tmdb) && !ANIME_IDS.test(parsed.base)) unmapped.set(`${series}|${parsed.base}`, { parsed, series, imdb, tmdb });
   }
+
+  // What the mapping file lacks, the id resolver's cache may hold for any title it has resolved.
+  const redisIdCache: any = require('../../lib/redis-id-cache');
+  await Promise.all([...unmapped.values()].map(async ({ parsed, series, imdb, tmdb }) => {
+    const id = parsed.idType === 'imdb' ? parsed.base : String(parsed.base).split(':')[1];
+    const cached = await redisIdCache.getCachedIdMapping(
+      series ? 'series' : 'movie',
+      tmdb ?? null,
+      parsed.idType === 'tvdb' ? id : null,
+      imdb ?? null,
+      parsed.idType === 'tvmaze' ? id : null,
+    ).catch(() => null);
+    if (cached?.imdb_id) keys.add(`imdb:${cached.imdb_id}`);
+    if (cached?.tmdb_id) keys.add(`${series ? 'tv' : 'movie'}:${cached.tmdb_id}`);
+  }));
   return [...keys];
 }
 
