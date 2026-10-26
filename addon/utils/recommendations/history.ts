@@ -49,6 +49,8 @@ export interface WatchedRow {
   imdbId?: string;
   /** Carried by both sources, and what genres and credits are looked up with. */
   tmdbId?: number;
+  /** Which TMDB id space tmdbId is in. Films and television are numbered separately; unset when the source does not say. */
+  tmdbType?: 'movie' | 'tv';
   title: string;
   year?: number;
   kind: WatchedKind;
@@ -91,11 +93,18 @@ function rowFromSimkl(entry: any, kind: WatchedKind, status: string): WatchedRow
   const ids = media?.ids || {};
   const imdbId = typeof ids.imdb === 'string' && ids.imdb ? ids.imdb : undefined;
   const fallback = ids.simkl ?? ids.tmdb ?? ids.mal ?? title;
+  const animeType = String(entry?.anime_type ?? media?.anime_type ?? '');
+  const tmdbType = kind === 'movie' ? 'movie'
+    : kind === 'series' ? 'tv'
+    : animeType === 'movie' ? 'movie'
+    : animeType && animeType !== 'ona' ? 'tv'
+    : undefined;
 
   return {
     key: imdbId || `simkl:${fallback}`,
     imdbId,
     tmdbId: toTmdbId(ids.tmdb),
+    tmdbType,
     title,
     year: toYear(media?.year),
     kind,
@@ -190,6 +199,7 @@ async function collectMdblistRows(config: any, apiKey: string): Promise<WatchedR
       key: imdbId || `mdblist:${movie?.ids?.tmdb ?? title}`,
       imdbId,
       tmdbId: toTmdbId(movie?.ids?.tmdb),
+      tmdbType: 'movie',
       title,
       year: toYear(movie?.year),
       kind: 'movie',
@@ -214,6 +224,7 @@ async function collectMdblistRows(config: any, apiKey: string): Promise<WatchedR
         key,
         imdbId,
         tmdbId: toTmdbId(show?.ids?.tmdb),
+        tmdbType: 'tv',
         title,
         year: toYear(show?.year),
         kind: 'series',
@@ -345,7 +356,7 @@ export async function collectWatchedRows(config: any, userUUID?: string, options
 
   const { cacheWrapGlobal }: any = require('../../lib/getCache');
   return cacheWrapGlobal(
-    `recommendations:history:v3:${viewerKey(config, userUUID)}:${sources.choice}${fingerprint ? `:${fingerprint}` : ''}`,
+    `recommendations:history:v4:${viewerKey(config, userUUID)}:${sources.choice}${fingerprint ? `:${fingerprint}` : ''}`,
     () => readWatchedRows(config, userUUID, everything),
     fingerprint ? HISTORY_TTL : UNWATCHED_TTL,
     { sourceList: true }
@@ -364,19 +375,31 @@ async function readWatchedRows(config: any, userUUID?: string, everything = fals
       : Promise.resolve([] as WatchedRow[]),
   ]);
 
-  // Keyed by imdb id where there is one, so a title without one is matched on
-  // any id the rows share. Titles are left out: Simkl spells anime in romaji.
+  // Keyed by imdb id where there is one, so a title without one is matched on an
+  // id both rows are sure of: TMDB numbers films and television separately, so a
+  // TMDB id counts only with its id space. Two different imdb ids never merge.
+  // Titles are left out: Simkl spells anime in romaji.
   const merged = new Map<string, WatchedRow>();
   const holder = new Map<string, string>();
-  const idsOf = (row: WatchedRow) => titleKeys(row).filter(key => !key.startsWith('title:'));
+  const identities = (row: WatchedRow) => [
+    row.imdbId ? `imdb:${row.imdbId}` : '',
+    row.tmdbId && row.tmdbType ? `${row.tmdbType}:${row.tmdbId}` : '',
+  ].filter(Boolean);
+  const agrees = (held: WatchedRow, row: WatchedRow) => !held.imdbId || !row.imdbId || held.imdbId === row.imdbId;
+  const tmdbOf = (first: WatchedRow, second: WatchedRow) => {
+    const tmdbId = first.tmdbId ?? second.tmdbId;
+    const tmdbType = (first.tmdbId === tmdbId ? first.tmdbType : undefined) ?? (second.tmdbId === tmdbId ? second.tmdbType : undefined);
+    return { tmdbId, tmdbType };
+  };
   for (const row of [...local, ...mdblist, ...simkl]) {
-    const at = merged.has(row.key) ? row.key : idsOf(row).map(key => holder.get(key)).find(Boolean) ?? row.key;
+    const at = [row.key, ...identities(row).map(key => holder.get(key))]
+      .find((key): key is string => !!key && merged.has(key) && agrees(merged.get(key)!, row)) ?? row.key;
     const existing = merged.get(at);
     let next: WatchedRow;
     if (!existing) {
       next = row;
     } else if (!isWatched(row) && isWatched(existing)) {
-      next = { ...existing, imdbId: existing.imdbId ?? row.imdbId, tmdbId: existing.tmdbId ?? row.tmdbId };
+      next = { ...existing, imdbId: existing.imdbId ?? row.imdbId, ...tmdbOf(existing, row) };
     } else {
       const newest = isWatched(existing) && String(existing.watchedAt || '') > String(row.watchedAt || '') ? existing.watchedAt : row.watchedAt;
       next = {
@@ -386,13 +409,13 @@ async function readWatchedRows(config: any, userUUID?: string, everything = fals
         watchedAt: newest,
         rating: row.rating ?? existing.rating,
         imdbId: row.imdbId ?? existing.imdbId,
-        tmdbId: row.tmdbId ?? existing.tmdbId,
+        ...tmdbOf(row, existing),
         watchedEpisodes: row.watchedEpisodes ?? existing.watchedEpisodes,
         totalEpisodes: row.totalEpisodes ?? existing.totalEpisodes,
       };
     }
     merged.set(at, next);
-    for (const key of idsOf(next)) if (!holder.has(key)) holder.set(key, at);
+    for (const key of identities(next)) if (!holder.has(key)) holder.set(key, at);
   }
 
   const rows = [...merged.values()];
@@ -400,9 +423,11 @@ async function readWatchedRows(config: any, userUUID?: string, everything = fals
   return rows;
 }
 
-export function titleKeys(entry: { kind: string; tmdbId?: number; imdbId?: string; title?: string; year?: number }): string[] {
+export function titleKeys(entry: { kind: string; tmdbId?: number; tmdbType?: 'movie' | 'tv'; imdbId?: string; title?: string; year?: number }): string[] {
   const keys: string[] = [];
-  if (entry.tmdbId) {
+  if (entry.tmdbId && entry.tmdbType) {
+    keys.push(`${entry.tmdbType}:${entry.tmdbId}`);
+  } else if (entry.tmdbId) {
     if (entry.kind !== 'series') keys.push(`movie:${entry.tmdbId}`);
     if (entry.kind !== 'movie') keys.push(`tv:${entry.tmdbId}`);
   }

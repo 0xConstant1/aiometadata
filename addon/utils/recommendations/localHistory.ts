@@ -184,6 +184,7 @@ export async function collectLocalRows(config: any, userUUID: string, profile: s
           key,
           imdbId,
           tmdbId: hasTmdb ? tmdbId : undefined,
+          tmdbType: hasTmdb ? (title.episode ? 'tv' : 'movie') : undefined,
           title: name,
           year: yearOf(meta),
           kind,
