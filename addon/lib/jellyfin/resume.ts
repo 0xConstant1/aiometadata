@@ -341,7 +341,7 @@ async function rowsFrom(service: Capable, credential: string, config: any): Prom
 }
 
 // No id mapping: the video id was recorded in the space the client played it in.
-async function ownRows(userUUID: string, profile: string): Promise<ResumeRow[]> {
+async function ownRows(userUUID: string, profile: string, config: any): Promise<ResumeRow[]> {
   const database: any = require('../database');
   const { parseStremioId } = require('./ids');
   const limit = envInt('JELLYFIN_RESUME_OWN_LIMIT', 100, 1);
@@ -380,9 +380,25 @@ async function ownRows(userUUID: string, profile: string): Promise<ResumeRow[]> 
   }
 
   // The earliest write of a batch is the spelling the client played under.
-  const { dedupeByAlias } = require('./aliases');
+  const { dedupeByAlias, videoIdAliases } = require('./aliases');
+  const { movieSpellings } = require('./watched');
   const deduped: ResumeRow[] = await dedupeByAlias([...rows].sort((a, b) => (a.writtenAt ?? 0) - (b.writtenAt ?? 0)));
-  return deduped.sort((a, b) => b.updatedAt - a.updatedAt);
+  const spellingsOf = new Map<string, string[]>();
+  for (const row of deduped) {
+    spellingsOf.set(row.videoId, row.kind === 'movie' ? await movieSpellings(row.videoId, config) : await videoIdAliases(row.videoId));
+  }
+  let held = new Map<string, any>();
+  try {
+    held = await database.getPlaystates(userUUID, [...new Set([...spellingsOf.values()].flat())], profile);
+  } catch (error: any) {
+    logger.debug(`Own resume spellings unavailable: ${error?.message || error}`);
+  }
+  const finishedSince = (row: ResumeRow): boolean =>
+    (spellingsOf.get(row.videoId) ?? []).some((spelling) => {
+      const other = held.get(spelling);
+      return Boolean(other) && Number(other.played) === 1 && !(Number(other.position_ms) > 0) && Number(other.updated_at) > (row.writtenAt ?? 0);
+    });
+  return deduped.filter((row) => !finishedSince(row)).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function resumeSnapshot(userUUID: string, config: any): Promise<ResumeRow[]> {
@@ -391,7 +407,7 @@ export async function resumeSnapshot(userUUID: string, config: any): Promise<Res
   const profile = profileKey(config);
 
   const tracker = readsTrackers(config) ? await trackerSnapshot(userUUID, config) : [];
-  const own = await ownRows(userUUID, profile);
+  const own = await ownRows(userUUID, profile, config);
   let known = new Map<string, any>();
   try {
     const { getPlaystatesAcross } = require('./aliases');
