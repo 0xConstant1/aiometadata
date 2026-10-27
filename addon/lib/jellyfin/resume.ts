@@ -578,7 +578,9 @@ async function clearDropped(userUUID: string, profile: string, config: any, befo
     const rows = [...(await database.getPlaystates(userUUID, spellings, profile)).values()].filter((row: any) => Number(row.position_ms) > 0);
     if (!rows.length || rows.some((row: any) => Number(row.last_played_at) > seenAt)) continue;
 
-    for (const row of rows) await database.upsertPlaystate(userUUID, row.video_id, { positionMs: 0 }, profile);
+    const at = Date.now();
+    rows.sort((a: any, b: any) => (Number(a.updated_at) || 0) - (Number(b.updated_at) || 0));
+    for (const [index, row] of rows.entries()) await database.upsertPlaystate(userUUID, row.video_id, { positionMs: 0 }, profile, at + index);
     cleared += 1;
   }
   return cleared;
