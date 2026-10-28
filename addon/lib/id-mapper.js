@@ -1175,6 +1175,7 @@ async function resolveKitsuIdFromTmdbSeason(tmdbId, seasonNumber) {
       // Fallback to first available season
       const firstSeason = franchiseInfo.availableSeasonNumbers[0];
       const firstSeasonInfo = franchiseInfo.seasons[firstSeason];
+      if (!firstSeasonInfo) return null;
       logger.debug(`[ID Mapper] Using fallback season ${firstSeason} (Kitsu ID ${firstSeasonInfo.kitsuId}) for TMDB S${seasonNumber}`);
       return firstSeasonInfo.kitsuId;
     }
