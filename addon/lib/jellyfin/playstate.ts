@@ -422,6 +422,10 @@ async function recordPlaystate(
   finished = false
 ): Promise<void> {
   await writePlaystate(userUUID, profile, session, event, positionMs, played, finished);
+  if (event === 'played' || event === 'unplayed' || played === true) {
+    const { invalidateResume } = require('./resume');
+    invalidateResume(userUUID);
+  }
   announce(userUUID, config, profile, session).catch((error: any) =>
     logger.debug(`User data push failed for ${session.videoId}: ${error?.message || error}`)
   );
