@@ -97,6 +97,7 @@ function imageTtl(): number {
 // as one command per scope rather than five per item.
 const pendingImages = new Map<string, Map<string, string>>();
 let imageFlushTimer: NodeJS.Timeout | null = null;
+const IMAGE_FIELDS_PER_COMMAND = 500;
 
 function scheduleImageFlush(): void {
   if (imageFlushTimer) return;
@@ -120,13 +121,17 @@ export async function flushRememberedImages(): Promise<void> {
   const ttl = imageTtl();
   // One hash per scope rather than a key per item: a key each grew to six
   // figures on a busy instance and slowed every scan of the keyspace.
-  const tx = redis.multi();
-  for (const [hash, fields] of batches) {
-    const flat: string[] = [];
-    for (const [field, value] of fields) flat.push(field, value);
-    tx.hsetex(hash, 'EX', ttl, 'FIELDS', fields.size, ...flat).expire(hash, ttl, 'NX').expire(hash, ttl, 'GT');
-  }
   try {
+    const tx = redis.multi();
+    for (const [hash, fields] of batches) {
+      // Spread arguments are bounded by the stack, so a burst of art goes in slices.
+      const entries = [...fields];
+      for (let at = 0; at < entries.length; at += IMAGE_FIELDS_PER_COMMAND) {
+        const slice = entries.slice(at, at + IMAGE_FIELDS_PER_COMMAND);
+        tx.hsetex(hash, 'EX', ttl, 'FIELDS', slice.length, ...slice.flat());
+      }
+      tx.expire(hash, ttl, 'NX').expire(hash, ttl, 'GT');
+    }
     await tx.exec();
   } catch {
     // Art is a cache; a lost write is read from the meta again.
