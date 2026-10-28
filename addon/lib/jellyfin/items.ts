@@ -11,7 +11,7 @@ import { EMPTY_USER_DATA } from './dto';
 import { placeholderSources } from './streams';
 import redis from '../redisClient';
 import type { CatalogRef } from './views';
-import { viewerAccountOwner, viewerMarksUnaired, viewerProfile, viewerReadsExtensions } from './viewer';
+import { viewerAccountOwner, viewerMarksUnaired, viewerProfile, viewerReadsExtensions, viewerWantsPeople } from './viewer';
 import { SERVER_WATCHLIST_PREFIX } from '../serverWatchlist';
 import { isLandscapeCatalogConfig } from '../../utils/catalogPosterShape';
 
@@ -750,7 +750,7 @@ export function metaToBaseItem(
     RunTimeTicks: itemType === 'BoxSet' ? null : parseRuntimeTicks(meta.runtime),
     ProviderIds: ids,
     ExternalUrls: externalUrls(ids, itemType === 'Series'),
-    People: peopleFrom(meta, serverId),
+    People: viewerWantsPeople() ? peopleFrom(meta, serverId) : [],
     Studios: studiosOf(meta),
     Tags: Array.isArray(meta.keywords) ? meta.keywords : [],
     Taglines: typeof meta.tagline === 'string' && meta.tagline ? [meta.tagline] : [],

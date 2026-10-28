@@ -53,6 +53,7 @@ import { oneIdAsked, withCriticRatings } from './criticRatings';
 import { ImageQueueFull, SIZED_WIDTH, imageQueueFull, inImageSlot, shrinkToWidth, widthStep } from '../posterCache/resize';
 import { IMAGE_CSP } from '../posterCache/proxyResponse';
 import { registerStubs } from './stubs';
+import { noteWantsPeople } from './viewer';
 import { decodeCursor, exportRow, findUser, historyPage, historyUsers, isEpisodeVideo, itemIdForVideo, userByKey, videoIdsOf } from './history';
 import { forgetUserSettings, liveSessionsFor, recordPlayed, recordPlayedUpTo, recordPlaying, recordProgress, recordStopped, recordUnplayed, recordUserData, sessionTouchDue, touchSessions, type LiveSession } from './playstate';
 
@@ -3715,6 +3716,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   });
 
   async function singleItemHandler(req: any, res: any): Promise<void> {
+    if (!req.params.listed) noteWantsPeople(true);
     const userUUID = req.params.userUUID;
     const descriptor = await decodeJellyfinId(req.params.itemId);
     if (!descriptor) {
