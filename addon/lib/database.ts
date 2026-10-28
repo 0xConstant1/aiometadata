@@ -1292,6 +1292,23 @@ class Database {
   }
 
   // Only plays with a time: history a sync copied from a tracker carries none.
+  async latestOwnPlayAmong(userUUID: string, profile: string, bases: string[]): Promise<{ videoId: string; at: number } | null> {
+    if (!bases.length) return null;
+    const p = this.type === 'sqlite' ? () => '?' : ((n = 0) => () => `$${++n}`)();
+    const params: any[] = [userUUID, profile];
+    const scope = `user_uuid = ${p()} AND profile = ${p()}`;
+    const spelled = bases.map((base) => {
+      params.push(`${base}:%`);
+      return `video_id LIKE ${p()}`;
+    });
+    const query = `SELECT video_id, last_played_at FROM jellyfin_playstate WHERE ${scope}
+      AND (origin = 'server' OR ((origin IS NULL OR origin = 'play') AND ABS(updated_at - last_played_at) < 2000))
+      AND last_played_at IS NOT NULL AND (played = 1 OR position_ms > 0) AND (${spelled.join(' OR ')})
+      ORDER BY last_played_at DESC, updated_at, video_id LIMIT 1`;
+    const row = await this.getQuery(query, params);
+    return row?.video_id ? { videoId: String(row.video_id), at: Number(row.last_played_at) } : null;
+  }
+
   async listRecentlyPlayed(
     userUUID: string,
     since: number,

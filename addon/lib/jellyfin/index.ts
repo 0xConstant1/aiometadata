@@ -2947,11 +2947,14 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       for (const row of ownRows) if (snapshot.dropped.has(row.metaId)) trace(row, 'server', { outcome: 'dropped' });
       for (const row of snapshot.nextUp) if (snapshot.dropped.has(row.metaId)) trace(row, 'tracker', { outcome: 'dropped' });
     }
-    const sourceOf = (row: any): NextUpSource => (own.includes(row) ? 'server' : snapshot.nextUp.includes(row) ? 'tracker' : 'sequel');
+    const { homedRows } = require('./episodeHome');
+    const home = <T extends { metaId: string; videoId?: string | null; mediaType: string }>(rows: T[]): Promise<T[]> => homedRows(userUUID, config, rows);
+    const trackerRows = await home(snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId)));
+    const sourceOf = (row: any): NextUpSource => (own.includes(row) ? 'server' : trackerRows.includes(row) ? 'tracker' : 'sequel');
     // One row per resolved show; the table's newest spelling first.
     const animeOnly = keepsAnimeOnly(config) && !(req.query.SeriesId ?? req.query.seriesId ?? req.query.ParentId ?? req.query.parentId);
-    const sequels = (await animeSequels(snapshot)).nextUp;
-    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...snapshot.nextUp.filter((row) => !snapshot.dropped.has(row.metaId)), ...sequels]
+    const sequels = await home((await animeSequels(snapshot)).nextUp);
+    const offered = [...[...own].sort((a, b) => b.lastWatchedAt - a.lastWatchedAt), ...trackerRows, ...sequels]
       .filter((row) => {
         if (!animeOnly || isAnimeTitle(row.metaId, 'series')) return true;
         trace?.(row, sourceOf(row), { outcome: 'not-anime' });
@@ -2962,7 +2965,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       identities.set(metaId, await showIdentity(metaId, config));
     });
     const trackerTimes = new Map<string, Omit<NextUpRow, 'lastWatchedAt'>>();
-    for (const row of [...snapshot.nextUp, ...(await followedTimes)]) {
+    for (const row of [...trackerRows, ...(await home(await followedTimes))]) {
       if ((row.airsAt || row.aired) && !trackerTimes.has(row.metaId)) trackerTimes.set(row.metaId, row);
     }
     const taken = new Set<string>();
@@ -2976,7 +2979,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       .sort((a, b) => b.lastWatchedAt - a.lastWatchedAt);
     const sources = new Map(offered.map((row) => [row, sourceOf(row)]));
     const trackerRanks = new Map<string, number>();
-    for (const row of snapshot.nextUp) {
+    for (const row of trackerRows) {
       const identity = identities.get(row.metaId) ?? row.metaId;
       if (Number.isFinite(row.trackerRank) && !trackerRanks.has(identity)) trackerRanks.set(identity, row.trackerRank!);
     }
@@ -3183,15 +3186,21 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
   // Tracker-followed shows are all checked; watchlisted and locally known ones are capped.
   const showsInView = async (userUUID: string, config: any, days: number) => {
     const watchlistLimit = envInt('JELLYFIN_UPCOMING_WATCHLIST_LIMIT', 100, 1);
-    const [snapshot, resume, own, caughtUp, listed] = await Promise.all([
+    const [snapshot, resume, own, followedFeed, listed] = await Promise.all([
       watchedSnapshot(userUUID, config),
       resumeSnapshot(userUUID, config),
       ownNextUpRows(userUUID, profileKey(config)),
       upcomingFollowed(config, days),
       watchlistEntries(userUUID, config, watchlistLimit).catch(() => ({ entries: [] as any[] })),
     ]);
+    const { homedRows } = require('./episodeHome');
+    const [trackerRows, caughtUp, following] = await Promise.all([
+      homedRows(userUUID, config, snapshot.nextUp) as Promise<NextUpRow[]>,
+      homedRows(userUUID, config, followedFeed) as Promise<UpcomingRow[]>,
+      homedRows(userUUID, config, snapshot.following) as Promise<typeof snapshot.following>,
+    ]);
     const shows = new Map<string, string>();
-    for (const row of [...caughtUp, ...snapshot.following]) {
+    for (const row of [...caughtUp, ...following]) {
       if (!shows.has(row.metaId)) shows.set(row.metaId, row.mediaType);
     }
     const watchlisted = listed.entries
@@ -3202,15 +3211,15 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     }
     let local = 0;
     const localCap = envInt('JELLYFIN_UPCOMING_LOCAL_SHOWS', 60, 0);
-    for (const row of [...own, ...snapshot.nextUp, ...resume.filter((r) => r.kind === 'episode')].filter((r) => !snapshot.dropped.has(r.metaId))) {
+    for (const row of [...own, ...trackerRows, ...resume.filter((r) => r.kind === 'episode')].filter((r) => !snapshot.dropped.has(r.metaId))) {
       if (shows.has(row.metaId)) continue;
       if (local >= localCap) break;
       shows.set(row.metaId, row.mediaType);
       local += 1;
     }
     const followed = [...shows.entries()].filter(([metaId]) => !keepsAnimeOnly(config) || isAnimeTitle(metaId, 'series'));
-    const sequels = (await animeSequels(snapshot)).upcoming.filter((row) => !shows.has(row.metaId));
-    return { snapshot, caughtUp, followed, sequels };
+    const sequels = (await homedRows(userUUID, config, (await animeSequels(snapshot)).upcoming) as UpcomingRow[]).filter((row) => !shows.has(row.metaId));
+    return { snapshot, caughtUp, followed, sequels, trackerRows };
   };
 
   const onePerEpisode = async (episodes: any[], config: any): Promise<any[]> => {
@@ -3342,9 +3351,9 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const serverId = serverIdFor(userUUID);
     const profile = profileKey(config);
     const premiereAt = (item: any): number => Date.parse(item?.PremiereDate || '');
-    const { snapshot, caughtUp, followed, sequels } = await showsInView(userUUID, config, envInt('JELLYFIN_UPCOMING_DAYS', 90, 1));
+    const { snapshot, caughtUp, followed, sequels, trackerRows } = await showsInView(userUUID, config, envInt('JELLYFIN_UPCOMING_DAYS', 90, 1));
     const timed = new Map<string, Array<{ videoId?: string | null; season: number | null; episode: number; airsAt: number }>>();
-    for (const row of [...snapshot.nextUp, ...caughtUp]) {
+    for (const row of [...trackerRows, ...caughtUp]) {
       if (!row.airsAt) continue;
       const list = timed.get(row.metaId) || [];
       list.push({ videoId: row.videoId, season: row.season ?? null, episode: row.episode, airsAt: row.airsAt });
@@ -3410,7 +3419,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const lately = (at: number): boolean => Number.isFinite(at) && at <= now && at > now - holdMs;
     const airing = upcomingMode(config) === 'airing';
 
-    const { snapshot, caughtUp, followed, sequels } = await showsInView(userUUID, config, days);
+    const { snapshot, caughtUp, followed, sequels, trackerRows } = await showsInView(userUUID, config, days);
 
     let nextUpShows: Promise<Set<string>> | null = null;
     const inNextUp = async (metaId: string): Promise<boolean> => {
@@ -3435,7 +3444,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       return (await nextUpShows).has(await showIdentity(metaId, config));
     };
     const named = new Map<string, NextUpRow>();
-    for (const row of snapshot.nextUp) if (row.airsAt || row.aired) named.set(row.metaId, row);
+    for (const row of trackerRows) if (row.airsAt || row.aired) named.set(row.metaId, row);
     // MDBList names each followed show's next episode and when it airs, in progress or not,
     // so its time is used only once the show passes the caught-up check below.
     const timed = new Map<string, (typeof caughtUp)[number]>();
