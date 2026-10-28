@@ -1361,8 +1361,8 @@ class Database {
   async listPlaystateInProgressFor(userUUID: string, limit: number, profile: string | null = null): Promise<any[]> {
     const scoped = profile === null ? '' : (this.type === 'sqlite' ? ' AND profile = ?' : ' AND profile = $3');
     const query = this.type === 'sqlite'
-      ? `SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND position_ms > 0${scoped} ORDER BY COALESCE(last_played_at, updated_at) DESC LIMIT ?`
-      : `SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND position_ms > 0${scoped} ORDER BY COALESCE(last_played_at, updated_at) DESC LIMIT $2`;
+      ? `SELECT * FROM jellyfin_playstate WHERE user_uuid = ? AND position_ms > 0${scoped} ORDER BY COALESCE(last_played_at, updated_at) DESC, updated_at, video_id LIMIT ?`
+      : `SELECT * FROM jellyfin_playstate WHERE user_uuid = $1 AND position_ms > 0${scoped} ORDER BY COALESCE(last_played_at, updated_at) DESC, updated_at, video_id LIMIT $2`;
     return (await this.allQuery(query, profile === null ? [userUUID, limit] : this.type === 'sqlite' ? [userUUID, profile, limit] : [userUUID, limit, profile])) || [];
   }
 
@@ -1497,7 +1497,7 @@ class Database {
       FROM jellyfin_watches w
       LEFT JOIN jellyfin_playstate p ON p.user_uuid = w.user_uuid AND p.profile = w.profile AND p.video_id = w.video_id
       WHERE w.user_uuid = ${sqlite ? '?' : '$1'}${scoped}
-      ORDER BY w.watched_at DESC, w.video_id LIMIT ${sqlite ? '?' : '$2'}`;
+      ORDER BY w.watched_at DESC, p.updated_at IS NULL, p.updated_at, w.video_id LIMIT ${sqlite ? '?' : '$2'}`;
     const params = profile === null ? [userUUID, limit] : sqlite ? [userUUID, profile, limit] : [userUUID, limit, profile];
     return (await this.allQuery(query, params)) || [];
   }
