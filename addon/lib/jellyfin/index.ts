@@ -111,11 +111,35 @@ async function locateEpisode(episodes: any[], videoId: string, mediaType: string
   );
 }
 
+async function videoForEpisode(meta: any, descriptor: any): Promise<any | null> {
+  const direct = findEpisodeVideo(meta, descriptor);
+  if (direct) return direct;
+  const { stremioIdFor } = require('./idsCodec');
+  const { videoIdAliases } = require('./aliases');
+  const videoId = stremioIdFor(descriptor);
+  if (!videoId) return null;
+  const wanted = new Set<string>([videoId, ...(await videoIdAliases(videoId))]);
+  return (Array.isArray(meta?.videos) ? meta.videos : []).find((video: any) => wanted.has(String(video?.id))) ?? null;
+}
+
+async function episodeForDescriptor(episodes: any[], descriptor: any, wanted: string, metaId: string): Promise<any | undefined> {
+  const exact = episodes.find((episode: any) => episode.Id === wanted);
+  if (exact) return exact;
+  const { stremioIdFor } = require('./idsCodec');
+  const videoId = stremioIdFor(descriptor);
+  if (videoId) {
+    const linked = await locateEpisode(episodes, videoId, descriptor.t, metaId);
+    if (linked) return linked;
+  }
+  return episodes.find((episode: any) => episode.IndexNumber === descriptor.e && episode.ParentIndexNumber === descriptor.s);
+}
+
 // An anime episode's id names its own entry; the library may group the show under an IMDb id.
 async function seriesForEpisode(userUUID: string, config: any, descriptor: any): Promise<{ meta: any; seriesId: string } | null> {
   const idMapper: any = require('../id-mapper');
   const perEntry = /^(kitsu|mal|anilist|anidb):/.test(String(descriptor.i));
-  const grouped = perEntry && config?.providers?.anime !== 'kitsu' && config?.providers?.anime !== 'mal';
+  const { perEntryAnime } = require('./watchlistSources');
+  const grouped = perEntry && !perEntryAnime(config);
   if (grouped) {
     const numeric = parseInt(String(descriptor.i).split(':')[1], 10);
     const mapping = String(descriptor.i).startsWith('kitsu:') ? idMapper.getMappingByKitsuId(numeric)
@@ -125,7 +149,7 @@ async function seriesForEpisode(userUUID: string, config: any, descriptor: any):
     const imdb = mapping?.imdb_id;
     if (imdb) {
       const meta = await fetchMeta(userUUID, 'series', String(imdb));
-      if (meta && findEpisodeVideo(meta, descriptor)) {
+      if (meta && (await videoForEpisode(meta, descriptor))) {
         return { meta, seriesId: encodeJellyfinId({ k: 'series', t: descriptor.t, i: String(meta.id) }) };
       }
     }
@@ -148,7 +172,7 @@ async function nowPlayingItem(userUUID: string, config: any, serverId: string, i
   if (!found) return null;
   const episodes = buildEpisodes(found.meta, descriptor.t, found.seriesId, serverId, null);
   const wanted = normaliseJellyfinId(itemId);
-  return episodes.find((e: any) => e.Id === wanted) ?? episodes.find((e: any) => e.IndexNumber === descriptor.e && e.ParentIndexNumber === descriptor.s) ?? null;
+  return (await episodeForDescriptor(episodes, descriptor, wanted, String(found.meta.id))) ?? null;
 }
 
 type ActivityCounts = { byKey: Map<string, any>; favourites: Map<string, number> };
@@ -2305,9 +2329,11 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     if (descriptor.k === 'episode') {
       const meta = await fetchMeta(userUUID, 'series', descriptor.i);
       if (!meta) return undefined;
-      const video = findEpisodeVideo(meta, descriptor);
-      if (video) buildEpisode(meta, video, descriptor.t, encodeSeriesId(descriptor), scope);
-      return (await recallImages(scope, itemId)) ?? { primary: meta.poster || undefined };
+      const video = await videoForEpisode(meta, descriptor);
+      const built = video ? buildEpisode(meta, video, descriptor.t, encodeSeriesId(descriptor), scope) : null;
+      return (await recallImages(scope, itemId))
+        ?? (built?.Id && built.Id !== itemId ? await recallImages(scope, String(built.Id)) : undefined)
+        ?? { primary: meta.poster || undefined };
     }
 
     if (descriptor.k === 'collection' || descriptor.k === 'boxset') {
@@ -2346,7 +2372,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
     const chain: any[] = [];
 
     if (descriptor.k === 'episode') {
-      const video = findEpisodeVideo(meta, descriptor);
+      const video = await videoForEpisode(meta, descriptor);
       const number = (Number.isInteger(video?.season) ? video.season : null) ?? descriptor.s;
       const season = number === null || number === undefined
         ? null
@@ -3699,9 +3725,7 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
       // own id resolves to, so the guid is matched rather than the index.
       const episodes = buildEpisodes(meta, descriptor.t, seriesId, serverIdFor(userUUID), null);
       const wanted = normaliseJellyfinId(String(req.params.itemId));
-      const episode =
-        episodes.find((e: any) => e.Id === wanted) ??
-        episodes.find((e: any) => e.IndexNumber === descriptor.e && e.ParentIndexNumber === descriptor.s);
+      const episode = await episodeForDescriptor(episodes, descriptor, wanted, String(meta.id));
       if (!episode) {
         res.status(404).json({ Message: 'Item not found' });
         return;
