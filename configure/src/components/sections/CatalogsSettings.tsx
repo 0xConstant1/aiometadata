@@ -985,6 +985,31 @@ const UpNextSortSelect = ({ value, onChange }: { value: 'watched' | 'aired'; onC
   </div>
 );
 
+type WatchlistSort = 'added' | 'released' | 'released_asc';
+
+const WATCHLIST_SORT_HELP: Record<WatchlistSort, string> = {
+  added: 'Titles you added most recently come first',
+  released: 'Newest releases come first, upcoming titles at the top',
+  released_asc: 'Oldest releases come first',
+};
+
+const WatchlistSortSelect = ({ value, onChange }: { value: WatchlistSort; onChange: (value: WatchlistSort) => void }) => (
+  <div className="space-y-2">
+    <Label>Sort By</Label>
+    <Select value={value} onValueChange={(next) => onChange(next === 'released' || next === 'released_asc' ? next : 'added')}>
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="added">Date added</SelectItem>
+        <SelectItem value="released">Release date, newest first</SelectItem>
+        <SelectItem value="released_asc">Release date, oldest first</SelectItem>
+      </SelectContent>
+    </Select>
+    <p className="text-xs text-muted-foreground">{WATCHLIST_SORT_HELP[value]}</p>
+  </div>
+);
+
 const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogConfig, isOpen: boolean, onClose: () => void }) => {
   const { setConfig, catalogTTL, config } = useConfig();
   const [cacheTTL, setCacheTTL] = useState<number | null>(catalog.cacheTTL ?? null);
@@ -993,6 +1018,10 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
   const isCalendar = catalog.id.startsWith('simkl.calendar');
   const isUpNext = catalog.id.startsWith('simkl.upnext');
   const isCombinedUpNext = catalog.id === 'simkl.upnext';
+  const isPlanToWatch = /^simkl\.watchlist\.[a-z]+\.plantowatch$/.test(catalog.id);
+  const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>(
+    catalog.metadata?.watchlistSort === 'released' || catalog.metadata?.watchlistSort === 'released_asc' ? catalog.metadata.watchlistSort : 'added'
+  );
   const [pageSize, setPageSize] = useState<number>(catalog.metadata?.pageSize || 50);
   const [useShowPoster, setUseShowPoster] = useState<boolean>(catalog.metadata?.useShowPosterForUpNext || false);
   const [includeAnime, setIncludeAnime] = useState<boolean>(catalog.metadata?.includeAnimeInUpNext !== false);
@@ -1037,6 +1066,7 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
                 ...(isCalendar && { airingSoonDays: Math.max(1, Math.min(7, airingSoonDays)) }),
                 ...(isUpNext && { useShowPosterForUpNext: useShowPoster, upNextSort: upNextSort === 'aired' ? 'aired' : undefined }),
                 ...(isCombinedUpNext && { includeAnimeInUpNext: includeAnime }),
+                ...(isPlanToWatch && { watchlistSort: watchlistSort === 'added' ? undefined : watchlistSort }),
                 hideWatchedTrakt: hideTraktValue,
                 hideWatchedAnilist: hideAnilistValue,
                 hideWatchedMdblist: hideMdblistValue,
@@ -1132,6 +1162,8 @@ const SimklSettingsDialog = ({ catalog, isOpen, onClose }: { catalog: CatalogCon
               <UpNextSortSelect value={upNextSort} onChange={setUpNextSort} />
             </div>
           )}
+
+          {isPlanToWatch && <WatchlistSortSelect value={watchlistSort} onChange={setWatchlistSort} />}
 
           {isCalendar && (
             <div className="space-y-2">

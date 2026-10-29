@@ -3,7 +3,7 @@ import { historyPayload, type EpisodeRef } from "./historyPayload";
 import { noteTrackerCall } from "./trackerCalls";
 import { getMeta } from "../lib/getMeta.js";
 import { cacheWrapMetaSmart, cacheWrapGlobal, classifyResultAllowEmpty } from "../lib/getCache.js";
-import { mapWithLimit } from "./concurrency";
+import { mapWithConcurrency, mapWithLimit } from "./concurrency";
 import { envInt } from "./envNumber";
 import { UserConfig } from "../types/index.js";
 import * as Utils from "./parseProps.js";
@@ -107,6 +107,7 @@ const RATE_LIMIT_CONFIG = {
 };
 
 const SIMKL_APP_BUCKET = 'app';
+const SIMKL_EDGE_BUCKET = 'edge';
 const SIMKL_V2_GET_INTERVAL_MS = 100;
 const SIMKL_V2_POST_INTERVAL_MS = 1000;
 const SIMKL_QUOTA_KEY_PREFIX = 'simkl-quota:';
@@ -597,6 +598,57 @@ async function fetchSimklItemDetail(type: 'movie' | 'tv' | 'anime', simklId: str
     simklDetailTtl(),
     { resultClassifier: classifyResultAllowEmpty }
   );
+}
+
+async function fetchSimklReleaseDate(segment: 'movies' | 'tv' | 'anime', simklId: string | number): Promise<number | null> {
+  const record: any = await cacheWrapGlobal(
+    `simkl:released:v1:${segment}:${simklId}`,
+    async () => {
+      const url = `${SIMKL_BASE_URL}/${segment}/${simklId}?${simklDataParams()}`;
+      const response: any = await makeRateLimitedRequest(
+        () => httpGet(url, { headers: { 'simkl-api-key': simklClientIdFor() }, dispatcher: simklDispatcher }),
+        `Simkl release date (${segment}/${simklId})`,
+        RATE_LIMIT_CONFIG.maxRetries,
+        { bucket: SIMKL_EDGE_BUCKET, minInterval: 0 }
+      );
+      const data = response?.data;
+      return { released: data?.released || data?.first_aired || null };
+    },
+    simklDetailTtl(),
+    { upstream: true, resultClassifier: classifyResultAllowEmpty }
+  );
+  const time = record?.released ? Date.parse(record.released) : NaN;
+  return Number.isFinite(time) ? time : null;
+}
+
+async function sortSimklItemsByRelease(items: any[], ascending: boolean): Promise<any[]> {
+  const dates = await mapWithConcurrency(items, envInt('SIMKL_RELEASE_DATE_CONCURRENCY', 16, 1), async (item: any) => {
+    const simklId = item?.ids?.simkl ?? item?.ids?.simkl_id;
+    const segment = item?.simkl_list_type === 'movies' ? 'movies' : item?.simkl_list_type === 'shows' ? 'tv' : 'anime';
+    const exact = simklId ? await fetchSimklReleaseDate(segment, simklId).catch(() => null) : null;
+    if (exact !== null) return exact;
+    const year = Number(item?.year);
+    return Number.isInteger(year) && year > 0 ? Date.UTC(year, 0, 1) : null;
+  });
+  return items
+    .map((item, index) => ({ item, index, date: dates[index] }))
+    .sort((a, b) => {
+      if (a.date === null || b.date === null) return a.date === b.date ? a.index - b.index : a.date === null ? 1 : -1;
+      return (ascending ? a.date - b.date : b.date - a.date) || a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
+
+function sortSimklItemsByActivity(items: any[], by: 'added' | 'watched'): any[] {
+  const timeOf = (item: any) => {
+    const raw = by === 'added' ? item?.simkl_added_to_watchlist_at : (item?.simkl_last_watched_at || item?.simkl_last_watched);
+    const time = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+  };
+  return items
+    .map((item, index) => ({ item, index, time: timeOf(item) }))
+    .sort((a, b) => b.time - a.time || a.index - b.index)
+    .map(({ item }) => item);
 }
 
 type SimklTitleRef = { segment: 'movie' | 'tv' | 'anime'; id: number } | { missing: true };
@@ -2169,6 +2221,8 @@ export {
   fetchSimklItemDetail,
   fetchSimklRecommendations,
   fetchSimklWatchlistItems,
+  sortSimklItemsByRelease,
+  sortSimklItemsByActivity,
   fetchSimklUpNextItems,
   parseSimklUpNextItems,
   parseSimklItems,

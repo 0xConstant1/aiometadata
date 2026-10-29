@@ -5,7 +5,7 @@ import { getLanguages } from "./getLanguages.js";
 import { fetchMDBListItems, parseMDBListItems, fetchMDBListBatchMediaInfo, fetchMDBListUpNext, parseMDBListUpNextItems, usesMdblistExternalItemsEndpoint, supportsMdblistScoreFilters } from "../utils/mdbList.js";
 import { fetchStremThruCatalog, parseStremThruItems } from "../utils/stremthru.js";
 import { fetchTraktWatchlistItems, fetchTraktFavoritesItems, fetchTraktRecommendationsItems, fetchTraktListItems, fetchTraktListItemsById, parseTraktItems, fetchTraktMostFavoritedItems, fetchTraktCalendarShows, fetchTraktSearchItems, getTraktAccessToken, fetchTraktUpNextEpisodes, fetchTraktUnwatchedEpisodes, fetchTraktTrendingItems, fetchTraktPopularItems, fetchTraktAnticipatedItems } from "../utils/traktUtils.js";
-import { fetchSimklTrendingItems, fetchSimklRecipeItems, fetchSimklWatchlistItems, fetchSimklUpNextItems, parseSimklItems, parseSimklUpNextItems, getSimklToken, fetchSimklCalendarItems, fetchSimklGenreItems, fetchSimklDvdReleases, fetchSimklListPage } from "../utils/simklUtils.js";
+import { fetchSimklTrendingItems, fetchSimklRecipeItems, fetchSimklWatchlistItems, sortSimklItemsByRelease, sortSimklItemsByActivity, fetchSimklUpNextItems, parseSimklItems, parseSimklUpNextItems, getSimklToken, fetchSimklCalendarItems, fetchSimklGenreItems, fetchSimklDvdReleases, fetchSimklListPage } from "../utils/simklUtils.js";
 import { fetchLetterboxdList, parseLetterboxdItems, getLetterboxdGenreIdByName } from "../utils/letterboxdUtils.js";
 import { getFlixPatrolMetas } from "../utils/flixpatrolUtils.js";
 import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType, publicMetaDBListId, WATCHLIST_CATALOG_ID } from "../utils/publicmetadbUtils.js";
@@ -3238,7 +3238,9 @@ async function getSimklCatalog(
     else if (catalogId.startsWith('simkl.watchlist.')) {
       const parts = catalogId.split('.');
       if (parts.length === 4) {
-        const watchlistType = parts[2] as 'movies' | 'shows' | 'anime';
+        const listTypes: Array<'movies' | 'shows' | 'anime'> = parts[2] === 'all'
+          ? ['movies', 'shows', 'anime']
+          : [parts[2] as 'movies' | 'shows' | 'anime'];
         const status = parts[3] as 'watching' | 'plantowatch' | 'hold' | 'completed' | 'dropped';
         
         const tokenId = (config.apiKeys as any)?.simklTokenId;
@@ -3254,17 +3256,20 @@ async function getSimklCatalog(
           return [];
         }
         
-        logger.debug(`[Simkl] Fetching watchlist ${watchlistType}/${status} (all items, local pagination)`);
+        logger.debug(`[Simkl] Fetching watchlist ${parts[2]}/${status} (all items, local pagination)`);
 
         // No TTL override: this blob is shared across every catalog on the same status
         // and is invalidated by the activity check, so a catalog's own (much shorter)
         // TTL would expire it early and force a full re-sync instead of a delta.
-        const result = await fetchSimklWatchlistItems(accessToken, watchlistType, status, undefined, config);
+        const fetched = await Promise.all(listTypes.map(async (watchlistType) => {
+          const result = await fetchSimklWatchlistItems(accessToken, watchlistType, status, undefined, config);
+          return result.items.map((item: any) => ({ watchlistType, item }));
+        }));
         
         // Filter and map items
-        let allItems = result.items
-          .map((item: any) => {
-            const media = item.show || item.movie || item;
+        let allItems = fetched.flat()
+          .map(({ watchlistType, item }: { watchlistType: 'movies' | 'shows' | 'anime'; item: any }) => {
+            const media = item.show || item.movie || item.anime || item;
             const ids = media.ids || {};
             
             const hasValidId = watchlistType === 'anime'
@@ -3284,10 +3289,12 @@ async function getSimklCatalog(
             return {
               type: itemType,
               ...media,
+              simkl_list_type: watchlistType,
               simkl_status: item.status,
               simkl_added_to_watchlist_at: item.added_to_watchlist_at,
               simkl_rating: item.user_rating,
               simkl_last_watched: item.last_watched,
+              simkl_last_watched_at: item.last_watched_at,
               simkl_next_to_watch: item.next_to_watch,
               simkl_watched_episodes_count: item.watched_episodes_count,
               simkl_total_episodes_count: item.total_episodes_count,
@@ -3296,7 +3303,7 @@ async function getSimklCatalog(
           })
           .filter((item: any) => item !== null); // Remove null items
 
-        if (status === 'watching' && (watchlistType === 'shows' || watchlistType === 'anime')) {
+        if (status === 'watching' && listTypes.some(t => t !== 'movies')) {
           const beforeCount = allItems.length;
           allItems = allItems.filter((item: any) => {
             if (item.simkl_next_to_watch) return true;
@@ -3315,6 +3322,13 @@ async function getSimklCatalog(
           if (beforeCount !== allItems.length) {
             logger.debug(`[Simkl] Filtered ${beforeCount - allItems.length} fully caught-up shows from watching list (${allItems.length} remaining with unwatched episodes)`);
           }
+        }
+
+        const watchlistSort = catalogConfig?.metadata?.watchlistSort;
+        if (watchlistSort === 'released' || watchlistSort === 'released_asc') {
+          allItems = await sortSimklItemsByRelease(allItems, watchlistSort === 'released_asc');
+        } else if (watchlistSort === 'added' || listTypes.length > 1) {
+          allItems = sortSimklItemsByActivity(allItems, watchlistSort === 'added' || status === 'plantowatch' || status === 'hold' ? 'added' : 'watched');
         }
         
         const globalItemIndex = (page - 1) * pageSize;
@@ -3376,7 +3390,9 @@ async function getSimklCatalog(
       || (catalogId.startsWith('simkl.recipe.') && catalogId.endsWith('.anime'))
       || listMediaType === 'anime';
     const parseStart = Date.now();
-    let metas = await parseSimklItems(response.items, type as 'movie' | 'series', config, userUUID, includeVideos, isAnimeCatalog);
+    let metas = catalogId.startsWith('simkl.watchlist.all.')
+      ? (await Promise.all(response.items.map((item: any) => parseSimklItems([item], item.type, config, userUUID, includeVideos, item.simkl_list_type === 'anime')))).flat()
+      : await parseSimklItems(response.items, type as 'movie' | 'series', config, userUUID, includeVideos, isAnimeCatalog);
     metas = stampListedAt(metas, response.items, (item: any) => item?.ids ?? {}, (item: any) => item?.simkl_added_to_watchlist_at);
     const parseTime = Date.now() - parseStart;
     logger.info(`[Simkl] parseSimklItems took ${parseTime}ms for ${response.items.length} items`);

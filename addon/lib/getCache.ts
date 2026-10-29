@@ -833,6 +833,7 @@ function getCatalogContentScope(idOnly: string, catalogType: string, config: any
   // Mixed, not series: the row can carry anime too, so the anime providers have to
   // reach the config hash or a provider change would serve stale episode numbers.
   if (idOnly === 'simkl.upnext') return 'mixed';
+  if (idOnly.startsWith('simkl.watchlist.all.')) return 'mixed';
 
   if (idOnly === 'mdblist.upnext') return 'series';
   if (idOnly === 'mdblist.watchlist') return 'mixed';

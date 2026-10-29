@@ -54,6 +54,9 @@ export function applyCatalogKeyArgs(args: Record<string, any>, catalogId: string
   if ((catalogId === 'trakt.upnext' || catalogId.startsWith('simkl.upnext')) && catalogConfig?.metadata?.upNextSort === 'aired') {
     args.upNextSort = 'aired';
   }
+  if (catalogId.startsWith('simkl.watchlist.') && ['added', 'released', 'released_asc'].includes(catalogConfig?.metadata?.watchlistSort)) {
+    args.watchlistSort = catalogConfig.metadata.watchlistSort;
+  }
   if (catalogId === 'mdblist.upnext' && catalogConfig?.metadata?.hideUnreleased !== undefined) {
     args.hideUnreleased = catalogConfig.metadata.hideUnreleased;
   }
@@ -88,7 +91,9 @@ export async function applyCatalogKeyStamps(args: Record<string, any>, catalogId
             : [['shows', 'watching'], ['anime', 'watching']];
         } else {
           const parts = catalogId.split('.');
-          pairs = [[parts[2], parts[3]]];
+          pairs = parts[2] === 'all'
+            ? ['movies', 'shows', 'anime'].map(t => [t, parts[3]])
+            : [[parts[2], parts[3]]];
         }
         const fps = await Promise.all(pairs.map(([t, s]) => getSimklActivityFingerprint(token.access_token, t, s, config)));
         const fp = fps.filter(Boolean).join('+');
