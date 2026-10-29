@@ -24,6 +24,7 @@ const { runWithRequestContext } = require('./logBuffer.js');
 const posterCacheConfig = require('./posterCache/config.js');
 const { collectWarmupTargets, extractIdsFromWarmerMeta } = require('./warmupTargets.js');
 const imageWarmQueue = require('./posterCache/warmQueue.js');
+const { warmTrailerAddon } = require('./trailerProjection');
 
 function pinnedCollectionTasks(config, enabledCatalogs) {
   const tasks = new Map();
@@ -382,6 +383,15 @@ class ComprehensiveCatalogWarmer {
     return projectCatalogPayloadForCache(result);
   }
 
+  async warmTrailers(metas, config, catalogId) {
+    if (config.trailerProvider !== 'addon') return;
+    try {
+      await warmTrailerAddon(metas, config, this.config.intervalHours * 60 * 60);
+    } catch (error) {
+      this.log('debug', `Trailer warm failed for ${catalogId}: ${error.message}`);
+    }
+  }
+
   async warmMALCatalog(catalogId, page, config, extraArgs) {
     const language = config.language || 'en-US';
     const { genre: genreName, type_filter } = extraArgs;
@@ -660,6 +670,7 @@ class ComprehensiveCatalogWarmer {
 
           if (rawMetaCount > 0) {
             imageWarmQueue.offer(collectWarmupTargets(result.metas, config, catalog.type));
+            await this.warmTrailers(result.metas, config, catalogId);
           }
 
           if (rawMetaCount === 0) {
@@ -698,6 +709,7 @@ class ComprehensiveCatalogWarmer {
 
         if (rawMetaCount > 0) {
           imageWarmQueue.offer(collectWarmupTargets(result.metas, config, catalog.type));
+          await this.warmTrailers(result.metas, config, catalogId);
         }
 
         if (rawMetaCount === 0) {
