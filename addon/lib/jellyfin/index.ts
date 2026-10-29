@@ -1445,7 +1445,10 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
         const ahead = children.slice(startIndex, startIndex + folderLimit);
         const titlesFrom = Math.max(0, startIndex - children.length);
         const room = folderLimit - ahead.length;
-        const page = room > 0
+        const foldersOnly = wantedTypes.length > 0 && wantedTypes.every((t) => t === 'BoxSet');
+        const page = foldersOnly
+          ? { items: [], hasMore: false }
+          : room > 0
           ? await boxSetMembers(userUUID, config, serverId, collection, folder, titlesFrom, room, includeItemTypes ? String(includeItemTypes) : undefined, extras.genre)
           : { items: [], hasMore: true };
         await applyWatchedState(page.items, await watchedSnapshot(userUUID, config), userUUID, profileKey(config), config);
