@@ -22,7 +22,7 @@ import * as tvdb from './tvdb.js';
 import { to3LetterCode, to3LetterCountryCode } from './language-map.js';
 import { resolveAllIds } from './id-resolver.js';
 import { cacheWrapTvdbApi, cacheWrap, cacheWrapCatalog, cacheWrapAniListCatalog, cacheWrapJikanApi, cacheWrapGlobal, classifyResultAllowEmpty, stableStringify, CATALOG_TTL } from './getCache.js';
-import { isDiscoverCatalogId, applyDiscoverSignature } from './discoverCatalogSignature.js';
+import { applyCatalogKeyArgs, applyCatalogKeyStamps, hiddenCatalogGenre } from './catalogKeyArgs.js';
 import { getTVDBContentRatingId } from '../utils/tvdbContentRating.js';
 import { getMeta } from './getMeta.js';
 import { fetchLumiereList, lumiereApiBase, lumiereListOf } from '../utils/lumiereLists.js';
@@ -3500,49 +3500,19 @@ async function getPublicMetaDBCatalog(
   }
 }
 
-function buildCatalogCacheArgs(
+async function buildCatalogCacheArgs(
   catalogId: string,
   catalogType: string,
   page: number,
   genre: string | null,
   config: UserConfig
-): Record<string, any> {
+): Promise<Record<string, any>> {
   const args: Record<string, any> = {};
-  if (page > 1) args.page = page;
   if (genre) args.genre = genre;
-
   const catCfg = (config.catalogs as any[])?.find((c: any) => c.id === catalogId && c.type === catalogType);
-
-  // Claimed before the provider prefixes; anilist.discover would otherwise match anilist.
-  if (isDiscoverCatalogId(catalogId)) {
-    applyDiscoverSignature(args, catCfg);
-  } else if (catalogId.startsWith('trakt.') || catalogId.startsWith('anilist.') || catalogId.startsWith('streaming.') || catalogId.startsWith('tmdb.year') || catalogId.startsWith('tmdb.language')) {
-    if (catCfg?.sort) args.sort = catCfg.sort;
-    if (catCfg?.sortDirection) args.sortDirection = catCfg.sortDirection;
-  } else if (catalogId.startsWith('mdblist.')) {
-    if (catCfg?.sort) args.sort = catCfg.sort;
-    if (catCfg?.order) args.order = catCfg.order;
-    if (supportsMdblistScoreFilters(catCfg)) {
-      if (typeof catCfg.filter_score_min === 'number') args.filter_score_min = catCfg.filter_score_min;
-      if (typeof catCfg.filter_score_max === 'number') args.filter_score_max = catCfg.filter_score_max;
-    }
-  }
-
-  if (catalogId === 'trakt.calendar' || catalogId.startsWith('simkl.calendar')) {
-    const tz = (config as any).timezone || process.env.TZ || 'UTC';
-    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-    args.date = fmt.format(new Date());
-    args.days = typeof catCfg?.metadata?.airingSoonDays === 'number' ? catCfg.metadata.airingSoonDays : 1;
-  }
-
-  if (catalogId === 'tvmaze.schedule') {
-    const tz = (config as any).timezone || process.env.TZ || 'UTC';
-    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-    args.date = fmt.format(new Date());
-    args.genre = !args.genre || args.genre === 'None' ? '' : args.genre.toUpperCase();
-  }
-
-  return args;
+  applyCatalogKeyArgs(args, catalogId, catCfg, config);
+  if (page > 1) args.page = page;
+  return applyCatalogKeyStamps(args, catalogId, catCfg, config);
 }
 
 async function getMergedCatalog(
@@ -3624,41 +3594,11 @@ async function getMergedCatalog(
 
   const seenIds = new Set<string>(cursor?.seenIds || []);
 
-  const resolveDefaultGenre = async (srcId: string, srcType: string): Promise<string | null> => {
-    const srcCfg = (config.catalogs as any[])?.find((c: any) => c.id === srcId && c.type === srcType);
-    if (!srcCfg || srcCfg.showInHome !== false) return null;
-
-    if (srcId === 'tmdb.trending') return 'Day';
-    if (srcId === 'mal.schedule') return 'Monday';
-    if (srcId === 'mal.seasons') {
-      const seasons = ['Winter', 'Spring', 'Summer', 'Fall'];
-      const d = new Date();
-      const m = d.getMonth();
-      const idx = m <= 2 ? 0 : m <= 5 ? 1 : m <= 8 ? 2 : 3;
-      return `${seasons[idx]} ${d.getFullYear()}`;
-    }
-    if (srcId === 'tvdb.genres' || srcId === 'tvdb.trending') {
-      try {
-        const genres = await getGenreList('tvdb', language, srcType as 'movie' | 'series', config);
-        const names = genres.map((g: any) => g.name).sort();
-        if (names.length > 0) return names[0];
-      } catch {}
-    }
-    if (srcId === 'mal.studios') {
-      try {
-        const studios = await cacheWrapJikanApi('mal-studios', async () => await jikan.getStudios(100), 30 * 24 * 60 * 60);
-        const names = studios.map((s: any) => { const t = s.titles.find((x: any) => x.type === 'Default'); return t?.title; }).filter(Boolean);
-        if (names.length > 0) return names[0];
-      } catch {}
-    }
-    return 'None';
-  };
-
   const fetchSourcePage = async (src: any, srcPage: number): Promise<{ items: any[]; rawLength: number }> => {
     try {
-      const effectiveGenre = genre || await resolveDefaultGenre(src.catalogId, src.catalogType) || '';
+      const effectiveGenre = genre || await hiddenCatalogGenre(config, userUUID, src.catalogId, src.catalogType) || '';
       const srcConfig = viewerConfigFor(config, owner, src.catalogId);
-      const cacheArgs = buildCatalogCacheArgs(src.catalogId, src.catalogType, srcPage, effectiveGenre, srcConfig);
+      const cacheArgs = await buildCatalogCacheArgs(src.catalogId, src.catalogType, srcPage, effectiveGenre, srcConfig);
       const catalogKey = `${src.catalogId}:${src.catalogType}:${stableStringify(cacheArgs)}`;
 
       const result = await cacheWrapCatalog(userUUID, catalogKey, async () => {

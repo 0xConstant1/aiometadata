@@ -1,19 +1,15 @@
 require('dotenv').config();
 const {
   cacheWrapCatalog,
-  cacheWrapGlobal,
   cacheWrapJikanApi,
   stableStringify,
   projectCatalogPayloadForCache,
 } = require('./getCache');
 const { sleep } = require('../utils/concurrency');
-const { getGenreList } = require('./getGenreList');
 const { parseAnimeCatalogMetaBatch } = require('../utils/parseProps');
 const { envInt } = require('../utils/envNumber');
-const { defaultsToNoneGenre } = require('./genreNoneDefault');
 const jikan = require('./mal');
 const { buildProxyArtUrl } = require('./posterCache/proxyArt.js');
-const movielens = require('./movielens');
 const database = require('./database');
 const redis = require('./redisClient');
 const { runWindow, insideWindow, msUntilWindow } = require('./runWindow');
@@ -21,14 +17,19 @@ const { runWindow, insideWindow, msUntilWindow } = require('./runWindow');
 const EXPIRY_TOLERANCE_MS = 1000;
 const consola = require('consola');
 const { loadConfigFromDatabase } = require('./configApi.js');
-const { isDiscoverCatalogId, applyDiscoverSignature } = require('./discoverCatalogSignature');
+const { applyCatalogKeyArgs, applyCatalogKeyStamps, hiddenCatalogGenre } = require('./catalogKeyArgs');
 const { markWarmRunStarted, markWarmRunFinished } = require('./catalogWarmWindow');
-const { supportsMdblistScoreFilters } = require('../utils/mdbList');
 const { getTvmazeScheduleCatalog } = require('./tvmazeScheduleCatalog');
 const { runWithRequestContext } = require('./logBuffer.js');
 const posterCacheConfig = require('./posterCache/config.js');
 const { collectWarmupTargets, extractIdsFromWarmerMeta } = require('./warmupTargets.js');
 const imageWarmQueue = require('./posterCache/warmQueue.js');
+
+const WARMER_MAL_CATALOGS = new Set([
+  'mal.airing', 'mal.upcoming', 'mal.top_movies', 'mal.top_series', 'mal.most_popular', 'mal.most_favorites',
+  'mal.top_anime', 'mal.season_top', 'mal.season_top_new', 'mal.80sDecade', 'mal.90sDecade', 'mal.00sDecade',
+  'mal.10sDecade', 'mal.20sDecade', 'mal.genres', 'mal.studios', 'mal.schedule', 'mal.seasons',
+]);
 
 
 const logger = consola.create({
@@ -551,72 +552,9 @@ class ComprehensiveCatalogWarmer {
     config._currentCatalogConfig = catalog;
     
     const catalogId = catalog.id;
-    // Determine if manifest will include a "None" genre option for this catalog
-    // When showInHome=false and catalog type adds "None", Stremio will send genre=None
-    const shouldIncludeGenreNone = catalog.showInHome === false && defaultsToNoneGenre(catalogId);
+    const genreValue = await hiddenCatalogGenre(config, uuid, catalogId, catalog.type);
 
-    // Use the genre value that Stremio will actually send
-    // For tvdb.genres, when showInHome is false the manifest does not add a 'None' option so the client defaults to the first genre.
-    // For MAL catalogs we use 'None' when showInHome is false.
-    let genreValue = null;
-    if (catalog.showInHome === false) {
-      if (catalogId === 'tmdb.trending') {
-        genreValue = 'Day';
-      }
-      // TVDB genres and tvdb.trending use the first genre when showInHome is false
-      else if (catalogId === 'tvdb.genres' || catalogId === 'tvdb.trending') {
-        try {
-          const genres = await getGenreList('tvdb', config.language, catalog.type, config);
-          let genreNames = genres.map(genre => genre.name).sort();
-          if (genreNames && genreNames.length > 0) {
-            genreValue = genreNames[0];
-          }
-        } catch (e) {
-          // leave as null and let fallback happen
-        }
-      }
-      // MAL special catalogs default to the first option instead of 'None' when showInHome is false
-      else if (catalogId === 'mal.schedule') {
-        genreValue = 'Monday';
-      } else if (catalogId === 'mal.seasons') {
-        // Use cached seasons if available, otherwise generate a season list similar to manifest
-        if (global.availableSeasons && global.availableSeasons.length > 0) {
-          genreValue = global.availableSeasons[0];
-        } else {
-          const seasons = ['Winter', 'Spring', 'Summer', 'Fall'];
-          const currentDate = new Date();
-          const currentYear = currentDate.getFullYear();
-          const currentMonth = currentDate.getMonth(); // 0-11
-          let currentSeasonIndex;
-          if (currentMonth <= 2) currentSeasonIndex = 0; // Winter
-          else if (currentMonth <= 5) currentSeasonIndex = 1; // Spring
-          else if (currentMonth <= 8) currentSeasonIndex = 2; // Summer
-          else currentSeasonIndex = 3; // Fall
-          const firstSeason = `${seasons[currentSeasonIndex]} ${currentYear}`;
-          genreValue = firstSeason;
-        }
-      } else if (catalogId === 'mal.studios') {
-        try {
-          // Use the same cache key and TTL as `getManifest` to avoid redundant API calls and keep cache consistent
-          const studios = await cacheWrapJikanApi('mal-studios', async () => await jikan.getStudios(100), 30 * 24 * 60 * 60);
-          let studioNames = studios.map(studio => {
-          const defaultTitle = studio.titles.find(t => t.type === 'Default');
-          return defaultTitle ? defaultTitle.title : null;
-        }).filter(Boolean);
-          if (studioNames && studioNames.length > 0) {
-            genreValue = studioNames[0];
-          }
-        } catch (e) {
-          // fallback to null
-        }
-      }
-      // For catalogs where manifest adds 'None' (e.g., mdblist/stremthru/custom/streaming/tmdb.top/tmdb.airing_today), use 'None'
-      else if (shouldIncludeGenreNone) {
-        genreValue = 'None';
-      }
-    }
-
-    this.log('debug', `Starting to warm catalog: ${catalogId} with UUID: ${uuid}${shouldIncludeGenreNone ? ' (with genre=None)' : ''}`);
+    this.log('debug', `Starting to warm catalog: ${catalogId} with UUID: ${uuid}${genreValue ? ` (with genre=${genreValue})` : ''}`);
 
     if (catalogId.startsWith('stremthru.') || catalogId.startsWith('custom.')) {
       return await this.warmExternalAddonCatalog(catalogId, catalog, genreValue, config, uuid);
@@ -632,151 +570,16 @@ class ComprehensiveCatalogWarmer {
         const extraArgs = {};
         if (currentPage > 1) extraArgs.page = currentPage;
         if (genreValue) extraArgs.genre = genreValue;
-        const catalogConfig = config.catalogs?.find(c => c.id === catalogId);
-        // Claimed before the provider prefixes; anilist.discover would otherwise match anilist.
-        if (isDiscoverCatalogId(catalogId)) {
-          applyDiscoverSignature(extraArgs, catalogConfig);
-        }
-        else if (catalogId.startsWith('trakt.') || catalogId.startsWith('anilist.') || catalogId.startsWith('streaming.') || catalogId.startsWith('tmdb.year') || catalogId.startsWith('tmdb.language')) {
-          if (catalogConfig) {
-            if (catalogConfig.sort) extraArgs.sort = catalogConfig.sort;
-            if (catalogConfig.sortDirection) extraArgs.sortDirection = catalogConfig.sortDirection;
-          }
-        }
-        else if (catalogId.startsWith('mal.userlist.')) {
-          if (catalogConfig?.sort) extraArgs.sort = catalogConfig.sort;
-        }
-        else if (catalogId.startsWith('movielens.')) {
-          const mlMeta = catalogConfig?.metadata || {};
-          if (mlMeta.sortBy) extraArgs.sort = mlMeta.sortBy;
-          if (mlMeta.sortDirection) extraArgs.sortDirection = mlMeta.sortDirection;
-          if (mlMeta.tags) extraArgs.tags = mlMeta.tags;
-          if (mlMeta.minYear) extraArgs.minYear = mlMeta.minYear;
-          if (mlMeta.maxYear) extraArgs.maxYear = mlMeta.maxYear;
-          if (mlMeta.minPop) extraArgs.minPop = mlMeta.minPop;
-          if (mlMeta.maxDaysAgo) extraArgs.maxDaysAgo = mlMeta.maxDaysAgo;
-          if (mlMeta.maxFutureDays !== undefined) extraArgs.maxFutureDays = mlMeta.maxFutureDays;
-          if (mlMeta.includeRated) extraArgs.includeRated = true;
-        }
-        else if (catalogId.startsWith('mdblist.')) {
-          if (catalogConfig) {
-            if (catalogConfig.sort) extraArgs.sort = catalogConfig.sort;
-            if (catalogConfig.order) extraArgs.order = catalogConfig.order;
-            if (supportsMdblistScoreFilters(catalogConfig)) {
-              if (typeof catalogConfig.filter_score_min === 'number') {
-                extraArgs.filter_score_min = catalogConfig.filter_score_min;
-              }
-              if (typeof catalogConfig.filter_score_max === 'number') {
-                extraArgs.filter_score_max = catalogConfig.filter_score_max;
-              }
-            }
-          }
-        }
-        if (catalogId === 'trakt.upnext' || catalogId === 'mdblist.upnext' || catalogId === 'publicmetadb.upnext' || catalogId.startsWith('simkl.upnext')) {
-          extraArgs.useShowPoster = typeof catalogConfig?.metadata?.useShowPosterForUpNext === 'boolean'
-              ? catalogConfig.metadata.useShowPosterForUpNext
-              : false;
-        }
-        if (catalogId === 'mdblist.upnext') {
-          if (catalogConfig?.metadata?.hideUnreleased !== undefined) {
-            extraArgs.hideUnreleased = catalogConfig.metadata.hideUnreleased;
-          }
-        }
-        if (catalogId === 'simkl.upnext') {
-          extraArgs.includeAnime = catalogConfig?.metadata?.includeAnimeInUpNext !== false;
-        }
-
-        if (catalogId === 'trakt.calendar') {
-          const getUserTimezone = () => config.timezone || process.env.TZ || 'UTC';
-          const getTodayInTimezone = (tz) => {
-            const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-            return formatter.format(new Date());
-          };
-          extraArgs.date = getTodayInTimezone(getUserTimezone());
-          extraArgs.days = typeof catalogConfig?.metadata?.airingSoonDays === 'number' 
-            ? catalogConfig.metadata.airingSoonDays 
-            : 1;
-        }
-        
-        if (catalogId.startsWith('simkl.calendar')) {
-          const getUserTimezone = () => config.timezone || process.env.TZ || 'UTC';
-          const getTodayInTimezone = (tz) => {
-            const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-            return formatter.format(new Date());
-          };
-          extraArgs.date = getTodayInTimezone(getUserTimezone());
-          extraArgs.days = typeof catalogConfig?.metadata?.airingSoonDays === 'number'
-            ? catalogConfig.metadata.airingSoonDays
-            : 1;
-        }
-
-        if (catalogId === 'tvmaze.schedule') {
-          const getUserTimezone = () => config.timezone || process.env.TZ || 'UTC';
-          const getTodayInTimezone = (tz) => {
-            const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-            return formatter.format(new Date());
-          };
-          const dateString = extraArgs.date || getTodayInTimezone(getUserTimezone());
-          extraArgs.date = dateString;
-          extraArgs.genre = !extraArgs.genre || extraArgs.genre === 'None' ? '' : extraArgs.genre.toUpperCase();
-        }
-
-        if (catalogId.startsWith('simkl.watchlist.') || catalogId.startsWith('simkl.upnext')) {
-          try {
-            const { getSimklToken, getSimklActivityFingerprint } = require('../utils/simklUtils');
-            const tokenId = config.apiKeys?.simklTokenId;
-            if (tokenId) {
-              const token = await getSimklToken(tokenId);
-              if (token?.access_token) {
-                let pairs;
-                if (catalogId === 'simkl.upnext.anime') {
-                  pairs = [['anime', 'watching']];
-                } else if (catalogId === 'simkl.upnext') {
-                  pairs = extraArgs.includeAnime === false
-                    ? [['shows', 'watching']]
-                    : [['shows', 'watching'], ['anime', 'watching']];
-                } else {
-                  const parts = catalogId.split('.');
-                  pairs = [[parts[2], parts[3]]];
-                }
-                const fps = await Promise.all(
-                  pairs.map(([t, st]) => getSimklActivityFingerprint(token.access_token, t, st, config))
-                );
-                const fp = fps.filter(Boolean).join('+');
-                if (fp) extraArgs._simklAct = fp;
-              }
-            }
-          } catch (e) {
-            this.log('warn', `Simkl activity fingerprint failed for ${catalogId}: ${e.message}`);
-          }
-        }
-
-        if (catalogId.startsWith('movielens.explore')) {
-          try {
-            const credId = config.apiKeys?.movieLensCredId;
-            const explicitTags = String(catalogConfig?.metadata?.tags || '')
-              .split(',').map(s => s.trim()).filter(Boolean).join(',');
-            if (credId && !explicitTags) {
-              const metaTtl = parseInt(
-                process.env.MOVIELENS_USERMETA_TTL_SECONDS || process.env.MOVIELENS_GROUPTAGS_TTL_SECONDS || '43200', 10);
-              const userMeta = await cacheWrapGlobal(`movielens-usermeta:${credId}`,
-                async () => movielens.getUserMeta(credId), metaTtl);
-              if (userMeta?.engineId === 'bard' && Array.isArray(userMeta.groupTags) && userMeta.groupTags.length) {
-                extraArgs._mlTags = userMeta.groupTags.map(t => t.trim()).filter(Boolean).join(',');
-              }
-            }
-          } catch (e) {
-            this.log('warn', `MovieLens group tags failed for ${catalogId}: ${e.message}`);
-          }
-        }
+        const catalogConfig = config.catalogs?.find(c => c.id === catalogId && c.type === catalog.type);
+        applyCatalogKeyArgs(extraArgs, catalogId, catalogConfig, config);
+        await applyCatalogKeyStamps(extraArgs, catalogId, catalogConfig, config);
 
           const derivedPage = currentPage;
           const actualType = catalog.type;
           const catalogKey = `${catalogId}:${actualType}:${stableStringify(extraArgs || {})}`;
 
           const result = await cacheWrapCatalog(uuid, catalogKey, async () => {
-          // Check if this is a MAL catalog
-          if (catalogId.startsWith('mal.')) {
+          if (WARMER_MAL_CATALOGS.has(catalogId)) {
             const configWithUUID = { ...config, userUUID: uuid };
             const fullResult = await this.warmMALCatalog(catalogId, derivedPage, configWithUUID, extraArgs);
             return this.projectCatalogResult(fullResult);
@@ -963,7 +766,7 @@ class ComprehensiveCatalogWarmer {
                 }
               }
             }
-            const skipIds = new Set(['trakt.upnext', 'mdblist.upnext', 'publicmetadb.upnext', 'simkl.upnext', 'simkl.upnext.anime']);
+            const skipIds = new Set(['trakt.upnext', 'mdblist.upnext', 'publicmetadb.upnext', 'simkl.upnext', 'simkl.upnext.anime', 'tmdb.favorites', 'tmdb.watchlist']);
             const { isRecommendationCatalog } = require('../utils/recommendations/catalog');
             const enabledCatalogs = allCatalogs.filter(c =>
               c.source !== 'merged' && !skipIds.has(c.id) && !isRecommendationCatalog(c.id) && !c.id.startsWith('aiom.watchlist.') && !c.metadata?.accountOwner &&
