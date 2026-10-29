@@ -25,6 +25,28 @@ const posterCacheConfig = require('./posterCache/config.js');
 const { collectWarmupTargets, extractIdsFromWarmerMeta } = require('./warmupTargets.js');
 const imageWarmQueue = require('./posterCache/warmQueue.js');
 
+function pinnedCollectionTasks(config, enabledCatalogs) {
+  const tasks = new Map();
+  const walk = (folders) => {
+    for (const folder of Array.isArray(folders) ? folders : []) {
+      for (const source of Array.isArray(folder?.sources) ? folder.sources : []) {
+        const genre = typeof source?.genre === 'string' ? source.genre : '';
+        if (!genre || genre === 'None') continue;
+        const id = String(source.catalogId ?? '').trim();
+        const type = String(source.type ?? '').trim().toLowerCase();
+        const catalog = enabledCatalogs.find(c =>
+          (c.id === id || `${c.id}_${c.type}` === id) && String(c.displayType || c.type).toLowerCase() === type);
+        if (catalog) tasks.set(`${catalog.id}|${catalog.type}|${genre}`, { catalog, genre });
+      }
+      walk(folder?.folders);
+    }
+  };
+  for (const entry of Array.isArray(config?.collections) ? config.collections : []) {
+    if (entry?.kind === 'collection') walk(entry.folders);
+  }
+  return [...tasks.values()];
+}
+
 const WARMER_MAL_CATALOGS = new Set([
   'mal.airing', 'mal.upcoming', 'mal.top_movies', 'mal.top_series', 'mal.most_popular', 'mal.most_favorites',
   'mal.top_anime', 'mal.season_top', 'mal.season_top_new', 'mal.80sDecade', 'mal.90sDecade', 'mal.00sDecade',
@@ -73,6 +95,8 @@ let warmupStats = {
   uuidStats: {}, // Will store stats per UUID
   totalCatalogs: 0,
   catalogsWarmed: 0,
+  totalPinned: 0,
+  pinnedWarmed: 0,
   totalPages: 0,
   pagesFromCache: 0,
   totalItems: 0,
@@ -92,6 +116,8 @@ class ComprehensiveCatalogWarmer {
       uuidStats: {},
       totalCatalogs: 0,
       catalogsWarmed: 0,
+      totalPinned: 0,
+      pinnedWarmed: 0,
       totalPages: 0,
       pagesFromCache: 0,
       totalItems: 0,
@@ -234,6 +260,8 @@ class ComprehensiveCatalogWarmer {
       await redis.set(statsKey, JSON.stringify({
         catalogsWarmed: this.stats.uuidStats[uuid]?.catalogsWarmed || 0,
         totalCatalogs: this.stats.uuidStats[uuid]?.totalCatalogs || 0,
+        pinnedWarmed: this.stats.uuidStats[uuid]?.pinnedWarmed || 0,
+        totalPinned: this.stats.uuidStats[uuid]?.totalPinned || 0,
         totalPages: this.stats.uuidStats[uuid]?.totalPages || 0,
         totalItems: this.stats.uuidStats[uuid]?.totalItems || 0,
         duration: this.stats.uuidStats[uuid]?.duration || null,
@@ -543,7 +571,7 @@ class ComprehensiveCatalogWarmer {
     return { metas };
   }
 
-  async warmCatalog(catalog, config, uuid) {
+  async warmCatalog(catalog, config, uuid, genreOverride = null) {
     if (!uuid) {
       throw new Error('UUID is required for catalog warming');
     }
@@ -552,7 +580,7 @@ class ComprehensiveCatalogWarmer {
     config._currentCatalogConfig = catalog;
     
     const catalogId = catalog.id;
-    const genreValue = await hiddenCatalogGenre(config, uuid, catalogId, catalog.type);
+    const genreValue = genreOverride ?? await hiddenCatalogGenre(config, uuid, catalogId, catalog.type);
 
     this.log('debug', `Starting to warm catalog: ${catalogId} with UUID: ${uuid}${genreValue ? ` (with genre=${genreValue})` : ''}`);
 
@@ -753,6 +781,7 @@ class ComprehensiveCatalogWarmer {
       // Reset overall stats for this run (don't accumulate from previous runs)
       const userConfigs = {};
       let grandTotalCatalogs = 0;
+      let grandTotalPinned = 0;
       for (const uuid of this.config.uuids) {
         try {
           const config = await database.getUserConfig(uuid);
@@ -773,13 +802,21 @@ class ComprehensiveCatalogWarmer {
               c.cacheTTL !== 0 && (jikan.isJikanEnabled() || !jikan.isJikanCatalogId(c.id)) &&
               (c.enabled || mergedChildIds.has(`${c.id}:${c.type}`))
             );
-            userConfigs[uuid] = { config, enabledCatalogs };
+            const pinned = pinnedCollectionTasks(config, enabledCatalogs);
+            const tasks = [
+              ...enabledCatalogs.map(catalog => ({ catalog, genre: null })),
+              ...pinned,
+            ];
+            userConfigs[uuid] = { config, tasks };
             grandTotalCatalogs += enabledCatalogs.length;
+            grandTotalPinned += pinned.length;
             
             // Initialize UUID stats container
             this.stats.uuidStats[uuid] = {
               totalCatalogs: enabledCatalogs.length,
               catalogsWarmed: 0,
+              totalPinned: pinned.length,
+              pinnedWarmed: 0,
               totalPages: 0,
               pagesFromCache: 0,
               totalItems: 0,
@@ -794,6 +831,8 @@ class ComprehensiveCatalogWarmer {
 
       this.stats.totalCatalogs = grandTotalCatalogs;
       this.stats.catalogsWarmed = 0;
+      this.stats.totalPinned = grandTotalPinned;
+      this.stats.pinnedWarmed = 0;
       this.stats.totalPages = 0;
       this.stats.pagesFromCache = 0;
       this.stats.totalItems = 0;
@@ -813,7 +852,7 @@ class ComprehensiveCatalogWarmer {
         }
 
         const freshConfig = await loadConfigFromDatabase(uuid);
-        const enabledCatalogs = userData.enabledCatalogs;
+        const tasks = userData.tasks;
         const config = freshConfig;
 
         await runWithRequestContext(uuid, async () => {
@@ -824,10 +863,10 @@ class ComprehensiveCatalogWarmer {
           await markWarmRunStarted(uuid, uuidStartTime);
         }
         try {
-          this.log('info', `Processing UUID: ${uuid} (${enabledCatalogs.length} catalogs)`);
+          this.log('info', `Processing UUID: ${uuid} (${tasks.filter(t => !t.genre).length} catalogs, ${tasks.filter(t => t.genre).length} collection genres)`);
 
           let uuidWarmingInterrupted = false;
-          for (const catalog of enabledCatalogs) {
+          for (const { catalog, genre } of tasks) {
             if (!this.shouldContinueWarming()) {
               this.log('info', 'Stop requested - stopping catalog warming');
               uuidWarmingInterrupted = true;
@@ -837,19 +876,20 @@ class ComprehensiveCatalogWarmer {
             try {
               this.log('info', `Warming catalog: ${catalog.id} (${catalog.name}) for UUID ${uuid}`);
               this.stats.uuidStats[uuid].currentCatalog = catalog.name || catalog.id;
-              const result = await this.warmCatalog(catalog, config, uuid);
+              const result = await this.warmCatalog(catalog, config, uuid, genre);
 
               // Update Instance Stats (UUID)
-              this.stats.uuidStats[uuid].catalogsWarmed++;
+              const counter = genre ? 'pinnedWarmed' : 'catalogsWarmed';
+              this.stats.uuidStats[uuid][counter]++;
               this.stats.uuidStats[uuid].totalPages += result.pages;
               this.stats.uuidStats[uuid].totalItems += result.items;
 
               // Update Global Stats
-              this.stats.catalogsWarmed++;
+              this.stats[counter]++;
               this.stats.totalPages += result.pages;
               this.stats.totalItems += result.items;
 
-              this.log('success', `✓ ${catalog.id}: ${result.pages} pages, ${result.items} items`);
+              this.log('success', `✓ ${catalog.id}${genre ? ` (${genre})` : ''}: ${result.pages} pages, ${result.items} items`);
             } catch (error) {
               this.log('error', `✗ ${catalog.id}: ${error.message}`);
               this.stats.uuidStats[uuid].errors.push({ catalog: catalog.id, error: error.message });
@@ -862,7 +902,7 @@ class ComprehensiveCatalogWarmer {
 
           if (!uuidWarmingInterrupted) {
             await this.markWarmed(uuid, uuidStartTime, stampSchedule);
-            this.log('success', `UUID ${uuid} complete: ${this.stats.uuidStats[uuid].catalogsWarmed}/${this.stats.uuidStats[uuid].totalCatalogs} catalogs, ${this.stats.uuidStats[uuid].totalPages} pages, ${this.stats.uuidStats[uuid].totalItems} items in ${this.stats.uuidStats[uuid].duration}`);
+            this.log('success', `UUID ${uuid} complete: ${this.stats.uuidStats[uuid].catalogsWarmed}/${this.stats.uuidStats[uuid].totalCatalogs} catalogs, ${this.stats.uuidStats[uuid].pinnedWarmed}/${this.stats.uuidStats[uuid].totalPinned} collection genres, ${this.stats.uuidStats[uuid].totalPages} pages, ${this.stats.uuidStats[uuid].totalItems} items in ${this.stats.uuidStats[uuid].duration}`);
           } else {
             this.log('warn', `UUID ${uuid} interrupted: ${this.stats.uuidStats[uuid].catalogsWarmed}/${this.stats.uuidStats[uuid].totalCatalogs} catalogs warmed before stop`);
           }
@@ -884,7 +924,7 @@ class ComprehensiveCatalogWarmer {
 
       const stoppedEarly = this.shouldStop;
       const cachedPages = this.stats.pagesFromCache ? ` (${this.stats.pagesFromCache} already cached)` : '';
-      this.log('success', `Warmup ${stoppedEarly ? 'stopped' : 'complete'}! Processed ${this.config.uuids.length} UUID(s), warmed ${this.stats.catalogsWarmed}/${this.stats.totalCatalogs} catalogs, ${this.stats.totalPages} pages${cachedPages}, ${this.stats.totalItems} items in ${this.stats.duration}`);
+      this.log('success', `Warmup ${stoppedEarly ? 'stopped' : 'complete'}! Processed ${this.config.uuids.length} UUID(s), warmed ${this.stats.catalogsWarmed}/${this.stats.totalCatalogs} catalogs and ${this.stats.pinnedWarmed}/${this.stats.totalPinned} collection genres, ${this.stats.totalPages} pages${cachedPages}, ${this.stats.totalItems} items in ${this.stats.duration}`);
 
       const imageStats = imageWarmQueue.getStats();
       if (imageStats.depth > 0) {
@@ -1066,6 +1106,8 @@ class ComprehensiveCatalogWarmer {
         // Aggregate totals from per-UUID stats
         let totalCatalogs = 0;
         let catalogsWarmed = 0;
+        let totalPinned = 0;
+        let pinnedWarmed = 0;
         let totalPages = 0;
         let totalItems = 0;
         
@@ -1074,6 +1116,8 @@ class ComprehensiveCatalogWarmer {
           if (uuidStats) {
             totalCatalogs += uuidStats.totalCatalogs || 0;
             catalogsWarmed += uuidStats.catalogsWarmed || 0;
+            totalPinned += uuidStats.totalPinned || 0;
+            pinnedWarmed += uuidStats.pinnedWarmed || 0;
             totalPages += uuidStats.totalPages || 0;
             totalItems += uuidStats.totalItems || 0;
           }
@@ -1081,6 +1125,8 @@ class ComprehensiveCatalogWarmer {
         
         this.stats.totalCatalogs = totalCatalogs;
         this.stats.catalogsWarmed = catalogsWarmed;
+        this.stats.totalPinned = totalPinned;
+        this.stats.pinnedWarmed = pinnedWarmed;
         this.stats.totalPages = totalPages;
         this.stats.totalItems = totalItems;
       }
