@@ -112,6 +112,7 @@ export interface CatalogConfig {
     useUpstreamArt?: boolean;
     // Trakt Up Next metadata
     useShowPosterForUpNext?: boolean;
+    upNextSort?: 'watched' | 'aired';
     includeAnimeInUpNext?: boolean;
     // Trakt Calendar metadata
     airingSoonDays?: number;

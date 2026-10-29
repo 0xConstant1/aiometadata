@@ -1936,6 +1936,7 @@ interface SimklUpNextItem {
   episodeTitle?: string;
   showTitle?: string;
   lastWatchedAt?: string;
+  airedAt?: string;
 }
 
 /**
@@ -2024,7 +2025,8 @@ function enrichSimklIds(media: any): any {
 async function fetchSimklUpNextItems(
   accessToken: string,
   config: UserConfig,
-  buckets: Array<'shows' | 'anime'> = ['shows']
+  buckets: Array<'shows' | 'anime'> = ['shows'],
+  sort: 'watched' | 'aired' = 'watched'
 ): Promise<SimklUpNextItem[]> {
   const now = Date.now();
   const upNext: SimklUpNextItem[] = [];
@@ -2067,13 +2069,23 @@ async function fetchSimklUpNextItems(
         episodeTitle: next.title,
         showTitle: media.title,
         lastWatchedAt: item.last_watched_at,
+        airedAt: next.date,
       });
     }
   }
 
+  const timeOf = (value?: string) => {
+    const at = value ? new Date(value).getTime() : NaN;
+    return Number.isFinite(at) ? at : 0;
+  };
   upNext.sort((a, b) => {
-    const timeA = a.lastWatchedAt ? new Date(a.lastWatchedAt).getTime() : 0;
-    const timeB = b.lastWatchedAt ? new Date(b.lastWatchedAt).getTime() : 0;
+    if (sort === 'aired') {
+      const airedA = timeOf(a.airedAt);
+      const airedB = timeOf(b.airedAt);
+      if (airedB !== airedA) return airedB - airedA;
+    }
+    const timeA = timeOf(a.lastWatchedAt);
+    const timeB = timeOf(b.lastWatchedAt);
     if (timeB !== timeA) return timeB - timeA;
     return (a.showTitle || '').localeCompare(b.showTitle || '');
   });

@@ -51,6 +51,9 @@ export function applyCatalogKeyArgs(args: Record<string, any>, catalogId: string
   if (catalogId === 'simkl.upnext') {
     args.includeAnime = catalogConfig?.metadata?.includeAnimeInUpNext !== false;
   }
+  if ((catalogId === 'trakt.upnext' || catalogId.startsWith('simkl.upnext')) && catalogConfig?.metadata?.upNextSort === 'aired') {
+    args.upNextSort = 'aired';
+  }
   if (catalogId === 'mdblist.upnext' && catalogConfig?.metadata?.hideUnreleased !== undefined) {
     args.hideUnreleased = catalogConfig.metadata.hideUnreleased;
   }

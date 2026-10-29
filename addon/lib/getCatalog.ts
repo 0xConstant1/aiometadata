@@ -2143,9 +2143,17 @@ async function getTraktCatalog(
         
         const totalTime = Date.now() - upNextStart;
         logger.info(`Up Next: Total catalog fetch time: ${totalTime}ms`);
-        
+
+        const airedAt = (item: any) => {
+          const at = item?.upNextEpisode?.first_aired ? new Date(item.upNextEpisode.first_aired).getTime() : NaN;
+          return Number.isFinite(at) ? at : 0;
+        };
+        const ordered = catalogConfig?.metadata?.upNextSort === 'aired'
+          ? allItems.map((item, index) => ({ item, index })).sort((a, b) => (airedAt(b.item) - airedAt(a.item)) || (a.index - b.index)).map(({ item }) => item)
+          : allItems;
+
         response = { 
-          items: allItems, 
+          items: ordered.slice(0, 50),
           hasMore: false
         };
       }
@@ -3084,7 +3092,7 @@ async function getSimklCatalog(
         : (catalogConfig?.metadata?.includeAnimeInUpNext !== false ? ['shows', 'anime'] : ['shows']);
       // No TTL override: the shared watching blob is invalidated by the activity
       // check, and this catalog's short TTL would shrink it for the watchlist too.
-      const allItems = await fetchSimklUpNextItems(accessToken, config, buckets);
+      const allItems = await fetchSimklUpNextItems(accessToken, config, buckets, catalogConfig?.metadata?.upNextSort === 'aired' ? 'aired' : 'watched');
 
       const startIndex = (page - 1) * pageSize;
       const pageItems = allItems.slice(startIndex, startIndex + pageSize);
