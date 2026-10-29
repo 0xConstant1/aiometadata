@@ -25,6 +25,7 @@ const posterCacheConfig = require('./posterCache/config.js');
 const { collectWarmupTargets, extractIdsFromWarmerMeta } = require('./warmupTargets.js');
 const imageWarmQueue = require('./posterCache/warmQueue.js');
 const { warmTrailerAddon } = require('./trailerProjection');
+const { isEndOfList } = require('./catalogPagination');
 
 function pinnedCollectionTasks(config, enabledCatalogs) {
   const tasks = new Map();
@@ -380,7 +381,9 @@ class ComprehensiveCatalogWarmer {
   // meta cache. Items built through cacheWrapMetaSmart were written there, in
   // full, when the catalog was built.
   projectCatalogResult(result) {
-    return projectCatalogPayloadForCache(result);
+    const projected = projectCatalogPayloadForCache(result);
+    if (isEndOfList(result?.metas) && projected && typeof projected === 'object') projected.endOfList = true;
+    return projected;
   }
 
   async warmTrailers(metas, config, catalogId) {

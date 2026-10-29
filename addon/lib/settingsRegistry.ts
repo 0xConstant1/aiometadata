@@ -3602,6 +3602,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 0,
   },
   {
+    key: 'CATALOG_END_PAGE_TTL',
+    envVar: 'CATALOG_END_PAGE_TTL',
+    label: 'Catalog End Page Cache (sec)',
+    description: 'How long an empty page past the end of a list is kept when the source confirmed the list ended there. Never longer than the catalog\'s own pages. Empty pages the source did not confirm are kept for a minute, so a failed request does not cut a list short.',
+    category: 'Cache',
+    type: 'number',
+    default: 86400,
+    min: 60,
+  },
+  {
     key: 'TRAILER_ADDON_TIMEOUT_MS',
     envVar: 'TRAILER_ADDON_TIMEOUT_MS',
     label: 'Trailer Addon Timeout (ms)',

@@ -23,6 +23,7 @@ import { to3LetterCode, to3LetterCountryCode } from './language-map.js';
 import { resolveAllIds } from './id-resolver.js';
 import { cacheWrapTvdbApi, cacheWrap, cacheWrapCatalog, cacheWrapAniListCatalog, cacheWrapJikanApi, cacheWrapGlobal, classifyResultAllowEmpty, stableStringify, CATALOG_TTL } from './getCache.js';
 import { applyCatalogKeyArgs, applyCatalogKeyStamps, hiddenCatalogGenre } from './catalogKeyArgs.js';
+import { endOfList } from './catalogPagination';
 import { getTVDBContentRatingId } from '../utils/tvdbContentRating.js';
 import { getMeta } from './getMeta.js';
 import { fetchLumiereList, lumiereApiBase, lumiereListOf } from '../utils/lumiereLists.js';
@@ -962,6 +963,7 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
         catalogConfig?.cacheTTL
       );
 
+      if (response.hasMore === false && response.items.length === 0) return endOfList();
       let metas = await parseMDBListItems(response.items, type, language, config, includeVideos);
 
       return metas;
@@ -1034,9 +1036,9 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
       logger.debug(`MDBList watchlist pagination - page ${page}, ${itemInfo}, ${statusInfo}`);
       
       // Early exit for empty pages beyond list end
-      if (!response.hasMore && response.items.length === 0) {
+      if (response.hasMore === false && response.items.length === 0) {
         logger.debug(`MDBList watchlist early exit - no more items at page ${page}`);
-        return [];
+        return endOfList();
       }
     } else if (response.totalItems !== undefined && response.totalPages !== undefined) {
       const pageInfo = `page ${page}/${response.totalPages}`;
@@ -1047,9 +1049,9 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
       logger.debug(`MDBList smart pagination - ${pageInfo}, ${itemInfo}, ${totalInfo}, ${statusInfo}`);
       
       // Early exit for empty pages beyond list end
-      if (!response.hasMore && response.items.length === 0) {
+      if (response.hasMore === false && response.items.length === 0) {
         logger.debug(`MDBList early exit - no more items for list ${listId} at page ${page}`);
-        return [];
+        return endOfList();
       }
       
       // Performance warning for large offsets

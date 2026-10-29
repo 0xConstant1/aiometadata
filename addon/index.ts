@@ -11,7 +11,7 @@ const addon = express();
 
 const { getCatalog } = require("./lib/getCatalog");
 const { applyCatalogFilters, catalogFiltersActive } = require("./utils/catalogFilters");
-const { cursorKey, resolveStartPage, fillFilteredPage, fillOnce } = require("./lib/catalogPagination");
+const { cursorKey, resolveStartPage, fillFilteredPage, fillOnce, isEndOfList } = require("./lib/catalogPagination");
 const { registerInProcessRoute } = require("./lib/inProcessRoutes");
 const anilist = require("./lib/anilist");
 const { getSearch } = require("./lib/getSearch");
@@ -5328,6 +5328,7 @@ const catalogRoute = async function (req, res) {
       const { genre: genreName, type_filter } = extraArgs;
       const runCatalogPage = async (page, skipOverride) => {
         let metas = [];
+        let ended = false;
         const args = [actualType, language, page];
         switch (cleanId) {
           case "tmdb.trending":
@@ -5376,10 +5377,11 @@ const catalogRoute = async function (req, res) {
           }
           default: {
             metas = (await getCatalog(actualType, language, page, cleanId, genreName, config, userUUID, false, skipOverride)).metas;
+            ended = isEndOfList(metas);
             break;
           }
       }
-      return { metas: metas || [] };
+      return { metas: metas || [], ...(ended ? { endOfList: true } : {}) };
     };
 
     const keyForPage = (page) => {
