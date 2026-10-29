@@ -10,6 +10,7 @@ import { fetchLetterboxdList, parseLetterboxdItems, getLetterboxdGenreIdByName }
 import { getFlixPatrolMetas } from "../utils/flixpatrolUtils.js";
 import { fetchResume, parseResumeItems, fetchListItems, parseListItems, fetchPickItems, parsePickItems, publicMetaDBListType, publicMetaDBListId, WATCHLIST_CATALOG_ID } from "../utils/publicmetadbUtils.js";
 import { mapWithLimit } from "../utils/concurrency.js";
+import { envInt } from '../utils/envNumber';
 const anilist = require('./anilist');
 const idMapper = require('./id-mapper');
 import { createHash } from 'crypto';
@@ -1134,38 +1135,27 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
     }
 
     try {
-      const response = mediaType === 'movie'
-        ? await moviedb.discoverMovie(parameters, config)
-        : await moviedb.discoverTv(parameters, config);
+      let results: any[];
+      if (runtimeGte === null && runtimeLte === null) {
+        const response = mediaType === 'movie'
+          ? await moviedb.discoverMovie(parameters, config)
+          : await moviedb.discoverTv(parameters, config);
 
-      if (!response?.results || !Array.isArray(response.results) || response.results.length === 0) {
-        logger.info(`[TMDB Discover] No results for ${id} at page ${discoverPage}`);
-        return [];
-      }
-
-      let results = response.results;
-      if (runtimeGte !== null || runtimeLte !== null) {
-        const checked = await mapWithLimit(results, async (item: any) => {
-          try {
-            const details = await moviedb.tvInfo({ id: item.id, language }, config);
-            const runtime = [
-              details?.episode_run_time?.[0],
-              details?.last_episode_to_air?.runtime,
-              details?.next_episode_to_air?.runtime,
-            ].find((r: any) => typeof r === 'number' && r > 0);
-            if (runtime === undefined) return item; // runtime unknown → keep
-            if (runtimeGte !== null && runtime < runtimeGte) return null;
-            if (runtimeLte !== null && runtime > runtimeLte) return null;
-            return item;
-          } catch {
-            return item;
-          }
-        });
-        results = checked.filter((item: any) => item !== null);
-        if (results.length < response.results.length) {
-          logger.info(`[TMDB Discover] Runtime filter kept ${results.length}/${response.results.length} items for ${id} at page ${discoverPage}`);
+        if (!response?.results || !Array.isArray(response.results) || response.results.length === 0) {
+          logger.info(`[TMDB Discover] No results for ${id} at page ${discoverPage}`);
+          return Array.isArray(response?.results) && discoverPage > (response.total_pages ?? 0) ? endOfList() : [];
         }
-        if (results.length === 0) return [];
+        results = response.results;
+      } else {
+        const filtered = await runtimeFilteredDiscoverPage({
+          parameters, page: discoverPage, runtimeGte, runtimeLte, language, config,
+          ttl: catalogConfig?.cacheTTL || CATALOG_TTL(),
+        });
+        if (filtered.items.length === 0) {
+          logger.info(`[TMDB Discover] No results within the runtime range for ${id} at page ${discoverPage}`);
+          return filtered.ended ? endOfList() : [];
+        }
+        results = filtered.items;
       }
 
       const metaType = mediaType === 'movie' ? 'movie' : 'series';
@@ -1441,6 +1431,58 @@ async function getTmdbAndMdbListCatalog(type: string, id: string, genre: string,
   } else {
     return [];
   }
+}
+
+const TMDB_DISCOVER_PAGE_SIZE = 20;
+
+async function runtimeFilteredDiscoverPage(opts: {
+  parameters: Record<string, any>;
+  page: number;
+  runtimeGte: number | null;
+  runtimeLte: number | null;
+  language: string;
+  config: UserConfig;
+  ttl: number;
+}): Promise<{ items: any[]; ended: boolean }> {
+  const { parameters, page, runtimeGte, runtimeLte, language, config, ttl } = opts;
+  const { page: _page, ...shape } = parameters;
+  const signature = createHash('md5').update(JSON.stringify([shape, runtimeGte, runtimeLte])).digest('hex').slice(0, 16);
+  const wanted = page * TMDB_DISCOVER_PAGE_SIZE;
+  const lastScanned = page + envInt('TMDB_RUNTIME_FILTER_EXTRA_PAGES', 20, 0);
+
+  const kept: number[] = [];
+  let ended = false;
+  for (let tmdbPage = 1; kept.length < wanted && tmdbPage <= lastScanned; tmdbPage++) {
+    const chunk = await cacheWrapGlobal(`tmdb-discover-runtime:v1:${signature}:${tmdbPage}`, async () => {
+      const response = await moviedb.discoverTv({ ...parameters, page: tmdbPage }, config);
+      if (!response || !Array.isArray(response.results)) throw new Error(`TMDB discover page ${tmdbPage} came back without results`);
+      const checked = await mapWithLimit(response.results, async (item: any) => {
+        try {
+          const details = await moviedb.tvInfo({ id: item.id, language }, config);
+          const runtime = [
+            details?.episode_run_time?.[0],
+            details?.last_episode_to_air?.runtime,
+            details?.next_episode_to_air?.runtime,
+          ].find((r: any) => typeof r === 'number' && r > 0);
+          if (runtime === undefined) return item.id;
+          if (runtimeGte !== null && runtime < runtimeGte) return null;
+          if (runtimeLte !== null && runtime > runtimeLte) return null;
+          return item.id;
+        } catch {
+          return item.id;
+        }
+      });
+      return { ids: checked.filter((tmdbId: any) => tmdbId !== null), totalPages: Number(response.total_pages) || 0 };
+    }, ttl, { resultClassifier: classifyResultAllowEmpty });
+    kept.push(...(chunk?.ids || []));
+    if (tmdbPage >= (chunk?.totalPages || 0)) {
+      ended = true;
+      break;
+    }
+  }
+
+  const items = kept.slice((page - 1) * TMDB_DISCOVER_PAGE_SIZE, wanted).map((tmdbId) => ({ id: tmdbId }));
+  return { items, ended: ended && items.length === 0 };
 }
 
 async function buildParameters(type: string, language: string, page: number, id: string, genre: string, genreList: any[], config: UserConfig): Promise<any> {

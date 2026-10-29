@@ -3602,6 +3602,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     min: 0,
   },
   {
+    key: 'TMDB_RUNTIME_FILTER_EXTRA_PAGES',
+    envVar: 'TMDB_RUNTIME_FILTER_EXTRA_PAGES',
+    label: 'TMDB Runtime Filter Extra Pages',
+    description: 'How many TMDB pages past the requested one a TV discover catalog with an episode runtime range may read to fill a page. A narrow range drops most shows, so a page can take several TMDB pages.',
+    category: 'Catalogs & Search',
+    type: 'number',
+    default: 20,
+    min: 0,
+  },
+  {
     key: 'CATALOG_END_PAGE_TTL',
     envVar: 'CATALOG_END_PAGE_TTL',
     label: 'Catalog End Page Cache (sec)',
